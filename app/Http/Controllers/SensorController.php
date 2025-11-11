@@ -93,10 +93,21 @@ class SensorController extends Controller
     public function show(Sensor $sensor)
     {
         $readings = $sensor->readings()
+            ->where('reading_time', '<=', now())
             ->orderBy('reading_time', 'desc')
             ->paginate(10);
-            
-        return view('sensors.show', compact('sensor', 'readings'));
+
+        $chartReadings = $sensor->readings()
+            ->where('reading_time', '<=', now())
+            ->orderBy('reading_time', 'asc')
+            ->limit(100)
+            ->get();
+
+        return view('sensors.show', [
+            'sensor' => $sensor,
+            'readings' => $readings,
+            'chartReadings' => $chartReadings,
+        ]);
     }
 
     public function edit(Sensor $sensor)

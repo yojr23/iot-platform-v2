@@ -66,6 +66,7 @@ class SensorApiController extends Controller
         try {
             // Get readings with pagination
             $readings = $sensor->readings()
+                ->where('reading_time', '<=', now())
                 ->orderBy('reading_time', 'desc')
                 ->paginate(15); // Adjust pagination as needed
 
@@ -90,6 +91,7 @@ class SensorApiController extends Controller
             $limit = max(1, min($limit, 100));
 
             $readings = $sensor->readings()
+                ->where('reading_time', '<=', now())
                 ->orderBy('reading_time', 'desc')
                 ->limit($limit)
                 ->get()
@@ -115,7 +117,9 @@ class SensorApiController extends Controller
         try {
             // Cargar todos los sensores con sus lecturas más recientes (limitar a 100 por sensor)
             $sensors = Sensor::with(['sensorType', 'device.classroom', 'readings' => function ($query) {
-                $query->orderBy('reading_time', 'desc')->limit(100);
+                $query->where('reading_time', '<=', now())
+                    ->orderBy('reading_time', 'desc')
+                    ->limit(100);
             }])->get();
 
             return response()->json([

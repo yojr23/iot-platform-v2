@@ -54,17 +54,28 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Pusher para actualización en tiempo real -->
-    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
-    <script>
-        // Enable pusher logging - don't include this in production
-        Pusher.logToConsole = true;
+    @php
+        $pusherKey = env('PUSHER_APP_KEY');
+        $pusherCluster = env('PUSHER_APP_CLUSTER');
+    @endphp
 
-        var pusher = new Pusher('{{ env('PUSHER_APP_KEY') }}', {
-            cluster: '{{ env('PUSHER_APP_CLUSTER') }}',
-            forceTLS: true
-        });
-    </script>
+    @if($pusherKey && $pusherCluster)
+        <!-- Pusher para actualización en tiempo real -->
+        <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
+        <script>
+            // Enable pusher logging - don't include this in production
+            Pusher.logToConsole = true;
+
+            window.pusher = new Pusher('{{ $pusherKey }}', {
+                cluster: '{{ $pusherCluster }}',
+                forceTLS: true,
+            });
+        </script>
+    @else
+        <script>
+            window.pusher = null;
+        </script>
+    @endif
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {

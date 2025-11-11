@@ -78,23 +78,42 @@
 
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+@php
+    $chartPoints = ($chartReadings ?? collect())
+        ->filter(fn($reading) => !is_null($reading->reading_time))
+        ->map(fn($reading) => [
+            'time' => $reading->reading_time?->format('Y-m-d H:i:s'),
+            'value' => (float) $reading->value,
+        ])
+        ->values();
+@endphp
 <script>
     // Obtener contexto del canvas
     const ctx = document.getElementById('sensorChart').getContext('2d');
+    const CLOCK_DRIFT_TOLERANCE_MS = 60 * 1000;
+
+    function parseTimestamp(value) {
+        if (!value) {
+            return null;
+        }
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function isFutureTimestamp(value) {
+        const date = parseTimestamp(value);
+        if (!date) {
+            return false;
+        }
+        return (date.getTime() - Date.now()) > CLOCK_DRIFT_TOLERANCE_MS;
+    }
+
+    const rawChartPoints = @json($chartPoints);
+    const initialChartPoints = rawChartPoints.filter(point => !isFutureTimestamp(point.time));
 
     // Etiquetas (tiempo) y valores iniciales desde Blade
-    const labels = [
-        @foreach($readings->take(100) as $reading)
-            "{{ \Carbon\Carbon::parse($reading->reading_time)->format('Y-m-d ') }}",
-        @endforeach
-    ];
-
-    const dataValues = [
-        @foreach($readings->take(100) as $reading)
-            {{ floatval($reading->value) }},
-        @endforeach
-    ];
+    const labels = initialChartPoints.map(point => formatTimestamp(point.time));
+    const dataValues = initialChartPoints.map(point => point.value);
 
     // Crear gráfico de líneas con Chart.js
     const sensorChart = new Chart(ctx, {
@@ -156,26 +175,86 @@
     const sensorId = {{ $sensor->id }};
 
     // Última fecha conocida (para evitar duplicados)
-    let ultimaFecha = labels.length > 0 ? labels[labels.length - 1] : null;
+    let ultimaFecha = labels.length > 0
+        ? labels[labels.length - 1]
+        : null;
 
     // Función para consultar la API periódicamente
-    setInterval(() => {
-        fetch(`/api/sensors/${sensorId}/readings?limit=1`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.readings && data.readings.data && data.readings.data.length > 0) {
-                    const lectura = data.readings.data[0];
-                    const tiempo = lectura.reading_time.replace('T', ' ').slice(0, 19);
-                    const valor = parseFloat(lectura.value);
+    const latestReadingsEndpoint = `/api/sensors/${sensorId}/latest-readings?limit=1`;
+    const pollingIntervalMs = 3000;
+    let pollingHandle = null;
 
-                    // Solo agregar si es una lectura nueva
-                    if (tiempo !== ultimaFecha) {
-                        agregarNuevoDato(tiempo, valor);
-                        ultimaFecha = tiempo;
-                    }
-                }
+    function formatTimestamp(value) {
+        if (!value) {
+            return '';
+        }
+        return value.toString().replace('T', ' ').slice(0, 19);
+    }
+
+    async function getLatestReading() {
+        try {
+            const response = await fetch(latestReadingsEndpoint, {
+                headers: { 'Accept': 'application/json', 'Cache-Control': 'no-store' },
             });
-    }, 3000);
+
+            if (!response.ok) {
+                console.error('Error al obtener la última lectura:', response.status, response.statusText);
+                return;
+            }
+
+            const readings = await response.json();
+            if (!Array.isArray(readings) || readings.length === 0) {
+                return;
+            }
+
+            const lectura = readings[0];
+            const lecturaTimestamp = lectura.reading_time || lectura.created_at;
+            if (isFutureTimestamp(lecturaTimestamp)) {
+                return;
+            }
+            const tiempo = formatTimestamp(lecturaTimestamp);
+
+            if (!tiempo || tiempo === ultimaFecha) {
+                return;
+            }
+
+            const valor = parseFloat(lectura.value);
+            if (Number.isNaN(valor)) {
+                return;
+            }
+
+            agregarNuevoDato(tiempo, valor);
+            ultimaFecha = tiempo;
+        } catch (error) {
+            console.error('No se pudo obtener la última lectura', error);
+        }
+    }
+    
+    function startPolling() {
+        if (pollingHandle) {
+            return;
+        }
+        getLatestReading();
+        pollingHandle = setInterval(getLatestReading, pollingIntervalMs);
+    }
+
+    function stopPolling() {
+        if (!pollingHandle) {
+            return;
+        }
+        clearInterval(pollingHandle);
+        pollingHandle = null;
+    }
+
+    startPolling();
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopPolling();
+        } else {
+            startPolling();
+        }
+    });
+    window.addEventListener('beforeunload', stopPolling);
 
     const filterButton = document.getElementById('filterButton');
     const resetFilter = document.getElementById('resetFilter');

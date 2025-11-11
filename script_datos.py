@@ -7,8 +7,9 @@ import sys
 import random
 
 # Endpoint para obtener sensores y enviar lecturas
-API_SENSORS_URL = "http://127.0.0.1:8000/api/sensors"
-API_URL = "http://127.0.0.1:8000/api/sensors/{sensor_id}/readings"
+BASE_URL = 'http://127.0.0.1:8000'
+API_SENSORS_URL = f"{BASE_URL}/api/sensors"
+API_URL = f"{BASE_URL}/api/sensors/{{sensor_id}}/readings"
 API_KEY = "E7X1GAFf9xgkdoP69LcYSD4KoNuuYGn_ju01uIY2448"
 
 running = True
@@ -38,7 +39,7 @@ def simulate_value(sensor):
     min_r = sensor['sensor_type']['min_range']
     max_r = sensor['sensor_type']['max_range']
     # 10% de las veces, genera un valor fuera de rango
-    if random.random() < 0.4:
+    if random.random() < 0.1:
         if random.random() < 0.5:
             return min_r - random.uniform(1, 5)  # Debajo del mínimo
         else:
@@ -66,7 +67,7 @@ def send_sensor_data(sensor):
         )
         if response.status_code == 201:
             print(f"Sensor {sensor['id']} ({sensor['sensor_type']['name']}): {value:.2f} {sensor['sensor_type']['unit']}")
-        else:
+        else:   
             print(f"Error al enviar al sensor {sensor['id']}: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"Error de conexión con el sensor {sensor['id']}: {str(e)}")
