@@ -194,19 +194,19 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph WEB[Web Routes]
-        W1[/dashboard]
-        W2[/devices]
-        W3[/sensors]
-        W4[/alerts]
-        W5[/config]
+        W1["/dashboard"]
+        W2["/devices"]
+        W3["/sensors"]
+        W4["/alerts"]
+        W5["/config"]
     end
 
     subgraph API[API Routes]
-        A1[/api/sensors]
-        A2[/api/sensors/:sensorId/readings]
-        A3[/api/sensors/:sensorId/latest-readings]
-        A4[/api/alerts/active]
-        A5[/api/devices]
+        A1["/api/sensors"]
+        A2["/api/sensors/:sensorId/readings"]
+        A3["/api/sensors/:sensorId/latest-readings"]
+        A4["/api/alerts/active"]
+        A5["/api/devices"]
     end
 
     AUTH[auth middleware] --> WEB
