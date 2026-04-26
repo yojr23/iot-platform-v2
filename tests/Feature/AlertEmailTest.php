@@ -119,4 +119,29 @@ class AlertEmailTest extends TestCase
             return $mail->hasTo('danger@example.test');
         });
     }
+
+    public function testDangerAlertEmailEscapesHtmlInTemplate(): void
+    {
+        Mail::fake();
+
+        $alertDetails = [
+            'device' => '<script>alert("xss-device")</script>',
+            'location' => '<b>Lab Norte</b>',
+            'sensor' => '<img src=x onerror=alert("xss-sensor")>',
+            'alert_message' => '<iframe src="javascript:alert(1)"></iframe>',
+            'value' => '150',
+        ];
+
+        Alert::sendDangerAlertEmail($alertDetails);
+
+        Mail::assertSent(DangerAlertMail::class, function ($mail) {
+            $html = $mail->render();
+
+            return str_contains($html, '&lt;script&gt;alert(&quot;xss-device&quot;)&lt;/script&gt;')
+                && str_contains($html, '&lt;b&gt;Lab Norte&lt;/b&gt;')
+                && str_contains($html, '&lt;img src=x onerror=alert(&quot;xss-sensor&quot;)&gt;')
+                && ! str_contains($html, '<script>alert("xss-device")</script>')
+                && ! str_contains($html, '<img src=x onerror=alert("xss-sensor")>');
+        });
+    }
 }

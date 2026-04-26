@@ -29,11 +29,23 @@ class Alert extends Model
     {
         try {
             $emailData = [
-                'device' => (string) $alertDetails['device'],
-                'location' => (string) $alertDetails['location'],
-                'sensor' => (string) $alertDetails['sensor'],
-                'alert_message' => (string) $alertDetails['alert_message'],
-                'value' => (string) $alertDetails['value'],
+                'alert_id' => (string) ($alertDetails['alert_id'] ?? 'N/D'),
+                'device' => (string) ($alertDetails['device'] ?? 'Dispositivo desconocido'),
+                'location' => (string) ($alertDetails['location'] ?? 'Ubicación desconocida'),
+                'sensor' => (string) ($alertDetails['sensor'] ?? 'Sensor desconocido'),
+                'sensor_type' => (string) ($alertDetails['sensor_type'] ?? 'N/D'),
+                'unit' => (string) ($alertDetails['unit'] ?? ''),
+                'rule_name' => (string) ($alertDetails['rule_name'] ?? 'N/D'),
+                'severity' => (string) ($alertDetails['severity'] ?? 'DANGER'),
+                'threshold_min' => isset($alertDetails['threshold_min']) && $alertDetails['threshold_min'] !== null
+                    ? (string) $alertDetails['threshold_min']
+                    : 'No aplica',
+                'threshold_max' => isset($alertDetails['threshold_max']) && $alertDetails['threshold_max'] !== null
+                    ? (string) $alertDetails['threshold_max']
+                    : 'No aplica',
+                'alert_message' => (string) ($alertDetails['alert_message'] ?? 'Alerta detectada'),
+                'value' => (string) ($alertDetails['value'] ?? 'N/D'),
+                'detected_at' => (string) ($alertDetails['detected_at'] ?? now()->format('Y-m-d H:i:s')),
             ];
 
             $recipient = SystemSetting::get('mail_to')

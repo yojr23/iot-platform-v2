@@ -153,6 +153,217 @@ erDiagram
     ALERT_RULE ||--o{ ALERT : origina
 ```
 
+### Diagrama 5: arquitectura por capas
+
+```mermaid
+flowchart TB
+    subgraph Presentacion["Presentacion"]
+        UI["Blade Views"]
+        JS["Dashboard JS"]
+    end
+
+    subgraph Aplicacion["Aplicacion"]
+        WC["Web Controllers"]
+        AC["API Controllers"]
+        MW["Middleware auth/admin"]
+    end
+
+    subgraph Dominio["Dominio"]
+        SVC["Services"]
+        MOD["Models"]
+        OBS["Observers"]
+        EVT["Events"]
+    end
+
+    subgraph Infra["Infraestructura"]
+        DB["MySQL o SQLite"]
+        BRC["Broadcast realtime"]
+        SMTP["Servicio SMTP"]
+        CACHE["Cache"]
+    end
+
+    UI --> WC
+    JS --> AC
+    WC --> SVC
+    AC --> SVC
+    WC --> MW
+    AC --> MW
+    SVC --> MOD
+    MOD --> OBS
+    OBS --> EVT
+    MOD --> DB
+    EVT --> BRC
+    OBS --> SMTP
+    SVC --> CACHE
+```
+
+### Diagrama 6: flujo de permisos
+
+```mermaid
+flowchart TD
+    U["Usuario autenticado"] --> Q{"Es admin"}
+    Q -- "Si" --> A1["Gestionar reglas"]
+    Q -- "Si" --> A2["Gestionar tipos y labs"]
+    Q -- "Si" --> A3["Gestionar roles y email"]
+    Q -- "No" --> B1["Ver dashboard"]
+    Q -- "No" --> B2["Ver alertas y sensores"]
+    Q -- "No" --> B3["Acceso restringido a configuracion"]
+```
+
+### Diagrama 7: ciclo de vida de alerta
+
+```mermaid
+stateDiagram-v2
+    [*] --> LecturaRecibida
+    LecturaRecibida --> EvaluacionReglas
+    EvaluacionReglas --> SinAlerta: "valor en rango"
+    EvaluacionReglas --> AlertaActiva: "valor fuera de rango"
+    AlertaActiva --> Notificada: "severidad danger"
+    AlertaActiva --> Resuelta: "accion de usuario"
+    Notificada --> Resuelta: "accion de usuario"
+    Resuelta --> [*]
+    SinAlerta --> [*]
+```
+
+### Diagrama 8: flujo de ejecucion local
+
+```mermaid
+flowchart LR
+    DEV["Desarrollador"] --> C1["composer install + npm install"]
+    C1 --> C2["php artisan migrate --seed"]
+    C2 --> C3["php artisan serve"]
+    C3 --> C4["python script_datos.py"]
+    C4 --> C5["Dashboard con datos y alertas"]
+```
+
+### Diagrama 9: mapa de rutas principales
+
+```mermaid
+flowchart TB
+    subgraph WEB["Web routes"]
+        W1["/dashboard"]
+        W2["/devices"]
+        W3["/sensors"]
+        W4["/alerts"]
+        W5["/config"]
+    end
+
+    subgraph API["API routes"]
+        A1["/api/auth/login"]
+        A2["/api/auth/me"]
+        A3["/api/iot/sensors"]
+        A4["/api/sensors/{sensor}/readings"]
+        A5["/api/devices"]
+        A6["/api/alerts/active"]
+    end
+
+    AUTH["auth o auth:sanctum"] --> WEB
+    ADM["admin"] --> W5
+    KEY["API key"] --> A3
+    KEY --> A4
+```
+
+### Diagrama 10: flujo de autenticacion API (Sanctum)
+
+```mermaid
+sequenceDiagram
+    participant Cli as Cliente API
+    participant Auth as /api/auth/login
+    participant Api as Endpoints protegidos
+
+    Cli->>Auth: POST credenciales
+    Auth-->>Cli: access_token Bearer
+    Cli->>Api: GET con Authorization Bearer token
+    Api-->>Cli: 200 datos
+    Cli->>Api: POST /api/auth/logout
+    Api-->>Cli: token revocado
+```
+
+### Diagrama 11: C4 Context (sistema y actores)
+
+```mermaid
+flowchart LR
+    OP["Operador web"] --> SYS["IoT Platform v2"]
+    ADM["Administrador"] --> SYS
+    DEV["Dispositivo o simulador IoT"] --> SYS
+
+    SYS --> DB["Base de datos relacional"]
+    SYS --> SMTP["Servicio SMTP externo"]
+    SYS --> PUSH["Pusher o canal realtime"]
+
+    PUSH --> OP
+```
+
+### Diagrama 12: C4 Container (contenedores internos)
+
+```mermaid
+flowchart TB
+    subgraph Cliente["Clientes"]
+        BROWSER["Navegador web"]
+        IOT["Dispositivo o script_datos.py"]
+    end
+
+    subgraph Plataforma["IoT Platform v2"]
+        WEB["Web UI (Blade + JS)"]
+        API["API Laravel (Auth, Sensor, Device)"]
+        DOM["Dominio (Models, Services, Observers, Events)"]
+    end
+
+    DB["MySQL o SQLite"]
+    PUSH["Pusher realtime"]
+    SMTP["SMTP provider"]
+
+    BROWSER --> WEB
+    BROWSER --> API
+    IOT --> API
+    WEB --> API
+    API --> DOM
+    DOM --> DB
+    DOM --> PUSH
+    DOM --> SMTP
+```
+
+### Diagrama 13: decision flow de alertas
+
+```mermaid
+flowchart TD
+    IN["Nueva lectura"] --> LOAD["Cargar reglas aplicables"]
+    LOAD --> C1{"Existe min_value"}
+    C1 -- "Si" --> V1{"value < min_value"}
+    C1 -- "No" --> C2
+    V1 -- "Si" --> AL["Crear alerta"]
+    V1 -- "No" --> C2{"Existe max_value"}
+    C2 -- "Si" --> V2{"value > max_value"}
+    C2 -- "No" --> OK["Sin alerta"]
+    V2 -- "Si" --> AL
+    V2 -- "No" --> OK
+    AL --> SEV["Asignar severidad de regla"]
+    SEV --> BR["Emitir NewAlertTriggered"]
+    BR --> M{"severidad danger"}
+    M -- "Si" --> EM["Enviar correo"]
+    M -- "No" --> END["Finalizar"]
+    EM --> END
+```
+
+### Diagrama 14: manejo de fallos y respuestas esperadas
+
+```mermaid
+flowchart TD
+    REQ["Request API"] --> NET{"timeout o error de red"}
+    NET -- "Si" --> F1["Cliente reintenta con backoff"]
+    NET -- "No" --> AUTH{"credenciales validas"}
+    AUTH -- "No" --> R401["401 Unauthorized"]
+    AUTH -- "Si" --> STATE{"dispositivo activo"}
+    STATE -- "No" --> R403["403 Device Inactive"]
+    STATE -- "Si" --> VALID{"payload valido"}
+    VALID -- "No" --> R422["422 Validation Error"]
+    VALID -- "Si" --> RATE{"limite excedido"}
+    RATE -- "Si" --> R429["429 Too Many Requests"]
+    RATE -- "No" --> DB{"fallo de BD"}
+    DB -- "Si" --> R500["500 Database or Server Error"]
+    DB -- "No" --> R201["201 Created o 200 OK"]
+```
+
 ## API actual
 
 ### Endpoints IoT (API key)
@@ -183,10 +394,9 @@ Controles implementados en codigo:
 - Validacion estricta de payloads IoT (`value`, `reading_time`, `api_key`) y rechazo de campos inesperados con logs.
 - Verificacion de estado de dispositivo antes de ingerir (`status` + `is_active`).
 - Consistencia de estado al actualizar dispositivo: `DeviceApiController` sincroniza `status` e `is_active`.
-- Rate limiting activo:
-- limite `api-read`: 120 req/min por usuario o IP.
-- limite `api-write`: 60 req/min por usuario o IP, sensor y huella de API key.
-- limite `auth-login`: 5 req/min por email + IP.
+- Rate limiting activo con limite `api-read`: 120 req/min por usuario o IP.
+- Rate limiting activo con limite `api-write`: 60 req/min por usuario o IP, sensor y huella de API key.
+- Rate limiting activo con limite `auth-login`: 5 req/min por email + IP.
 - Manejo global de excepciones API (`ValidationException`, `BadRequestHttpException`, `QueryException`, `PDOException`) con severidad de log.
 - Endurecimiento de privilegios en `User`: no permite elevar `is_admin` por mass assignment o updates no autorizados.
 
@@ -212,6 +422,105 @@ Ubicaciones:
 
 - Laravel: `storage/logs/laravel.log`
 - Simulador: salida consola
+
+## Runbook de operacion
+
+### Verificacion de salud
+
+1. Verificar app viva:
+
+```bash
+curl -i http://127.0.0.1:8000/up
+```
+
+2. Verificar descubrimiento IoT:
+
+```bash
+curl -i -H "X-Device-Key: TU_API_KEY" http://127.0.0.1:8000/api/iot/sensors
+```
+
+3. Verificar login API:
+
+```bash
+curl -i -X POST http://127.0.0.1:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"secret"}'
+```
+
+### Verificacion de logs
+
+```bash
+tail -f storage/logs/laravel.log
+```
+
+En otra terminal, ejecutar el simulador para correlacionar eventos:
+
+```bash
+python script_datos.py
+```
+
+### Reinicios operativos
+
+- Servidor local Laravel (`php artisan serve`): detener con `Ctrl+C` y volver a ejecutar.
+- Simulador (`script_datos.py`): detener con `Ctrl+C` y volver a ejecutar.
+- Si hay problemas de cache/configuracion:
+
+```bash
+php artisan optimize:clear
+php artisan config:clear
+php artisan cache:clear
+```
+
+## Troubleshooting rapido
+
+| Codigo | Causa probable | Como resolver |
+|---|---|---|
+| `401` | API key invalida o token Sanctum ausente/invalido | Validar `X-Device-Key` o `api_key`; renovar login en `/api/auth/login`; revisar expiracion o revocacion de token. |
+| `403` | Dispositivo inactivo o usuario sin permisos `admin` | Confirmar `devices.status = true` y `is_active = true`; validar rol de usuario para endpoints administrativos. |
+| `422` | Payload invalido o formato inesperado | Revisar campos requeridos (`value`, `api_key`) y formato de `reading_time` (`Y-m-d H:i:s`). |
+| `429` | Rate limit excedido | Reducir frecuencia de envio, aplicar backoff exponencial, distribuir carga por lotes/sensores. |
+| `500` | Error interno o de base de datos | Revisar `storage/logs/laravel.log`, conectividad BD, credenciales y estado del motor de BD. |
+
+## Testing strategy
+
+### Unit tests (logica aislada)
+
+Cubren reglas de negocio sin depender del flujo HTTP completo:
+
+- Evaluacion de alertas por umbrales.
+- Reglas disparadas por lecturas.
+- Comportamiento de servicios y modelos.
+
+Ejemplos:
+
+- `tests/Unit/SensorReadingAlertTest.php`
+- `tests/Unit/SensorReadingTriggeredRulesTest.php`
+- `tests/Unit/DeviceServiceTest.php`
+
+### Feature tests (flujo end-to-end HTTP y seguridad)
+
+Cubren rutas, middleware, validaciones, auth y regresiones:
+
+- Acceso con API key en IoT.
+- Login/token Sanctum y endpoints protegidos.
+- Rate limiting, SQLi hardening, control de privilegios.
+- Regresiones de rutas (`/api/api/...`) y consistencia de estado de dispositivo.
+
+Ejemplos:
+
+- `tests/Feature/IotApiKeyAccessTest.php`
+- `tests/Feature/ApiAuthTokenTest.php`
+- `tests/Feature/SecurityRateLimitTest.php`
+- `tests/Feature/SecurityAccessControlTest.php`
+- `tests/Feature/SecurityPrivilegeEscalationTest.php`
+
+### Comandos recomendados
+
+```bash
+php artisan test
+php artisan test --testsuite=Unit
+php artisan test --testsuite=Feature
+```
 
 ## Calidad tecnica y arquitectura
 
