@@ -49,6 +49,8 @@ class SystemSetting extends Model
 
         // Clear cache
         Cache::forget("system_setting_{$key}");
+        Cache::forget("system_settings_group_{$group}");
+        Cache::forget('system_settings_groups');
     }
 
     /**

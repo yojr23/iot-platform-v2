@@ -1,0 +1,73 @@
+{
+  "info": {
+    "name": "IoT Platform API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Coleccion base para onboarding de integraciones API"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000" },
+    { "key": "apiKey", "value": "CHANGE_ME" },
+    { "key": "sanctumToken", "value": "CHANGE_ME" },
+    { "key": "sensorId", "value": "1" },
+    { "key": "deviceId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Sensors - List",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/sensors"
+      }
+    },
+    {
+      "name": "Sensors - Latest Readings",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/sensors/{{sensorId}}/latest-readings?limit=10"
+      }
+    },
+    {
+      "name": "Sensors - Ingest Reading",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"value\": 42.5,\n  \"reading_time\": \"2026-04-26 10:00:00\",\n  \"api_key\": \"{{apiKey}}\"\n}"
+        },
+        "url": "{{baseUrl}}/api/sensors/{{sensorId}}/readings"
+      }
+    },
+    {
+      "name": "Devices - List",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/devices?per_page=50"
+      }
+    },
+    {
+      "name": "Devices - Update Status (Sanctum)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": true\n}"
+        },
+        "url": "{{baseUrl}}/api/devices/{{deviceId}}/status"
+      }
+    },
+    {
+      "name": "Alerts - Active",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/alerts/active"
+      }
+    }
+  ]
+}

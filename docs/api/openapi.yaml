@@ -1,0 +1,241 @@
+openapi: 3.0.3
+info:
+  title: IoT Platform API
+  version: 1.0.0
+  description: |
+    API principal para ingestión y consulta de datos IoT.
+
+    Politica de rate limit actual:
+    - Lecturas (api-read): 120 req/min por IP o usuario autenticado.
+    - Escrituras (api-write): 60 req/min por IP/usuario + sensor objetivo.
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local
+
+tags:
+  - name: Sensors
+  - name: Devices
+  - name: Alerts
+
+paths:
+  /api/sensors:
+    get:
+      tags: [Sensors]
+      summary: Listar sensores disponibles
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lista de sensores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorSummary'
+
+  /api/sensors/{sensor}/latest-readings:
+    get:
+      tags: [Sensors]
+      summary: Obtener últimas lecturas de un sensor
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Lecturas recientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorReading'
+
+  /api/sensors/{sensor}/readings:
+    get:
+      tags: [Sensors]
+      summary: Obtener lecturas paginadas de un sensor
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lecturas paginadas
+
+    post:
+      tags: [Sensors]
+      summary: Ingerir lectura de sensor
+      description: Requiere `api_key` en el payload JSON.
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorReadingIngestPayload'
+      responses:
+        '201':
+          description: Lectura creada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  reading:
+                    $ref: '#/components/schemas/SensorReading'
+        '401':
+          description: API key invalida
+        '403':
+          description: Dispositivo inactivo
+
+  /api/alerts/active:
+    get:
+      tags: [Alerts]
+      summary: Obtener alertas activas para dashboard
+      responses:
+        '200':
+          description: Conteo y listado de alertas activas
+
+  /api/devices:
+    get:
+      tags: [Devices]
+      summary: Listar dispositivos
+      parameters:
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Lista paginada de dispositivos
+
+  /api/devices/{device}:
+    get:
+      tags: [Devices]
+      summary: Obtener detalle de un dispositivo
+      parameters:
+        - in: path
+          name: device
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detalle del dispositivo
+
+  /api/devices/{device}/status:
+    post:
+      tags: [Devices]
+      summary: Actualizar estado de dispositivo
+      description: Requiere autenticacion con Sanctum y permisos adecuados.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: device
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: boolean
+      responses:
+        '200':
+          description: Estado actualizado
+        '401':
+          description: No autenticado
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+
+  schemas:
+    SensorSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        device_id:
+          type: integer
+          nullable: true
+        unit:
+          type: string
+        sensor_type:
+          type: object
+          properties:
+            name:
+              type: string
+            unit:
+              type: string
+            min_range:
+              type: number
+              nullable: true
+            max_range:
+              type: number
+              nullable: true
+
+    SensorReading:
+      type: object
+      properties:
+        id:
+          type: integer
+        value:
+          type: number
+        reading_time:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    SensorReadingIngestPayload:
+      type: object
+      required:
+        - value
+        - api_key
+      properties:
+        value:
+          type: number
+        reading_time:
+          type: string
+          description: Formato esperado YYYY-MM-DD HH:mm:ss
+        api_key:
+          type: string

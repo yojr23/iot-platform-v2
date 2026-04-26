@@ -2,44 +2,64 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\API\AuthApiController;
 use App\Http\Controllers\API\DeviceApiController;
 use App\Http\Controllers\API\SensorApiController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SensorController;
 use App\Http\Controllers\AlertRuleController;
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
+Route::prefix('auth')->group(function () {
+    Route::post('/login', [AuthApiController::class, 'login'])->middleware('throttle:auth-login');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/me', [AuthApiController::class, 'me'])->middleware('throttle:api-read');
+        Route::post('/logout', [AuthApiController::class, 'logout'])->middleware('throttle:api-write');
+    });
 });
 
-// API para dispositivos
-Route::prefix('devices')->group(function () {
-    Route::get('/', [DeviceApiController::class, 'index']);
-    Route::get('/{device}', [DeviceApiController::class, 'show']);
-    Route::post('/{device}/status', [DeviceApiController::class, 'updateStatus']);
-});
+// API para ingestión IoT (sin sesión web, protegida por api_key del payload/header).
+Route::get('/iot/sensors', [SensorApiController::class, 'iotIndex'])
+    ->middleware('throttle:api-read');
 
-// API para sensores
-Route::prefix('sensors')->group(function () {
-    Route::get('/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings']);
-    Route::get('/{sensor}/readings', [SensorApiController::class, 'readings']);
-    Route::post('/{sensor}/readings', [SensorApiController::class, 'storeReading']);
-    Route::get('/', [SensorApiController::class, 'index']);
-});
+Route::post('/sensors/{sensor}/readings', [SensorApiController::class, 'storeReading'])
+    ->middleware('throttle:api-write');
 
-Route::get('/devices/{device}/sensors', [DashboardController::class, 'getSensors']);
-Route::get('/sensors/{sensor}/readings', [DashboardController::class, 'getSensorReadings']);
-Route::get('/sensors/all/readings', [SensorController::class, 'getLatestReadings']);
-Route::get('/alerts/active', [DashboardController::class, 'getActiveAlerts']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    })->middleware('throttle:api-read');
 
-// Ruta para reglas de alerta
-Route::prefix('alert-rules')->group(function () {
-    Route::get('/create', [AlertRuleController::class, 'create']);
-    Route::post('/store', [AlertRuleController::class, 'store'])->name('api.alert-rules.store');
-    Route::delete('/{alertRule}', [AlertRuleController::class, 'destroy']);
-    Route::get('/', [AlertRuleController::class, 'index']);
-});
+    // API para dispositivos
+    Route::prefix('devices')->group(function () {
+        Route::get('/', [DeviceApiController::class, 'index'])->middleware('throttle:api-read');
+        Route::get('/{device}', [DeviceApiController::class, 'show'])->middleware('throttle:api-read');
+        Route::post('/{device}/status', [DeviceApiController::class, 'updateStatus'])
+            ->middleware(['admin', 'throttle:api-write']);
+    });
 
-Route::prefix('api')->group(function () {
-    Route::get('/devices/{device}/sensor-list', [SensorController::class, 'getByDevice']);
+    // API para sensores (lectura)
+    Route::prefix('sensors')->group(function () {
+        Route::get('/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])->middleware('throttle:api-read');
+        Route::get('/{sensor}/readings', [SensorApiController::class, 'readings'])->middleware('throttle:api-read');
+        Route::get('/', [SensorApiController::class, 'index'])->middleware('throttle:api-read');
+    });
+
+    Route::get('/devices/{device}/sensors', [DashboardController::class, 'getSensors'])->middleware('throttle:api-read');
+    Route::get('/sensors/all/readings', [SensorController::class, 'getLatestReadings'])->middleware('throttle:api-read');
+    Route::get('/alerts/active', [DashboardController::class, 'getActiveAlerts'])->middleware('throttle:api-read');
+
+    // Ruta para reglas de alerta
+    Route::prefix('alert-rules')->middleware('admin')->group(function () {
+        Route::get('/create', [AlertRuleController::class, 'create'])->middleware('throttle:api-read');
+        Route::get('/', [AlertRuleController::class, 'index'])->middleware('throttle:api-read');
+        Route::post('/store', [AlertRuleController::class, 'store'])
+            ->middleware('throttle:api-write')
+            ->name('api.alert-rules.store');
+        Route::delete('/{alertRule}', [AlertRuleController::class, 'destroy'])
+            ->middleware('throttle:api-write');
+    });
+
+    // Ruta corregida: queda como /api/devices/{device}/sensor-list (sin doble prefijo /api/api)
+    Route::get('/devices/{device}/sensor-list', [SensorController::class, 'getByDevice'])->middleware('throttle:api-read');
 });

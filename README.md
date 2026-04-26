@@ -1,218 +1,18 @@
 # IoT Platform v2
 
-Plataforma de monitoreo IoT desarrollada con Laravel 12 para gestionar dispositivos, sensores, lecturas y alertas en tiempo real.
+Plataforma IoT construida con Laravel 12 para operar dispositivos y sensores en tiempo real: ingesta de telemetria, evaluacion de reglas, generacion de alertas, visualizacion en dashboard y notificacion por correo.
 
-## Que resuelve este proyecto
+## Estado real del codigo (verificado: 2026-04-26)
 
-Este repositorio implementa un sistema end-to-end para operacion IoT:
+Implementado hoy en el repo:
 
-- Ingesta de telemetria desde sensores por API.
-- Monitoreo visual en dashboard en tiempo real.
-- Motor de alertas por reglas configurables.
-- Notificacion por correo para eventos criticos.
-- Gestion administrativa de catalogos, configuracion y roles.
-
-En terminos de producto, permite pasar de "solo leer datos" a "operar con datos": detectar desbordes, reaccionar mas rapido y mantener trazabilidad de incidentes.
-
-## Propuesta de valor tecnico
-
-Este codigo refleja buenas practicas de ingenieria aplicadas a un caso real:
-
-- Arquitectura por capas: controllers, servicios, modelos, observers, eventos.
-- Separacion de responsabilidades: la logica de alertas vive en dominio/observers, no en vistas.
-- Diseno orientado a eventos: lectura nueva -> evaluacion -> alerta -> broadcast -> email.
-- Seguridad funcional: middleware `auth` y `admin`, validaciones de request, control de API key para ingesta.
-- Mantenibilidad: configuracion centralizada en `system_settings`, pruebas automatizadas y estructura clara.
-
-## Estado actual del sistema
-
-Actualmente ya esta implementado:
-
-- Backend web + API con Laravel 12.
-- Dashboard con graficas y monitoreo en vivo.
-- Ingesta de lecturas por `POST /api/sensors/:sensorId/readings`.
-- Evaluacion automatica de reglas con `SensorReadingObserver`.
-- Creacion de alertas y broadcast en canal `alerts`.
-- Envio de correo para severidad `danger` via `AlertObserver`.
-- Simulador Python (`script_datos.py`) para generar trafico de datos.
-
-## Arquitectura y funcionamiento
-
-### Diagrama 1: relacion de componentes
-
-```mermaid
-flowchart LR
-    SIM[script_datos.py]
-    API[Sensor API Controller]
-    DBR[(sensor_readings)]
-    OBR[SensorReadingObserver]
-    ALE[(alerts)]
-    OBA[AlertObserver]
-    BRS[Canal sensor por Pusher]
-    BRA[Canal alerts por Pusher]
-    UI[Dashboard Web]
-    MAIL[Servicio SMTP]
-
-    SIM --> API
-    API --> DBR
-    DBR --> OBR
-    OBR --> ALE
-    ALE --> OBA
-    API --> BRS
-    OBA --> BRA
-    BRS --> UI
-    BRA --> UI
-    OBA --> MAIL
-```
-
-### Diagrama 2: flujo de datos y alertas
-
-```mermaid
-sequenceDiagram
-    participant Sim as Simulador Python
-    participant Api as Laravel API
-    participant Db as Base de Datos
-    participant Obs as Observers
-    participant Dash as Dashboard
-    participant Mail as SMTP
-
-    Sim->>Api: GET /api/sensors
-    Api-->>Sim: Lista de sensores
-
-    loop Cada ciclo
-        Sim->>Api: POST /api/sensors/:sensorId/readings
-        Api->>Db: Guarda lectura
-        Api-->>Sim: 201 Reading saved
-        Api->>Obs: Dispara NewSensorReading
-        Obs->>Db: Evalua reglas y crea alertas
-        Obs-->>Dash: Broadcast lectura y alerta
-        Obs->>Mail: Envia correo si severidad danger
-    end
-```
-
-### Diagrama 3: modelo de dominio
-
-```mermaid
-erDiagram
-    DEVICE_TYPE ||--o{ DEVICE : clasifica
-    LAB ||--o{ DEVICE : ubica
-    DEVICE ||--o{ SENSOR : contiene
-    SENSOR_TYPE ||--o{ SENSOR : define
-    SENSOR ||--o{ SENSOR_READING : registra
-    SENSOR_READING ||--o{ ALERT : dispara
-    ALERT_RULE ||--o{ ALERT : origina
-    SENSOR_TYPE ||--o{ ALERT_RULE : base
-    DEVICE ||--o{ ALERT_RULE : alcance_opcional
-    SENSOR ||--o{ ALERT_RULE : alcance_opcional
-```
-
-### Diagrama 4: arquitectura por capas
-
-```mermaid
-flowchart TB
-    subgraph P[Presentacion]
-        UI[Blade Views]
-        JS[Dashboard JS]
-    end
-
-    subgraph A[Aplicacion]
-        WC[Web Controllers]
-        AC[API Controllers]
-        MW[Auth y Admin Middleware]
-    end
-
-    subgraph D[Dominio]
-        SVC[Services]
-        MOD[Models]
-        OBS[Observers]
-        EVT[Events]
-    end
-
-    subgraph I[Infraestructura]
-        DB[(MySQL or SQLite)]
-        BRC[Pusher Broadcast]
-        SMTP[SMTP Mail]
-        CACHE[Cache]
-    end
-
-    UI --> WC
-    JS --> AC
-    WC --> SVC
-    AC --> SVC
-    WC --> MW
-    AC --> MW
-    SVC --> MOD
-    MOD --> OBS
-    OBS --> EVT
-    MOD --> DB
-    EVT --> BRC
-    OBS --> SMTP
-    SVC --> CACHE
-```
-
-### Diagrama 5: flujo de permisos
-
-```mermaid
-flowchart TD
-    U[Usuario autenticado] --> Q{Es admin}
-    Q -- Si --> A1[Gestionar reglas]
-    Q -- Si --> A2[Gestionar tipos y labs]
-    Q -- Si --> A3[Gestionar roles y email]
-    Q -- No --> B1[Ver dashboard]
-    Q -- No --> B2[Ver alertas y sensores]
-    Q -- No --> B3[Modo solo lectura en configuracion]
-```
-
-### Diagrama 6: ciclo de vida de una alerta
-
-```mermaid
-stateDiagram-v2
-    [*] --> LecturaRecibida
-    LecturaRecibida --> EvaluacionReglas
-    EvaluacionReglas --> SinAlerta: Valor en rango
-    EvaluacionReglas --> AlertaActiva: Valor fuera de rango
-    AlertaActiva --> Notificada: severidad danger
-    AlertaActiva --> Resuelta: accion usuario
-    Notificada --> Resuelta: accion usuario
-    Resuelta --> [*]
-    SinAlerta --> [*]
-```
-
-### Diagrama 7: flujo de ejecucion local
-
-```mermaid
-flowchart LR
-    DEV[Desarrollador] --> C1[composer install y npm install]
-    C1 --> C2[php artisan migrate --seed]
-    C2 --> C3[php artisan serve]
-    C3 --> C4[python script_datos.py]
-    C4 --> C5[Dashboard con datos y alertas]
-```
-
-### Diagrama 8: mapa de rutas principales
-
-```mermaid
-flowchart TB
-    subgraph WEB[Web Routes]
-        W1["/dashboard"]
-        W2["/devices"]
-        W3["/sensors"]
-        W4["/alerts"]
-        W5["/config"]
-    end
-
-    subgraph API[API Routes]
-        A1["/api/sensors"]
-        A2["/api/sensors/:sensorId/readings"]
-        A3["/api/sensors/:sensorId/latest-readings"]
-        A4["/api/alerts/active"]
-        A5["/api/devices"]
-    end
-
-    AUTH[auth middleware] --> WEB
-    ADM[admin middleware] --> W5
-    KEY[api_key validation] --> A2
-```
+- API Auth con Sanctum: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`.
+- Flujo IoT sin sesion web con API key: `GET /api/iot/sensors` y `POST /api/sensors/{sensor}/readings`.
+- API operativa protegida con `auth:sanctum` para dispositivos, sensores, alertas y consultas de dashboard.
+- Endpoints criticos protegidos con middleware `admin`.
+- Rate limiting diferenciado: `api-read`, `api-write`, `auth-login`.
+- Logging estructurado en controladores API, excepciones globales y simulador Python.
+- Observers/eventos para automatizar alertas y correo (`SensorReadingObserver`, `AlertObserver`).
 
 ## Como correr el proyecto
 
@@ -225,7 +25,7 @@ flowchart TB
 - Python 3.10+
 - pip
 
-### Instalacion inicial
+### Instalacion
 
 ```bash
 composer install
@@ -237,16 +37,12 @@ php artisan migrate --seed
 
 ### Variables de entorno clave
 
-En `.env` valida al menos:
-
-- `API_KEY` (debe coincidir con la usada por el simulador).
-- `DB_CONNECTION` y credenciales de base de datos.
-- `BROADCAST_DRIVER`, `PUSHER_APP_KEY`, `PUSHER_APP_CLUSTER` para tiempo real.
-
-Notas:
-
-- `script_datos.py` usa por defecto `IOT_BASE_URL=http://127.0.0.1:8000`.
-- Actualmente el simulador define su `API_KEY` en el mismo archivo.
+- `API_KEY` (clave global para validacion IoT).
+- `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
+- `BROADCAST_DRIVER`, `PUSHER_APP_KEY`, `PUSHER_APP_CLUSTER`.
+- `IOT_BASE_URL` (opcional, default `http://127.0.0.1:8000`).
+- `IOT_API_KEY` (opcional; si existe, el simulador la prioriza sobre `API_KEY`).
+- `IOT_LOG_LEVEL` (opcional, default `INFO`).
 
 ### Ejecucion diaria (orden recomendado)
 
@@ -269,56 +65,162 @@ Opcional para assets en desarrollo:
 npm run dev
 ```
 
-## Endpoints principales
+## Arquitectura y funcionamiento
 
-- `GET /api/sensors` - lista sensores para simulacion y dashboard.
-- `POST /api/sensors/:sensorId/readings` - crea lectura (requiere `api_key` en payload).
-- `GET /api/sensors/:sensorId/latest-readings` - ultimas lecturas por sensor.
-- `GET /api/alerts/active` - alertas activas para dashboard.
-- `GET /api/devices` - dispositivos paginados con metadatos.
+### Diagrama 1: flujo principal
 
-## Calidad de codigo y arquitectura limpia
-
-Estos puntos son utiles para explicar la calidad tecnica del repositorio en una entrevista o revision:
-
-- Dominio encapsulado: `SensorReading::checkForAlert()` concentra reglas de disparo.
-- Automatizacion desacoplada: `SensorReadingObserver` y `AlertObserver` manejan side effects.
-- Eventos en tiempo real: `NewSensorReading` y `NewAlertTriggered` para UI reactiva.
-- Servicios de aplicacion: `DashboardMetricsService` y `DeviceService` evitan controllers gordos.
-- Roles y autorizacion: middleware `admin` con enforcement en rutas criticas.
-- Configuracion dinamica: `SystemSetting` permite operar sin redeploy para ajustes funcionales.
-- Pruebas orientadas a comportamiento: permisos, alertas y envio de correo.
-
-## Estructura del repositorio
-
-```text
-app/
-  Events/
-  Http/Controllers/
-  Http/Middleware/
-  Listeners/
-  Models/
-  Observers/
-  Services/
-resources/views/
-routes/
-database/migrations/
-database/seeders/
-tests/
-script_datos.py
+```mermaid
+flowchart LR
+    Sim["script_datos.py"] --> Lst["GET /api/iot/sensors"]
+    Lst --> Api["SensorApiController"]
+    Api --> Db[(sensor_readings)]
+    Db --> Obs["SensorReadingObserver"]
+    Obs --> Al[(alerts)]
+    Al --> AObs["AlertObserver"]
+    Obs --> Ev1["NewSensorReading"]
+    AObs --> Ev2["NewAlertTriggered"]
+    Ev1 --> Ui["Dashboard"]
+    Ev2 --> Ui
+    AObs --> Mail["SMTP"]
 ```
 
-## Archivos clave para entender el sistema
+### Diagrama 2: secuencia de ingesta
 
-- `script_datos.py`
-- `routes/api.php`
-- `routes/web.php`
-- `app/Http/Controllers/Api/SensorApiController.php`
-- `app/Models/SensorReading.php`
-- `app/Observers/SensorReadingObserver.php`
-- `app/Observers/AlertObserver.php`
-- `app/Services/DashboardMetricsService.php`
-- `app/Services/DeviceService.php`
+```mermaid
+sequenceDiagram
+    participant Sim as script_datos.py
+    participant Api as API Laravel
+    participant Db as Base de datos
+    participant Obs as Observers
+    participant Ui as Dashboard
+    participant Mail as SMTP
+
+    Sim->>Api: GET /api/iot/sensors (X-Device-Key)
+    Api-->>Sim: Lista de sensores
+
+    loop cada ciclo
+        Sim->>Api: POST /api/sensors/{id}/readings
+        Api->>Db: guarda lectura
+        Api-->>Sim: 201 Created
+        Api->>Obs: dispara evento
+        Obs->>Db: evalua reglas
+        Obs-->>Ui: broadcast lectura/alerta
+        Obs->>Mail: envia correo si severidad danger
+    end
+```
+
+### Diagrama 3: fronteras de seguridad
+
+```mermaid
+flowchart TB
+    subgraph PublicIoT["Superficie IoT (sin sesion)"]
+        I1["GET /api/iot/sensors"]
+        I2["POST /api/sensors/{sensor}/readings"]
+        K["API key"]
+        K --> I1
+        K --> I2
+    end
+
+    subgraph PrivateApi["Superficie privada API"]
+        P1["/api/devices"]
+        P2["/api/sensors"]
+        P3["/api/alerts/active"]
+        P4["/api/alert-rules/*"]
+        T["auth:sanctum"]
+        A["admin"]
+        T --> P1
+        T --> P2
+        T --> P3
+        T --> P4
+        A --> P4
+    end
+
+    R1["throttle:api-read"] --> PublicIoT
+    R2["throttle:api-write"] --> PublicIoT
+    R3["throttle:auth-login"] --> PrivateApi
+```
+
+### Diagrama 4: modelo de dominio
+
+```mermaid
+erDiagram
+    DEVICE_TYPE ||--o{ DEVICE : clasifica
+    LAB ||--o{ DEVICE : ubica
+    DEVICE ||--o{ SENSOR : contiene
+    SENSOR_TYPE ||--o{ SENSOR : define
+    SENSOR ||--o{ SENSOR_READING : registra
+    SENSOR_READING ||--o{ ALERT : dispara
+    ALERT_RULE ||--o{ ALERT : origina
+```
+
+## API actual
+
+### Endpoints IoT (API key)
+
+- `GET /api/iot/sensors`
+- `POST /api/sensors/{sensor}/readings`
+
+### Endpoints protegidos por Sanctum
+
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
+- `GET /api/devices`
+- `GET /api/devices/{device}`
+- `POST /api/devices/{device}/status` (`admin`)
+- `GET /api/sensors`
+- `GET /api/sensors/{sensor}/readings`
+- `GET /api/sensors/{sensor}/latest-readings`
+- `GET /api/alerts/active`
+- `GET/POST/DELETE /api/alert-rules/*` (`admin`)
+
+## Seguridad (estado real)
+
+Controles implementados en codigo:
+
+- Autenticacion API con Sanctum y tokens con abilities (`*` admin, `read` no admin).
+- Autorizacion por rol con middleware `admin` en operaciones de administracion.
+- Validacion estricta de payloads IoT (`value`, `reading_time`, `api_key`) y rechazo de campos inesperados con logs.
+- Verificacion de estado de dispositivo antes de ingerir (`status` + `is_active`).
+- Consistencia de estado al actualizar dispositivo: `DeviceApiController` sincroniza `status` e `is_active`.
+- Rate limiting activo:
+- limite `api-read`: 120 req/min por usuario o IP.
+- limite `api-write`: 60 req/min por usuario o IP, sensor y huella de API key.
+- limite `auth-login`: 5 req/min por email + IP.
+- Manejo global de excepciones API (`ValidationException`, `BadRequestHttpException`, `QueryException`, `PDOException`) con severidad de log.
+- Endurecimiento de privilegios en `User`: no permite elevar `is_admin` por mass assignment o updates no autorizados.
+
+Riesgos pendientes detectados:
+
+- `database/seeders/SystemSettingsSeeder.php` contiene credenciales SMTP reales. Deben rotarse y moverse a secretos de entorno.
+- `script_datos.py` conserva `DEFAULT_API_KEY` vacia como fallback; en despliegue productivo conviene exigir variable obligatoria sin fallback.
+- `docs/api/openapi.yaml` y Postman pueden quedar desfasados frente a rutas nuevas; conviene regenerarlos tras cada cambio de API.
+
+## Observabilidad y logs
+
+### Backend Laravel
+
+- `SensorApiController`: logs `info`, `warning`, `error` para ingesta, payload inesperado, API key invalida y fallos de BD.
+- `DeviceApiController`: logs de consulta, cambios de estado y errores.
+- `bootstrap/app.php`: centraliza logs de excepciones API (warning/error/critical segun tipo).
+
+### Simulador Python
+
+- `script_datos.py`: logs de ciclo de simulacion, validacion de formato de sensores, errores de red, 401/403/422/429/5xx.
+
+Ubicaciones:
+
+- Laravel: `storage/logs/laravel.log`
+- Simulador: salida consola
+
+## Calidad tecnica y arquitectura
+
+Se refleja una base de ingenieria limpia para evolucion:
+
+- Capas claras: controllers, services, models, observers, events.
+- Side effects desacoplados via observers/eventos (sin logica de alertas en vistas).
+- Cobertura de pruebas funcionales en seguridad y regresiones de rutas/API.
+- Correccion explicitamente cubierta por tests de regresion para evitar `/api/api/...`.
 
 ## Pruebas
 
@@ -326,10 +228,14 @@ script_datos.py
 php artisan test
 ```
 
-## Resumen para quien llega al repo
+## Archivos clave
 
-Si eres reclutador, lider tecnico o miembro nuevo del equipo:
-
-- Este proyecto no es solo CRUD: implementa flujo IoT real con eventos, alertas y operacion.
-- Tiene base arquitectonica limpia para evolucionar (mas canales de notificacion, reglas avanzadas, integraciones externas).
-- Muestra criterio de ingenieria en separacion de capas, automatizacion de procesos y enfoque en mantenibilidad.
+- `routes/api.php`
+- `app/Http/Controllers/Api/AuthApiController.php`
+- `app/Http/Controllers/Api/SensorApiController.php`
+- `app/Http/Controllers/Api/DeviceApiController.php`
+- `app/Providers/AppServiceProvider.php`
+- `bootstrap/app.php`
+- `app/Models/User.php`
+- `script_datos.py`
+- `DOCUMENTACION_PROYECTO.md`

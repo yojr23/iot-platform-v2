@@ -12,8 +12,7 @@ class DeviceUpdateTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @test */
-    public function it_updates_device_information()
+    public function test_it_updates_device_information(): void
     {
         $lab = Lab::factory()->create();
         $device = Device::factory()->create([

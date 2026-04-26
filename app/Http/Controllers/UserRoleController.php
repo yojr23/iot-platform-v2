@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class UserRoleController extends Controller
 {
@@ -25,8 +26,41 @@ class UserRoleController extends Controller
             'is_admin' => ['required', 'boolean'],
         ]);
 
-        $user->is_admin = (bool) $validated['is_admin'];
-        $user->save();
+        $requestedAdminValue = (bool) $validated['is_admin'];
+        $currentUser = $request->user();
+
+        if ($currentUser && $currentUser->id === $user->id && ! $requestedAdminValue) {
+            return back()->withErrors([
+                'is_admin' => 'No puedes retirarte tu propio rol de administrador.',
+            ]);
+        }
+
+        if (! $requestedAdminValue && $user->is_admin) {
+            $adminCount = User::where('is_admin', true)->count();
+
+            if ($adminCount <= 1) {
+                return back()->withErrors([
+                    'is_admin' => 'Debe existir al menos un administrador activo en la plataforma.',
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($user, $requestedAdminValue): void {
+            $isMysql = DB::getDriverName() === 'mysql';
+
+            if ($isMysql) {
+                DB::statement('SET @allow_admin_role_change = 1');
+            }
+
+            try {
+                $user->is_admin = $requestedAdminValue;
+                $user->save();
+            } finally {
+                if ($isMysql) {
+                    DB::statement('SET @allow_admin_role_change = 0');
+                }
+            }
+        });
 
         return redirect()
             ->route('config.user-roles.index')

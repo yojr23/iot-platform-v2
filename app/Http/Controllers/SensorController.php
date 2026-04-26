@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Sensor;
 use App\Models\Device;
 use App\Models\SensorType;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -155,7 +156,11 @@ class SensorController extends Controller
 
     public function getLatestReadings(Request $request)
     {
-        $limit = $request->query('limit', 1); // Obtener el límite de lecturas
+        $validated = $request->validate([
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $limit = (int) ($validated['limit'] ?? 1);
         $sensors = Sensor::with(['readings' => function ($query) use ($limit) {
             $query->orderBy('reading_time', 'desc')->limit($limit);
         }])->get();
@@ -213,17 +218,19 @@ class SensorController extends Controller
         return view('sensors.readings', compact('sensor', 'readings'));
     }
 
-    public function getReadingsByDateRange(Request $request, Sensor $sensor)
+public function getReadingsByDateRange(Request $request, Sensor $sensor)
 {
     try {
-        $startDate = $request->input('startDate');
-        $endDate = $request->input('endDate');
+        $validated = $request->validate([
+            'startDate' => ['required', 'date_format:Y-m-d'],
+            'endDate' => ['required', 'date_format:Y-m-d', 'after_or_equal:startDate'],
+        ]);
+
+        $startDate = Carbon::createFromFormat('Y-m-d', $validated['startDate'])->startOfDay();
+        $endDate = Carbon::createFromFormat('Y-m-d', $validated['endDate'])->endOfDay();
 
         $query = $sensor->readings()
-            ->whereBetween('reading_time', [
-                $startDate . ' 00:00:00',
-                $endDate . ' 23:59:59'
-            ])
+            ->whereBetween('reading_time', [$startDate, $endDate])
             ->orderBy('reading_time', 'desc');
 
         $readings = $query->get();
@@ -245,13 +252,19 @@ class SensorController extends Controller
     }
 }
 
-public function getByDevice($deviceId)
+public function getByDevice(Device $device)
 {
     try {
-        $sensors = Sensor::where('device_id', $deviceId)->get();
+        $sensors = $device->sensors()->get();
+
         return response()->json($sensors);
     } catch (\Exception $e) {
-        return response()->json(['error' => 'Error al obtener sensores: ' . $e->getMessage()], 500);
+        Log::error('Error al obtener sensores por dispositivo', [
+            'device_id' => $device->id,
+            'exception' => $e->getMessage(),
+        ]);
+
+        return response()->json(['error' => 'No fue posible obtener sensores del dispositivo.'], 500);
     }
 }
 }

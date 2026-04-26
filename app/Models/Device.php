@@ -21,6 +21,7 @@ class Device extends Model
 
     protected $casts = [
         'status' => 'boolean',
+        'is_active' => 'boolean',
         'last_communication' => 'datetime',
     ];
     protected static function boot()
