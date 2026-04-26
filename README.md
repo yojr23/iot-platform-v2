@@ -1,188 +1,133 @@
-<div align="center">
-  
-  <h1>IoT Platform · Smart Classroom Monitoring</h1>
-  <p>End-to-end IoT monitoring platform built with a clean Laravel 12 architecture.</p>
-</div>
+# IoT Platform v2
 
----
+Plataforma de monitoreo IoT construida con Laravel 12 para gestionar dispositivos, sensores, lecturas y alertas en tiempo real.
 
-## 📌 About the Project
+## Estado actual del codigo
 
-This repository contains an IoT monitoring platform designed to manage connected devices and sensors across classrooms. The application delivers real-time dashboards, configurable alerting, and an administrative experience that showcases modern Laravel engineering practices: a layered domain architecture, SOLID-compliant services, and an event-driven design that keeps the codebase extensible.
+Actualmente el proyecto ya tiene implementado:
 
-### Highlights
-- 🛰️ **Device & Sensor Management** – register, classify, and monitor IoT hardware by classroom or type.
-- 📈 **Real-Time Dashboard** – live metrics and charts powered by Pusher Channels and Chart.js.
-- 🚨 **Rule-Based Alerting** – configurable thresholds, severity levels, and automated danger notifications via email.
-- 🔐 **Role-Aware Access Control** – Laravel Sanctum API tokens, admin middleware, and fine-grained dashboards.
-- 🧪 **Confidence in Code** – feature and unit tests covering alert workflows, email delivery, and dashboard metrics.
+- Backend web y API con Laravel 12.
+- Dashboard con monitoreo en tiempo real.
+- Ingestion de lecturas por API (`/api/sensors/{sensor}/readings`).
+- Generacion automatica de alertas desde lecturas (`SensorReadingObserver`).
+- Notificaciones por correo para alertas `danger` (`AlertObserver`).
+- Script Python `script_datos.py` para simular envio continuo de datos.
 
----
+## Flujo principal de ejecucion
 
-## 🏗️ Architecture Overview
+1. Levantas Laravel con `php artisan serve`.
+2. Ejecutas `script_datos.py` para simular datos de sensores.
+3. El script consulta sensores (`GET /api/sensors`) y envia lecturas (`POST /api/sensors/{id}/readings`).
+4. Laravel guarda la lectura, emite evento en tiempo real y evalua reglas de alerta.
+5. Si una regla aplica, se crea alerta; si es `danger`, intenta enviar correo.
+6. El dashboard consume alertas/lecturas por API y canales broadcast.
 
-### Clean MVC + Domain Layering
-The platform follows Laravel’s MVC conventions while introducing dedicated **Domain Services**, **Observers**, and **Event/Listener** pipelines to keep business rules isolated from controllers and views.
+## Como correr el proyecto
 
-- **Presentation Layer:** Blade templates and Tailwind/Bootstrap components under `resources/views`.
-- **Application Layer:** REST controllers in `app/Http/Controllers`, form validation, Sanctum guards, and middleware.
-- **Domain Layer:** Business logic encapsulated in services (`app/Services`), observers (`app/Observers`), and domain events (`app/Events`).
-- **Infrastructure Layer:** Eloquent models (`app/Models`), database migrations, factories, and seeders.
+### Requisitos
 
-### Directory Structure at a Glance
-```
-app/
-  Events/           # Domain events for broadcasting & async workflows
-  Http/
-    Controllers/    # Web + API controllers (separated by context)
-    Middleware/     # Role-based access control (EnsureUserIsAdmin)
-  Listeners/        # Event listeners (e.g., UpdateDeviceLastCommunication)
-  Mail/             # Mailable classes for alert notifications
-  Models/           # Eloquent models with relationships and scopes
-  Observers/        # Model observers handling side effects
-  Providers/        # Service providers registering bindings & observers
-  Services/         # Domain services (dashboard metrics, device logic)
-
-resources/views/
-  dashboard/        # Modular dashboard partials (summary, alerts, charts)
-  layouts/          # Reusable layouts and navigation components
-  ...               # CRUD UIs for devices, sensors, alerts, configuration
-
-routes/
-  web.php           # Authenticated dashboard, administration, and CRUD routes
-  api.php           # Token-protected endpoints for IoT devices & integrations
-
-database/
-  migrations/       # Schema definitions (devices, sensors, alerts, roles, prefs)
-  factories/        # Model factories for realistic test data
-  seeders/          # Default catalog (device types, sensor types, alert rules)
-```
-
----
-
-## 🧭 SOLID Principles in Practice
-
-| Principle | Implementation | Notes |
-|-----------|----------------|-------|
-| **Single Responsibility** | Domain services (`DashboardMetricsService`, `DeviceService`) encapsulate business rules; observers manage side effects. | Future work: extract email delivery from `Alert` model into a dedicated notification service. |
-| **Open/Closed** | Event-driven architecture (model observers, broadcast events) allows new behaviors without touching existing classes. | Enhancement path: introduce alert strategies for custom rule types. |
-| **Liskov Substitution** | Controllers and models extend Laravel bases without breaking contracts. | Fully compliant. |
-| **Interface Segregation** | Traits (`HasFactory`, `Notifiable`) provide focused capabilities. | Next step: add service interfaces to maximize testability and swapability. |
-| **Dependency Inversion** | Constructor injection and service providers decouple controllers from concrete implementations. | Evolution: adopt repository interfaces for persistence boundaries. |
-
-**SOLID Score:** 7/10 — strong foundation with a clear roadmap to full decoupling.
-
----
-
-## ⚙️ Core Features
-
-### Device & Sensor Lifecycle
-- CRUD for devices, types, classrooms, sensors, and sensor types.
-- Device activation toggles, API key provisioning, MAC/IP tracking, last communication timestamps.
-- User-specific dashboard preferences via `DashboardPreference`.
-
-### Real-Time Monitoring
-- WebSocket broadcasting (`App\Events\NewSensorReading`) to Pusher Channels.
-- Live charts and alert counters powered by Chart.js and lightweight-charts.
-- Personalized monitors persisted per user.
-
-### Alert Engine
-- Configurable rules scoped to sensor types, devices, or individual sensors.
-- Severity levels (`info`, `warning`, `danger`) with danger-level email escalation.
-- Observers (`SensorReadingObserver`, `AlertObserver`) trigger automated workflows.
-- Alert history management, bulk resolution, and unresolved counters in the UI.
-
-### Security & Access Control
-- Laravel Auth with Sanctum tokens for API authentication.
-- Middleware-based role enforcement (`EnsureUserIsAdmin`).
-- API key validation for IoT device ingestion.
-- Comprehensive request validation and structured logging.
-
-### Testing
-- **Feature tests:** alert email workflows, admin access policies, CRUD cases.
-- **Unit tests:** dashboard metrics aggregation, alert evaluation logic.
-- Factories + seeders provide rich fixtures for demos and CI pipelines.
-
----
-
-## 🛠️ Technology Stack
-
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| Backend | Laravel 12, PHP 8.2 | MVC framework, dependency injection, queues, events, mailing |
-| Auth & APIs | Laravel Sanctum | SPA authentication and token issuing for devices |
-| Real-Time | Pusher Channels, Laravel Echo | Live sensor streaming and alert broadcasting |
-| Frontend | Vite, Tailwind CSS 4, Bootstrap 5, Chart.js 4, lightweight-charts 5 | Build tooling, responsive UI, interactive visualizations |
-| Database | SQLite (dev) with Eloquent ORM | Schema migrations, relationships, query builder |
-| Tooling | Laravel Pint, PHPUnit 11, Faker, Mockery, Laravel Pail | Code quality, testing, log inspection |
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
 - PHP 8.2+
-- Composer 2+
+- Composer
 - Node.js 20+
-- npm, pnpm, or yarn
-- Pusher credentials (for real-time broadcasting)
+- npm
+- Python 3.10+
+- pip
 
-### Installation
+### Instalacion inicial
+
 ```bash
-# PHP dependencies
 composer install
-
-# JavaScript dependencies
 npm install
-
-# Environment bootstrap
 cp .env.example .env
 php artisan key:generate
 php artisan migrate --seed
-
-# Run full dev stack (app server, queue, logs, Vite, websocket watcher)
-composer run dev
 ```
 
-### Testing
+### Variables de entorno importantes
+
+En `.env` valida al menos:
+
+- `API_KEY` (debe coincidir con la API key usada por `script_datos.py`).
+- `DB_CONNECTION` y datos de base de datos.
+- `BROADCAST_DRIVER` y variables de Pusher si quieres tiempo real por websocket.
+
+Nota: el script usa por defecto `http://127.0.0.1:8000` como `IOT_BASE_URL`.
+Nota: actualmente la API key del simulador esta en la variable `API_KEY` dentro de `script_datos.py`.
+
+### Ejecucion diaria (orden recomendado)
+
+Terminal 1:
+
+```bash
+php artisan serve
+```
+
+Terminal 2:
+
+```bash
+pip install requests
+python script_datos.py
+```
+
+Con eso se empezaran a enviar lecturas cada pocos segundos y podras ver cambios en el dashboard.
+
+## Endpoints clave hoy
+
+- `GET /api/sensors` - listado de sensores para simulacion y dashboard.
+- `POST /api/sensors/{sensor}/readings` - crea una lectura (requiere `api_key` en payload).
+- `GET /api/sensors/{sensor}/latest-readings` - lecturas recientes por sensor.
+- `GET /api/alerts/active` - alertas activas para dashboard.
+- `GET /api/devices` - listado paginado de dispositivos.
+
+## Diagrama Mermaid: relacion entre componentes
+
+```mermaid
+flowchart LR
+    A[script_datos.py] -->|GET /api/sensors| B[SensorApiController@index]
+    A -->|POST /api/sensors/{id}/readings| C[SensorApiController@storeReading]
+    C --> D[(sensor_readings)]
+    C --> E[Event NewSensorReading]
+    D --> F[SensorReadingObserver]
+    F --> G[SensorReading::checkForAlert]
+    G --> H[(alerts)]
+    H --> I[AlertObserver]
+    I --> J[Event NewAlertTriggered]
+    I --> K[Envio de correo si severity = danger]
+    E --> L[Canal sensor.{id}]
+    J --> M[Canal alerts]
+    L --> N[Dashboard]
+    M --> N
+```
+
+## Diagrama Mermaid: modelo de datos principal
+
+```mermaid
+erDiagram
+    DEVICE_TYPE ||--o{ DEVICE : clasifica
+    LAB ||--o{ DEVICE : ubica
+    DEVICE ||--o{ SENSOR : contiene
+    SENSOR_TYPE ||--o{ SENSOR : define
+    SENSOR ||--o{ SENSOR_READING : registra
+    SENSOR_READING ||--o{ ALERT : dispara
+    ALERT_RULE ||--o{ ALERT : origina
+    SENSOR_TYPE ||--o{ ALERT_RULE : base
+    DEVICE ||--o{ ALERT_RULE : alcance_opcional
+    SENSOR ||--o{ ALERT_RULE : alcance_opcional
+```
+
+## Archivos clave para este flujo
+
+- `script_datos.py`
+- `routes/api.php`
+- `app/Http/Controllers/Api/SensorApiController.php`
+- `app/Models/SensorReading.php`
+- `app/Observers/SensorReadingObserver.php`
+- `app/Observers/AlertObserver.php`
+- `app/Events/NewSensorReading.php`
+- `app/Events/NewAlertTriggered.php`
+
+## Pruebas
+
 ```bash
 php artisan test
 ```
-
----
-
-## 📦 API Overview
-
-- `POST /api/sensors/{sensor}/readings` – ingest sensor values (API key protected).
-- `GET /api/devices` – list devices with status and metadata.
-- `GET /api/sensors/{sensor}/latest-readings` – retrieve rolling sensor data.
-- `GET /api/alerts/active` – expose current alert counts for dashboards.
-- `POST /api/alert-rules/store` – register new alert rules programmatically.
-
-All endpoints leverage Sanctum guards, API key validation, and rich validation responses so hardware agents and partner systems can integrate securely.
-
----
-
-## 🧩 Domain Model Snapshot
-
-```
-User ──1─────┐
-             │
-DashboardPreference
-
-DeviceType ──┐
-             ├── Device ──┬── Sensor ──┬── SensorReading ──┬── Alert ──┬── (emails)
-Classroom ───┘             │             │                  │          │
-                            └── DeviceStatusLog             └── AlertRule
-```
-
----
-
-## 📚 Roadmap
-
-- Extract alert evaluation into strategy classes for richer rule types.
-- Introduce repository interfaces and DTOs for clearer domain boundaries.
-- Expand notification channels (SMS, Slack) via a `NotificationChannel` interface.
-- Publish OpenAPI/Swagger documentation for REST endpoints.
-- Increase automated coverage across API and personalization flows.
-
