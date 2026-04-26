@@ -19,7 +19,7 @@
                     </div>
                     <div class="col-md-6">
                         <p><strong>Dispositivo:</strong> {{ $sensor->device->name }}</p>
-                        <p><strong>Aula:</strong> {{ $sensor->device->classroom->name }}</p>
+                        <p><strong>Laboratorio:</strong> {{ $sensor->device->lab->name }}</p>
                         <p><strong>Estado:</strong> 
                             <span class="badge badge-{{ $sensor->status ? 'success' : 'danger' }}">
                                 {{ $sensor->status ? 'Activo' : 'Inactivo' }}

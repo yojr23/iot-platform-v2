@@ -44,7 +44,7 @@
                             @forelse($devices as $device)
                                 <option value="{{ $device->id }}" 
                                     {{ old('device_id') == $device->id ? 'selected' : '' }}>
-                                    {{ $device->name }} ({{ $device->classroom->name ?? 'Sin aula' }})
+                                    {{ $device->name }} ({{ $device->lab->name ?? 'Sin laboratorio' }})
                                 </option>
                             @empty
                                 <option value="" disabled>No hay dispositivos disponibles</option>

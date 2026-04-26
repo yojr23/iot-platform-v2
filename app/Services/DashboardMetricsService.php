@@ -22,7 +22,7 @@ class DashboardMetricsService
     {
         return Alert::with([
                 'sensorReading.sensor.sensorType',
-                'sensorReading.sensor.device.classroom',
+                'sensorReading.sensor.device.lab',
                 'alertRule',
             ])
             ->where('resolved', false)
@@ -33,7 +33,7 @@ class DashboardMetricsService
 
     public function getDevicesForSelection()
     {
-        return Device::with('classroom')
+        return Device::with('lab')
             ->orderBy('name')
             ->get();
     }

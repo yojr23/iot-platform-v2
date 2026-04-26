@@ -22,7 +22,7 @@ class AlertRuleController extends Controller
         $sensorTypes = SensorType::all();
         $alertRules = AlertRule::with(['sensorType', 'device', 'sensor'])->get();
         $devices = Device::all();
-        $sensors = Sensor::with('device')->get();
+        $sensors = Sensor::with(['device', 'sensorType'])->get();
         
         return view('alerts.rules.create', compact('sensorTypes', 'alertRules', 'devices', 'sensors'));
     }
@@ -32,26 +32,40 @@ class AlertRuleController extends Controller
         try {
             $validated = $request->validate([
                 'sensor_type_id' => 'required|exists:sensor_types,id',
-                'device_id' => 'required|exists:devices,id',
-                'sensor_id' => 'required|exists:sensors,id',
+                'device_id' => 'nullable|exists:devices,id',
+                'sensor_id' => 'nullable|exists:sensors,id',
                 'min_value' => 'nullable|numeric',
                 'max_value' => 'nullable|numeric',
                 'severity' => 'required|in:info,warning,danger',
-                'message' => 'required|string|max:255'
+                'message' => 'required|string|max:255',
+                'name' => 'nullable|string|max:255',
             ]);
 
-            $sensor = Sensor::with('device')->find($validated['sensor_id']);
+            $sensor = null;
 
-            if (!$sensor || $sensor->device_id !== (int) $validated['device_id']) {
-                throw ValidationException::withMessages([
-                    'sensor_id' => 'El sensor seleccionado no pertenece al dispositivo especificado.',
-                ]);
-            }
+            if (!empty($validated['sensor_id'])) {
+                $sensor = Sensor::with('device')->find($validated['sensor_id']);
 
-            if ($sensor->sensor_type_id !== (int) $validated['sensor_type_id']) {
-                throw ValidationException::withMessages([
-                    'sensor_type_id' => 'El tipo de sensor no coincide con el sensor seleccionado.',
-                ]);
+                if (!$sensor) {
+                    throw ValidationException::withMessages([
+                        'sensor_id' => 'El sensor seleccionado no existe.',
+                    ]);
+                }
+
+                if (!empty($validated['device_id']) && $sensor->device_id !== (int) $validated['device_id']) {
+                    throw ValidationException::withMessages([
+                        'sensor_id' => 'El sensor seleccionado no pertenece al dispositivo especificado.',
+                    ]);
+                }
+
+                if ($sensor->sensor_type_id !== (int) $validated['sensor_type_id']) {
+                    throw ValidationException::withMessages([
+                        'sensor_type_id' => 'El tipo de sensor no coincide con el sensor seleccionado.',
+                    ]);
+                }
+
+                $validated['device_id'] = $sensor->device_id;
+                $validated['sensor_type_id'] = $sensor->sensor_type_id;
             }
 
             if (is_null($validated['min_value']) && is_null($validated['max_value'])) {
@@ -65,10 +79,6 @@ class AlertRuleController extends Controller
                     'max_value' => 'El valor máximo debe ser mayor al mínimo cuando ambos se definen.',
                 ]);
             }
-
-            $validated['sensor_type_id'] = $sensor->sensor_type_id;
-            $validated['device_id'] = $sensor->device_id;
-            $validated['sensor_id'] = $sensor->id;
 
             AlertRule::create($validated);
 

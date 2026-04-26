@@ -20,6 +20,7 @@
             <table class="table table-bordered">
                 <thead>
                     <tr>
+                        <th>Nombre</th>
                         <th>Dispositivo</th>
                         <th>Sensor</th>
                         <th>Tipo de Sensor</th>
@@ -32,6 +33,7 @@
                 <tbody>
                     @foreach($alertRules as $rule)
                         <tr>
+                            <td>{{ $rule->name ?? '—' }}</td>
                             <td>{{ optional($rule->device)->name ?? 'N/D' }}</td>
                             <td>{{ optional($rule->sensor)->name ?? 'N/D' }}</td>
                             <td>{{ $rule->sensorType->name }}</td>

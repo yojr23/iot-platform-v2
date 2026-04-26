@@ -10,7 +10,7 @@ class Device extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name', 'serial_number', 'device_type_id', 'classroom_id', 
+        'name', 'serial_number', 'device_type_id', 'lab_id', 
         'status', 'is_active', 'ip_address', 'mac_address', 'last_communication'
     ];
 
@@ -36,9 +36,9 @@ class Device extends Model
         return $this->belongsTo(DeviceType::class);
     }
 
-    public function classroom()
+    public function lab()
     {
-        return $this->belongsTo(Classroom::class);
+        return $this->belongsTo(Lab::class);
     }
 
     public function sensors()

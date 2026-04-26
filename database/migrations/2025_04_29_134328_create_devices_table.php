@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('serial_number')->unique();
             $table->foreignId('device_type_id')->constrained();
-            $table->foreignId('classroom_id')->constrained();
+            $table->foreignId('lab_id')->constrained();
             $table->boolean('status')->default(true); // Encendido/Apagado
             $table->string('ip_address')->nullable();
             $table->string('mac_address')->nullable();

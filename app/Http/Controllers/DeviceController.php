@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Device;
 use App\Models\DeviceType;
-use App\Models\Classroom;
+use App\Models\Lab;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Services\DeviceService;
@@ -23,21 +23,21 @@ class DeviceController extends Controller
     }
     public function index()
     {
-        $devices = Device::with(['deviceType', 'classroom', 'sensors'])
+        $devices = Device::with(['deviceType', 'lab', 'sensors'])
         ->orderBy('created_at', 'desc')
         ->paginate(10);
         
         $deviceTypes = DeviceType::all(); // Obtener todos los tipos de dispositivos
-        $classrooms = Classroom::all();   // Obtener todas las aulas (opcional)
+        $labs = Lab::all();   // Obtener todos los laboratorios (opcional)
         
-        return view('devices.index', compact('devices', 'deviceTypes', 'classrooms'));
+        return view('devices.index', compact('devices', 'deviceTypes', 'labs'));
     }
 
     public function create()
     {
         $deviceTypes = DeviceType::all();
-        $classrooms = Classroom::all();
-        return view('devices.create', compact('deviceTypes', 'classrooms'));
+        $labs = Lab::all();
+        return view('devices.create', compact('deviceTypes', 'labs'));
     }
 
     public function store(Request $request)
@@ -48,7 +48,7 @@ class DeviceController extends Controller
             'name' => 'required|string|max:255',
             'serial_number' => 'required|string|unique:devices',
             'device_type_id' => 'required|exists:device_types,id',
-            'classroom_id' => 'required|exists:classrooms,id',
+            'lab_id' => 'required|exists:labs,id',
             'ip_address' => 'nullable|ip',
             'mac_address' => 'nullable|string|regex:/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/',
             'status' => 'boolean',
@@ -68,15 +68,15 @@ class DeviceController extends Controller
 
     public function show(Device $device)
     {
-        $device->load(['deviceType', 'classroom', 'sensors.sensorType', 'statusLogs']);
+        $device->load(['deviceType', 'lab', 'sensors.sensorType', 'statusLogs']);
         return view('devices.show', compact('device'));
     }
 
     public function edit(Device $device)
     {
         $deviceTypes = DeviceType::all();
-        $classrooms = Classroom::all();
-        return view('devices.edit', compact('device', 'deviceTypes', 'classrooms'));
+        $labs = Lab::all();
+        return view('devices.edit', compact('device', 'deviceTypes', 'labs'));
     }
 
     public function update(Request $request, Device $device)
@@ -85,7 +85,7 @@ class DeviceController extends Controller
             'name' => 'required|string|max:255',
             'ip_address' => 'nullable|ip',
             'mac_address' => 'nullable|string|regex:/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/',
-            'classroom_id' => 'required|exists:classrooms,id',
+            'lab_id' => 'required|exists:labs,id',
         ]);
 
         try {

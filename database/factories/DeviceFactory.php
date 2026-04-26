@@ -20,7 +20,7 @@ class DeviceFactory extends Factory
             'name' => $this->faker->unique()->word(), // Generar nombres únicos
             'serial_number' => $this->faker->unique()->numerify('SN-#####'),
             'device_type_id' => \App\Models\DeviceType::factory(),
-            'classroom_id' => \App\Models\Classroom::factory(),
+            'lab_id' => \App\Models\Lab::factory(),
             'status' => $this->faker->boolean(90), // 90% de probabilidad de estar activo
             'ip_address' => $this->faker->ipv4(),
             'mac_address' => $this->faker->unique()->macAddress(),

@@ -13,6 +13,14 @@ class SensorApiController extends Controller
 
     public function store(Request $request, Sensor $sensor)
     {
+        // Verificar si el dispositivo está activo
+        if (!$sensor->device || !$sensor->device->is_active) {
+            return response()->json([
+                'error' => 'Device Inactive',
+                'message' => 'El dispositivo está desactivado y no puede recibir datos'
+            ], 403);
+        }
+
         // Validación de los datos
         $validated = $request->validate([
             'value' => 'required|numeric',
@@ -31,9 +39,6 @@ class SensorApiController extends Controller
                 'value' => $validated['value'],
                 'reading_time' => $validated['reading_time'] ?? now()
             ]);
-
-            // Evaluar reglas de alerta inmediatamente
-            $reading->checkForAlert();
 
             // Disparar evento para actualización en tiempo real
             event(new NewSensorReading($reading));
@@ -116,7 +121,7 @@ class SensorApiController extends Controller
     {
         try {
             // Cargar todos los sensores con sus lecturas más recientes (limitar a 100 por sensor)
-            $sensors = Sensor::with(['sensorType', 'device.classroom', 'readings' => function ($query) {
+            $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) {
                 $query->where('reading_time', '<=', now())
                     ->orderBy('reading_time', 'desc')
                     ->limit(100);
@@ -157,7 +162,7 @@ class SensorApiController extends Controller
     {
         try {
             // Cargar sensores con sus relaciones
-            $sensors = Sensor::with(['sensorType', 'device.classroom'])->get();
+            $sensors = Sensor::with(['sensorType', 'device.lab'])->get();
 
             if ($sensors->isEmpty()) {
                 Log::warning('No se encontraron sensores en la base de datos.');

@@ -3,13 +3,16 @@
 namespace App\Observers;
 
 use App\Models\Alert;
+use App\Events\NewAlertTriggered;
 use Illuminate\Support\Facades\Log;
 
 class AlertObserver
 {
     public function created(Alert $alert): void
     {
-        $alert->loadMissing('alertRule', 'sensorReading.sensor.device.classroom');
+        $alert->loadMissing('alertRule', 'sensorReading.sensor.device.lab');
+
+        event(new NewAlertTriggered($alert));
 
         $severity = strtolower($alert->alertRule->severity ?? '');
 
@@ -32,7 +35,7 @@ class AlertObserver
 
         $sensor = $sensorReading->sensor;
         $device = $sensor?->device;
-        $location = $device && $device->classroom ? $device->classroom->name : 'Ubicación desconocida';
+        $location = $device && $device->lab ? $device->lab->name : 'Ubicación desconocida';
 
         $alertDetails = [
             'device' => $device?->name ?? 'Dispositivo desconocido',

@@ -39,7 +39,7 @@ class NewAlertTriggered implements ShouldBroadcast
             'sensor_type' => $this->alert->sensorReading->sensor->sensorType->name,
             'unit' => $this->alert->sensorReading->sensor->sensorType->unit,
             'device_name' => $this->alert->sensorReading->sensor->device->name,
-            'classroom_name' => $this->alert->sensorReading->sensor->device->classroom->name,
+            'lab_name' => $this->alert->sensorReading->sensor->device->lab->name,
             'timestamp' => $this->alert->created_at,
         ];
     }

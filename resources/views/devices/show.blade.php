@@ -44,15 +44,15 @@
                     </div>
                     
                     <div class="col-md-6">
-                        <h6 class="section-header">Ubicación y Conexión</h6>
+                        <h6 class="section-header">Laboratorio y Conexión</h6>
                         <ul class="list-group list-group-flush">
                             <li class="list-group-item d-flex justify-content-between">
-                                <span class="fw-bold">Aula:</span>
-                                <span>{{ $device->classroom->name }}</span>
+                                <span class="fw-bold">Laboratorio:</span>
+                                <span>{{ $device->lab->name }}</span>
                             </li>
                             <li class="list-group-item d-flex justify-content-between">
                                 <span class="fw-bold">Edificio/Piso:</span>
-                                <span>{{ $device->classroom->building }}, Piso {{ $device->classroom->floor }}</span>
+                                <span>{{ $device->lab->area }} · {{ $device->lab->process_line }}</span>
                             </li>
                             <li class="list-group-item d-flex justify-content-between">
                                 <span class="fw-bold">Dirección IP:</span>

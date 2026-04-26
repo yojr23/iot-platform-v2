@@ -9,12 +9,12 @@ class AlertController extends Controller
 {
     public function index()
     {
-        $activeAlerts = Alert::with(['sensorReading.sensor.device.classroom', 'alertRule'])
+        $activeAlerts = Alert::with(['sensorReading.sensor.device.lab', 'alertRule'])
             ->where('resolved', false)
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        $alertHistory = Alert::with(['sensorReading.sensor.device.classroom', 'alertRule'])
+        $alertHistory = Alert::with(['sensorReading.sensor.device.lab', 'alertRule'])
             ->where('resolved', true)
             ->orderByDesc('resolved_at')
             ->paginate(20);
@@ -34,7 +34,7 @@ class AlertController extends Controller
 
     public function unresolved()
     {
-        $alerts = Alert::with(['sensorReading.sensor.device.classroom', 'alertRule'])
+        $alerts = Alert::with(['sensorReading.sensor.device.lab', 'alertRule'])
             ->where('resolved', false)
             ->orderBy('created_at', 'desc')
             ->paginate(20);

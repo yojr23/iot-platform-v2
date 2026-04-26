@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('device_types', function (Blueprint $table) {
             $table->id();
-            $table->string('name'); // Ambiental, Pánico, Desastres
+            $table->string('name'); // Reactor, Bomba, Controlador, Analizador
             $table->text('description')->nullable();
             $table->timestamps();
         });

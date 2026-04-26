@@ -11,12 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('classrooms', function (Blueprint $table) {
+        Schema::create('labs', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('building');
-            $table->string('floor');
-            $table->integer('capacity');
+            $table->string('area'); // Area o zona del laboratorio
+            $table->string('process_line'); // Linea o proceso principal
+            $table->text('description')->nullable();
             $table->timestamps();
         });
     }
@@ -26,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('classrooms');
+        Schema::dropIfExists('labs');
     }
 };

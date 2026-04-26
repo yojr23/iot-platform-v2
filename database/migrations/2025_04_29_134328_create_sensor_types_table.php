@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('sensor_types', function (Blueprint $table) {
             $table->id();
-            $table->string('name'); // Temperatura, Humedad, CO, etc.
-            $table->string('unit'); // °C, %, ppm, etc.
+            $table->string('name'); // Temperatura, pH, Oxigeno Disuelto, Conductividad
+            $table->string('unit'); // °C, pH, mg/L, uS/cm, etc.
             $table->float('min_range');
             $table->float('max_range');
             $table->timestamps();   

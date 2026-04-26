@@ -48,22 +48,35 @@ class Alert extends Model
                 return false;
             }
 
-            // Configurar toda la conexión de correo desde SystemSettings (igual que en testEmail)
-            $mailSettings = [
-                'driver' => SystemSetting::get('mail_mailer', config('mail.mailer')),
-                'host' => SystemSetting::get('mail_host', config('mail.host')),
-                'port' => SystemSetting::get('mail_port', config('mail.port')),
-                'username' => SystemSetting::get('mail_username', config('mail.username')),
-                'password' => SystemSetting::get('mail_password', ''),
-                'encryption' => SystemSetting::get('mail_encryption', config('mail.encryption')),
-                'from' => [
-                    'address' => SystemSetting::get('mail_from_address', config('mail.from.address')),
-                    'name' => SystemSetting::get('mail_from_name', config('mail.from.name')),
-                ],
+            $defaultMailer = (string) SystemSetting::get(
+                'mail_mailer',
+                config('mail.default') ?? config('mail.mailer')
+            );
+
+            $defaultMailer = $defaultMailer !== '' ? $defaultMailer : 'log';
+
+            $from = [
+                'address' => SystemSetting::get('mail_from_address', config('mail.from.address')),
+                'name' => SystemSetting::get('mail_from_name', config('mail.from.name')),
             ];
 
-            // Aplicar la configuración completa de correo
-            config(['mail' => $mailSettings]);
+            $existingMailers = config('mail.mailers', []);
+            $smtpBase = $existingMailers['smtp'] ?? ['transport' => 'smtp'];
+
+            $smtpConfig = array_merge($smtpBase, [
+                'host' => SystemSetting::get('mail_host', $smtpBase['host'] ?? config('mail.host')),
+                'port' => SystemSetting::get('mail_port', $smtpBase['port'] ?? config('mail.port')),
+                'username' => SystemSetting::get('mail_username', $smtpBase['username'] ?? config('mail.username')),
+                'password' => SystemSetting::get('mail_password', $smtpBase['password'] ?? ''),
+                'encryption' => SystemSetting::get('mail_encryption', $smtpBase['encryption'] ?? config('mail.encryption')),
+            ]);
+
+            // Aplicar la configuración de correo compatible con Laravel 9+
+            config([
+                'mail.default' => $defaultMailer,
+                'mail.from' => $from,
+                'mail.mailers.smtp' => $smtpConfig,
+            ]);
 
             Log::debug('Enviando alerta por correo a: ' . $recipient);
             $mailable = new DangerAlertMail($emailData);

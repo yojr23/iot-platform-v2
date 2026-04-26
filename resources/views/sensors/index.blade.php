@@ -21,7 +21,7 @@
                         <th>Nombre</th>
                         <th>Tipo</th>
                         <th>Dispositivo</th>
-                        <th>Aula</th>
+                        <th>Laboratorio</th>
                         <th>Estado</th>
                         <th>Última Lectura</th>
                         <th>Fecha y Hora</th>
@@ -34,7 +34,7 @@
                         <td>{{ $sensor->name }}</td>
                         <td>{{ $sensor->sensorType->name }}</td>
                         <td>{{ $sensor->device->name }}</td>
-                        <td>{{ $sensor->device->classroom->name }}</td>
+                        <td>{{ $sensor->device->lab->name }}</td>
                         <td>
                             <span class="badge bg-{{ $sensor->status ? 'success' : 'danger' }}">
                                 {{ $sensor->status ? 'Activo' : 'Inactivo' }}

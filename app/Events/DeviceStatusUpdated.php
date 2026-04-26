@@ -34,7 +34,7 @@ class DeviceStatusUpdated implements ShouldBroadcast
             'device_id' => $this->device->id,
             'status' => $this->device->status,
             'name' => $this->device->name,
-            'classroom_name' => $this->device->classroom->name,
+            'lab_name' => $this->device->lab->name,
         ];
     }
 }

@@ -4,7 +4,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\DeviceApiController;
 use App\Http\Controllers\API\SensorApiController;
-use App\Http\Controllers\API\SensorDataController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SensorController;
 use App\Http\Controllers\AlertRuleController;
@@ -27,9 +26,6 @@ Route::prefix('sensors')->group(function () {
     Route::post('/{sensor}/readings', [SensorApiController::class, 'storeReading']);
     Route::get('/', [SensorApiController::class, 'index']);
 });
-
-Route::post('/sensors/{sensor}/readings', [SensorDataController::class, 'store'])
-    ->name('api.sensors.readings.store');
 
 Route::get('/devices/{device}/sensors', [DashboardController::class, 'getSensors']);
 Route::get('/sensors/{sensor}/readings', [DashboardController::class, 'getSensorReadings']);

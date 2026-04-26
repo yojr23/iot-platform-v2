@@ -42,7 +42,11 @@ class DashboardController extends Controller
     public function getSensorReadings($sensorId)
     {
         $sensor = \App\Models\Sensor::findOrFail($sensorId);
-        $readings = $sensor->readings()->orderBy('reading_time', 'desc')->limit(100)->get();
+        $readings = $sensor->readings()
+            ->where('reading_time', '<=', now())
+            ->orderBy('reading_time', 'desc')
+            ->limit(100)
+            ->get();
 
         return response()->json($readings);
     }

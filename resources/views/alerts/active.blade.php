@@ -12,7 +12,7 @@
                 </div>
                 <p class="mb-1">Mensaje: {{ $alert->alertRule->message }}</p>
                 <small>Valor detectado: {{ $alert->sensorReading->value }} {{ $alert->sensorReading->sensor->sensorType->unit }}</small>
-                <small>Aula: {{ $alert->sensorReading->sensor->device->classroom->name }}</small>
+                <small>Laboratorio: {{ $alert->sensorReading->sensor->device->lab->name }}</small>
             </a>
         @endforeach
     </div>

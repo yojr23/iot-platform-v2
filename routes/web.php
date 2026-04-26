@@ -11,7 +11,7 @@ use App\Http\Controllers\EmailConfigController;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\SensorTypeController;
 use App\Http\Controllers\DashboardPreferenceController;
-use App\Http\Controllers\ClassroomController;
+use App\Http\Controllers\LabController;
 use App\Http\Controllers\DeviceTypeController;
 use App\Http\Controllers\UserRoleController;
 
@@ -77,12 +77,12 @@ Route::middleware('auth')->group(function () {
         Route::put('device-types/{deviceType}', [DeviceTypeController::class, 'update'])->name('device-types.update');
         Route::delete('device-types/{deviceType}', [DeviceTypeController::class, 'destroy'])->name('device-types.destroy');
 
-        // Ubicaciones de Aulas
-        Route::get('classrooms/create', [ClassroomController::class, 'create'])->name('classrooms.create');
-        Route::post('classrooms', [ClassroomController::class, 'store'])->name('classrooms.store');
-        Route::get('classrooms/{classroom}/edit', [ClassroomController::class, 'edit'])->name('classrooms.edit');
-        Route::put('classrooms/{classroom}', [ClassroomController::class, 'update'])->name('classrooms.update');
-        Route::delete('classrooms/{classroom}', [ClassroomController::class, 'destroy'])->name('classrooms.destroy');
+        // Laboratorios
+        Route::get('labs/create', [LabController::class, 'create'])->name('labs.create');
+        Route::post('labs', [LabController::class, 'store'])->name('labs.store');
+        Route::get('labs/{lab}/edit', [LabController::class, 'edit'])->name('labs.edit');
+        Route::put('labs/{lab}', [LabController::class, 'update'])->name('labs.update');
+        Route::delete('labs/{lab}', [LabController::class, 'destroy'])->name('labs.destroy');
 
         // Configuración
         Route::post('config', [ConfigController::class, 'update'])->name('config.update');

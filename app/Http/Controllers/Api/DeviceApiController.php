@@ -10,14 +10,22 @@ class DeviceApiController extends Controller
 {
     public function index()
     {
-        $devices = Device::with(['deviceType', 'classroom', 'sensors.sensorType'])->get();
+        $perPage = (int) request()->query('per_page', 50);
+        $perPage = max(1, min($perPage, 100));
+
+        $devices = Device::with(['deviceType', 'lab', 'sensors.sensorType'])
+            ->orderBy('id')
+            ->paginate($perPage);
+
         return response()->json($devices);
     }
 
     public function show(Device $device)
     {
-        $device->load(['deviceType', 'classroom', 'sensors.sensorType', 'sensors.readings' => function($query) {
-            $query->orderBy('reading_time', 'desc')->limit(100);
+        $device->load(['deviceType', 'lab', 'sensors.sensorType', 'sensors.readings' => function($query) {
+            $query->where('reading_time', '<=', now())
+                ->orderBy('reading_time', 'desc')
+                ->limit(100);
         }]);
         
         return response()->json($device);

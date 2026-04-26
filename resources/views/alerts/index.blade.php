@@ -37,7 +37,7 @@
                                 {{ $alert->alertRule->message }}<br>
                                 <small class="text-muted">
                                     Valor detectado: {{ $alert->sensorReading->value }} {{ $alert->sensorReading->sensor->sensorType->unit }}
-                                    · Aula: {{ $alert->sensorReading->sensor->device->classroom->name }}
+                                    · Laboratorio: {{ $alert->sensorReading->sensor->device->lab->name }}
                                 </small>
                             </p>
                             <small class="text-muted">

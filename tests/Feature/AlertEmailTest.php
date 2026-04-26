@@ -35,7 +35,7 @@ class AlertEmailTest extends TestCase
 
         $alertDetails = [
             'device' => $sensorReading->sensor->device->name,
-            'location' => $sensorReading->sensor->device->classroom->name,
+            'location' => $sensorReading->sensor->device->lab->name,
             'sensor' => $sensorReading->sensor->name,
             'alert_message' => 'Valor fuera de rango',
             'value' => $sensorReading->value,
@@ -107,7 +107,7 @@ class AlertEmailTest extends TestCase
 
         $alertDetails = [
             'device' => $sensorReading->sensor->device->name,
-            'location' => $sensorReading->sensor->device->classroom->name,
+            'location' => $sensorReading->sensor->device->lab->name,
             'sensor' => $sensorReading->sensor->name,
             'alert_message' => 'Valor fuera de rango',
             'value' => $sensorReading->value,

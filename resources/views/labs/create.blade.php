@@ -4,7 +4,7 @@
 <div class="container">
     <div class="card">
         <div class="card-header">
-            <h5>Crear Ubicación de Aula</h5>
+            <h5>Crear Laboratorio</h5>
         </div>
         <div class="card-body">
             @if(session('success'))
@@ -12,49 +12,49 @@
                     {{ session('success') }}
                 </div>
             @endif
-            <form action="{{ route('classrooms.store') }}" method="POST">
+            <form action="{{ route('labs.store') }}" method="POST">
                 @csrf
                 <div class="form-group">
-                    <label for="name">Nombre del Aula</label>
+                    <label for="name">Nombre del Laboratorio</label>
                     <input type="text" name="name" id="name" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label for="building">Edificio</label>
-                    <input type="text" name="building" id="building" class="form-control" required>
+                    <label for="area">Area</label>
+                    <input type="text" name="area" id="area" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label for="floor">Piso</label>
-                    <input type="number" name="floor" id="floor" class="form-control" required min="0">
+                    <label for="process_line">Linea de Proceso</label>
+                    <input type="text" name="process_line" id="process_line" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label for="capacity">Capacidad</label>
-                    <input type="number" name="capacity" id="capacity" class="form-control" required min="1">
+                    <label for="description">Descripcion</label>
+                    <textarea name="description" id="description" class="form-control" rows="2"></textarea>
                 </div>
                 <button type="submit" class="btn btn-primary mt-3">Guardar</button>
             </form>
 
             <div class="mt-4">
-                <h5>Ubicaciones de Aulas Existentes</h5>
+                <h5>Laboratorios Existentes</h5>
                 <table class="table table-bordered">
                     <thead>
                         <tr>
                             <th>Nombre</th>
-                            <th>Edificio</th>
-                            <th>Piso</th>
-                            <th>Capacidad</th>
+                            <th>Area</th>
+                            <th>Linea de Proceso</th>
+                            <th>Descripcion</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($classrooms as $classroom)
+                        @foreach($labs as $lab)
                             <tr>
-                                <td>{{ $classroom->name }}</td>
-                                <td>{{ $classroom->building }}</td>
-                                <td>{{ $classroom->floor }}</td>
-                                <td>{{ $classroom->capacity }}</td>
+                                <td>{{ $lab->name }}</td>
+                                <td>{{ $lab->area }}</td>
+                                <td>{{ $lab->process_line }}</td>
+                                <td>{{ $lab->description ?? '—' }}</td>
                                 <td>
-                                    <a href="{{ route('classrooms.edit', $classroom->id) }}" class="btn btn-warning btn-sm">Editar</a>
-                                    <form action="{{ route('classrooms.destroy', $classroom->id) }}" method="POST" style="display:inline-block;">
+                                    <a href="{{ route('labs.edit', $lab->id) }}" class="btn btn-warning btn-sm">Editar</a>
+                                    <form action="{{ route('labs.destroy', $lab->id) }}" method="POST" style="display:inline-block;">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>

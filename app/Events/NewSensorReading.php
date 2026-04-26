@@ -37,7 +37,7 @@ class NewSensorReading implements ShouldBroadcast
             'sensor_type' => $this->reading->sensor->sensorType->name,
             'unit' => $this->reading->sensor->sensorType->unit,
             'device_name' => $this->reading->sensor->device->name,
-            'classroom_name' => $this->reading->sensor->device->classroom->name,
+            'lab_name' => $this->reading->sensor->device->lab->name,
         ];
     }
 

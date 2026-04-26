@@ -67,23 +67,41 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="name">Nombre de la Regla (opcional)</label>
+                    <input type="text" name="name" id="name" class="form-control" maxlength="255">
+                    <small class="form-text text-muted">
+                        Útil para identificar la regla en listados y reportes.
+                    </small>
+                </div>
+
+                <div class="form-group">
                     <label for="device_id">Dispositivo</label>
-                    <select name="device_id" id="device_id" class="form-control" required>
-                        <option value="">Seleccione un dispositivo</option>
+                    <select name="device_id" id="device_id" class="form-control">
+                        <option value="">Todos los dispositivos (cualquier dispositivo)</option>
                         @foreach($devices as $device)
                             <option value="{{ $device->id }}">{{ $device->name }} ({{ $device->serial_number }})</option>
                         @endforeach
                     </select>
+                    <small class="form-text text-muted">
+                        Opcional. Selecciona un dispositivo para aplicar la regla a todos sus sensores del tipo elegido.
+                    </small>
                 </div>
 
                 <div class="form-group">
                     <label for="sensor_id">Sensor</label>
-                    <select name="sensor_id" id="sensor_id" class="form-control" required>
-                        <option value="">Seleccione un sensor</option>
+                    <select name="sensor_id" id="sensor_id" class="form-control">
+                        <option value="">Todos los sensores (del alcance seleccionado)</option>
                         @foreach($sensors as $sensor)
-                            <option value="{{ $sensor->id }}">{{ $sensor->name }} ({{ $sensor->device->name }})</option>
+                            <option value="{{ $sensor->id }}"
+                                data-device-id="{{ $sensor->device_id }}"
+                                data-sensor-type-id="{{ $sensor->sensor_type_id }}">
+                                {{ $sensor->name }} ({{ $sensor->device->name }})
+                            </option>
                         @endforeach
                     </select>
+                    <small class="form-text text-muted">
+                        Opcional. Si seleccionas un sensor, la regla solo aplica a ese sensor.
+                    </small>
                 </div>
 
                 <button type="submit" class="btn btn-primary">Guardar Regla</button>
@@ -100,6 +118,7 @@
                 <table class="table">
                     <thead>
                         <tr>
+                            <th>Nombre</th>
                             <th>Dispositivo</th>
                             <th>Sensor</th>
                             <th>Tipo de Sensor</th>
@@ -112,6 +131,7 @@
                     <tbody>
                         @foreach($alertRules as $rule)
                         <tr>
+                            <td>{{ $rule->name ?? '—' }}</td>
                             <td>{{ optional($rule->device)->name ?? 'N/D' }}</td>
                             <td>{{ optional($rule->sensor)->name ?? 'N/D' }}</td>
                             <td>{{ $rule->sensorType->name }}</td>
@@ -146,19 +166,72 @@
 
 @push('scripts')
 <script>
-document.getElementById('sensor_type_id').addEventListener('change', function() {
+const sensorTypeSelect = document.getElementById('sensor_type_id');
+const deviceSelect = document.getElementById('device_id');
+const sensorSelect = document.getElementById('sensor_id');
+const sensorOptions = Array.from(sensorSelect.options).filter(option => option.value !== '');
+
+sensorTypeSelect.addEventListener('change', function() {
     const selected = this.options[this.selectedIndex];
     const minRange = selected.dataset.min;
     const maxRange = selected.dataset.max;
-    
+
     document.getElementById('min_range').textContent = `${minRange} - ${maxRange}`;
     document.getElementById('max_range').textContent = `${minRange} - ${maxRange}`;
-    
+
     document.getElementById('min_value').min = minRange;
     document.getElementById('min_value').max = maxRange;
     document.getElementById('max_value').min = minRange;
     document.getElementById('max_value').max = maxRange;
+
+    syncSensorOptions();
 });
+
+function syncSensorOptions() {
+    const deviceId = deviceSelect.value;
+    const sensorTypeId = sensorTypeSelect.value;
+
+    sensorOptions.forEach(option => {
+        const matchesDevice = !deviceId || option.dataset.deviceId === deviceId;
+        const matchesType = !sensorTypeId || option.dataset.sensorTypeId === sensorTypeId;
+        const matches = matchesDevice && matchesType;
+        option.hidden = !matches;
+        option.disabled = !matches;
+    });
+
+    const selected = sensorSelect.selectedOptions[0];
+    if (selected && selected.value && selected.disabled) {
+        sensorSelect.value = '';
+    }
+}
+
+deviceSelect.addEventListener('change', function () {
+    syncSensorOptions();
+});
+
+sensorSelect.addEventListener('change', function () {
+    const selected = sensorSelect.selectedOptions[0];
+
+    if (!selected || !selected.value) {
+        return;
+    }
+
+    const deviceId = selected.dataset.deviceId;
+    const sensorTypeId = selected.dataset.sensorTypeId;
+
+    if (deviceId && !deviceSelect.value) {
+        deviceSelect.value = deviceId;
+    }
+
+    if (sensorTypeId && sensorTypeSelect.value !== sensorTypeId) {
+        sensorTypeSelect.value = sensorTypeId;
+        sensorTypeSelect.dispatchEvent(new Event('change'));
+    }
+
+    syncSensorOptions();
+});
+
+syncSensorOptions();
 </script>
 @endpush
 @endsection

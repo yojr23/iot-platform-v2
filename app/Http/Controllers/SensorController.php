@@ -23,7 +23,7 @@ class SensorController extends Controller
 
     public function index()
     {
-        $sensors = Sensor::with(['device.classroom', 'sensorType', 'readings'])
+        $sensors = Sensor::with(['device.lab', 'sensorType', 'readings'])
             ->orderBy('created_at', 'desc')
             ->paginate(10);
             
@@ -32,8 +32,8 @@ class SensorController extends Controller
 
     public function create()
     {
-        // Obtener dispositivos activos con sus aulas
-        $devices = Device::with('classroom')
+        // Obtener dispositivos activos con sus laboratorios
+        $devices = Device::with('lab')
             ->where('status', true) // Solo dispositivos activos
             ->orderBy('name')
             ->get();
@@ -112,7 +112,7 @@ class SensorController extends Controller
 
     public function edit(Sensor $sensor)
     {
-        $devices = Device::with('classroom')->get();
+        $devices = Device::with('lab')->get();
         $sensorTypes = SensorType::all();
         return view('sensors.edit', compact('sensor', 'devices', 'sensorTypes'));
     }
@@ -185,7 +185,7 @@ class SensorController extends Controller
                 'type' => $sensor->sensorType->name,
                 'unit' => $sensor->sensorType->unit,
                 'device' => $sensor->device->name,
-                'classroom' => $sensor->device->classroom->name
+                'lab' => $sensor->device->lab->name
             ],
             'readings' => $readings
         ];

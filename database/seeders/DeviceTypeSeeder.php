@@ -14,10 +14,11 @@ class DeviceTypeSeeder extends Seeder
     public function run(): void
     {
         $types = [
-            ['name' => 'Calidad de Ambiente', 'description' => 'Dispositivos para monitorear la calidad del ambiente en el aula'],
-            ['name' => 'Pánico', 'description' => 'Dispositivos de emergencia para situaciones de pánico'],
-            ['name' => 'Desastres', 'description' => 'Dispositivos para detectar y prevenir desastres'],
-            ['name' => 'Sensor Único', 'description' => 'Dispositivo único para pruebas'],
+            ['name' => 'Reactor', 'description' => 'Equipos asociados a reactores y tanques de proceso'],
+            ['name' => 'Bomba', 'description' => 'Equipos de bombeo y recirculacion'],
+            ['name' => 'Controlador', 'description' => 'Controladores y PLC de procesos quimicos'],
+            ['name' => 'Analizador', 'description' => 'Analizadores en linea de variables de proceso'],
+            ['name' => 'Estacion de Monitoreo', 'description' => 'Nodos de monitoreo multiparametro'],
         ];
 
         foreach ($types as $type) {

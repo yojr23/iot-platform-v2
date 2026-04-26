@@ -90,7 +90,7 @@
                             <th width="50">ID</th>
                             <th>Dispositivo</th>
                             <th>Tipo</th>
-                            <th>Ubicación</th>
+                            <th>Laboratorio</th>
                             <th>Estado</th>
                             <th>Última Comunicación</th>
                             <th width="180">Acciones</th>
@@ -121,10 +121,10 @@
                             </td>
                             <td>
                                 <div>
-                                    <span class="d-block fw-semibold">{{ $device->classroom->name }}</span>
+                                    <span class="d-block fw-semibold">{{ $device->lab->name }}</span>
                                     <small class="text-muted">
-                                        <i class="fas fa-building me-1"></i> {{ $device->classroom->building }}
-                                        <i class="fas fa-layer-group ms-2 me-1"></i> Piso {{ $device->classroom->floor }}
+                                        <i class="fas fa-flask me-1"></i> {{ $device->lab->area }}
+                                        <i class="fas fa-stream ms-2 me-1"></i> {{ $device->lab->process_line }}
                                     </small>
                                 </div>
                             </td>

@@ -14,7 +14,7 @@ class SensorDataController extends Controller
     public function store(Request $request, Sensor $sensor)
     {
         // Verificar si el dispositivo está activo
-        if (!$sensor->device->is_active) {
+        if (!$sensor->device || !$sensor->device->is_active) {
             return response()->json([
                 'error' => 'Device Inactive',
                 'message' => 'El dispositivo está desactivado y no puede recibir datos'
@@ -42,9 +42,6 @@ class SensorDataController extends Controller
                 'value' => $validated['value'],
                 'reading_time' => $validated['reading_time'] ?? now()
             ]);
-
-            // Evaluar reglas de alerta inmediatamente
-            $reading->checkForAlert();
 
             // Disparar evento para actualización en tiempo real
             event(new NewSensorReading($reading));

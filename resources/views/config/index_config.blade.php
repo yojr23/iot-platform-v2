@@ -183,10 +183,10 @@
                         <div class="row">
                             <div class="col-md-4 mb-3">
                                 <div class="d-grid">
-                                    <a href="{{ route('classrooms.create') }}" class="btn btn-outline-success">
-                                        <i class="fas fa-map-marker-alt me-2"></i> Gestionar Ubicaciones de Aulas
+                                    <a href="{{ route('labs.create') }}" class="btn btn-outline-success">
+                                        <i class="fas fa-map-marker-alt me-2"></i> Gestionar Laboratorios
                                     </a>
-                                    <small class="text-muted mt-1">Agregar y gestionar ubicaciones de aulas del campus</small>
+                                    <small class="text-muted mt-1">Agregar y gestionar laboratorios y areas de proceso</small>
                                 </div>
                             </div>
                             <div class="col-md-4 mb-3">

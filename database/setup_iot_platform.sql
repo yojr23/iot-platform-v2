@@ -42,13 +42,13 @@ CREATE TABLE device_types (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Crear tabla de aulas
-CREATE TABLE classrooms (
+-- Crear tabla de laboratorios
+CREATE TABLE labs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    building VARCHAR(255) NOT NULL,
-    floor VARCHAR(255) NOT NULL,
-    capacity INT NOT NULL,
+    area VARCHAR(255) NOT NULL,
+    process_line VARCHAR(255) NOT NULL,
+    description TEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -59,7 +59,7 @@ CREATE TABLE devices (
     name VARCHAR(255) NOT NULL,
     serial_number VARCHAR(255) UNIQUE NOT NULL,
     device_type_id INT NOT NULL,
-    classroom_id INT NOT NULL,
+    lab_id INT NOT NULL,
     status BOOLEAN DEFAULT TRUE,
     ip_address VARCHAR(45),
     mac_address VARCHAR(17),
@@ -67,7 +67,7 @@ CREATE TABLE devices (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (device_type_id) REFERENCES device_types(id),
-    FOREIGN KEY (classroom_id) REFERENCES classrooms(id)
+    FOREIGN KEY (lab_id) REFERENCES labs(id)
 );
 
 -- Crear tabla de tipos de sensores
@@ -109,13 +109,18 @@ CREATE TABLE sensor_readings (
 CREATE TABLE alert_rules (
     id INT AUTO_INCREMENT PRIMARY KEY,
     sensor_type_id INT NOT NULL,
+    device_id INT NULL,
+    sensor_id INT NULL,
     min_value FLOAT NULL,
     max_value FLOAT NULL,
     severity VARCHAR(255) NOT NULL,
     message VARCHAR(255) NOT NULL,
+    name VARCHAR(255) DEFAULT 'Regla sin nombre',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (sensor_type_id) REFERENCES sensor_types(id)
+    FOREIGN KEY (sensor_type_id) REFERENCES sensor_types(id),
+    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
+    FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE
 );
 
 -- Crear tabla de alertas

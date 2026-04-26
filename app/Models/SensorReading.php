@@ -29,7 +29,7 @@ class SensorReading extends Model
      */
     public function triggeredAlertRules(): Collection
     {
-        $sensor = $this->sensor()->with(['device.classroom'])->first();
+        $sensor = $this->sensor()->with(['device.lab'])->first();
 
         if (!$sensor) {
             return collect();
@@ -37,6 +37,10 @@ class SensorReading extends Model
 
         $alertRules = AlertRule::query()
             ->where('sensor_type_id', $sensor->sensor_type_id)
+            ->where(function ($query) {
+                $query->whereNotNull('min_value')
+                    ->orWhereNotNull('max_value');
+            })
             ->where(function ($query) use ($sensor) {
                 $query->whereNull('device_id')
                     ->orWhere('device_id', $sensor->device_id);

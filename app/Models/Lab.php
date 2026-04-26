@@ -4,11 +4,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Classroom extends Model
+class Lab extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'building', 'floor', 'capacity'];
+    protected $fillable = ['name', 'area', 'process_line', 'description'];
 
     public function devices()
     {

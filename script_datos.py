@@ -5,9 +5,10 @@ import time
 import signal
 import sys
 import random
+import os
 
 # Endpoint para obtener sensores y enviar lecturas
-BASE_URL = 'http://127.0.0.1:8000'
+BASE_URL = os.getenv("IOT_BASE_URL", "http://127.0.0.1:8000")
 API_SENSORS_URL = f"{BASE_URL}/api/sensors"
 API_URL = f"{BASE_URL}/api/sensors/{{sensor_id}}/readings"
 API_KEY = "E7X1GAFf9xgkdoP69LcYSD4KoNuuYGn_ju01uIY2448"
@@ -21,6 +22,11 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
+
+def require_api_key():
+    if not API_KEY:
+        print("Falta API key. Configura IOT_API_KEY o API_KEY en el entorno.")
+        sys.exit(1)
 
 def get_sensors():
     try:
@@ -36,8 +42,13 @@ def get_sensors():
 
 def simulate_value(sensor):
     # Simula un valor dentro del rango, pero a veces genera un valor fuera de rango para alertas
-    min_r = sensor['sensor_type']['min_range']
-    max_r = sensor['sensor_type']['max_range']
+    sensor_type = sensor.get('sensor_type', {}) or {}
+    min_r = sensor_type.get('min_range')
+    max_r = sensor_type.get('max_range')
+
+    if min_r is None or max_r is None or min_r >= max_r:
+        return random.uniform(0, 100)
+
     # 10% de las veces, genera un valor fuera de rango
     if random.random() < 0.1:
         if random.random() < 0.5:
@@ -61,12 +72,15 @@ def send_sensor_data(sensor):
     try:
         response = requests.post(
             API_URL.format(sensor_id=sensor['id']),
-            data=json.dumps(payload),
+            json=payload,
             headers=headers,
             timeout=5
         )
         if response.status_code == 201:
-            print(f"Sensor {sensor['id']} ({sensor['sensor_type']['name']}): {value:.2f} {sensor['sensor_type']['unit']}")
+            sensor_type = sensor.get('sensor_type', {}) or {}
+            name = sensor_type.get('name', 'Tipo desconocido')
+            unit = sensor_type.get('unit', '')
+            print(f"Sensor {sensor['id']} ({name}): {value:.2f} {unit}")
         else:   
             print(f"Error al enviar al sensor {sensor['id']}: {response.status_code} - {response.text}")
     except Exception as e:
@@ -75,6 +89,7 @@ def send_sensor_data(sensor):
 if __name__ == "__main__":
     interval = 3  # segundos entre cada ciclo
     print("Obteniendo sensores de la API...")
+    require_api_key()
     sensors = get_sensors()
     print(f"Simulando {len(sensors)} sensores. Presiona Ctrl+C para detener.")
     while running:

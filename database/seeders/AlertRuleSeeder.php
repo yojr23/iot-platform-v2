@@ -15,18 +15,16 @@ class AlertRuleSeeder extends Seeder
     public function run(): void
     {
         $ruleTemplates = [
-            'Temperatura' => ['min' => 18, 'max' => 28, 'severity' => 'warning', 'message' => 'Temperatura fuera del rango de confort'],
-            'Humedad' => ['min' => 35, 'max' => 65, 'severity' => 'info', 'message' => 'Humedad fuera del rango recomendado'],
-            'CO2' => ['min' => 400, 'max' => 900, 'severity' => 'warning', 'message' => 'CO₂ elevado detectado'],
-            'Monóxido de Carbono' => ['min' => 0, 'max' => 35, 'severity' => 'danger', 'message' => 'Monóxido de carbono peligroso'],
-            'Componentes Orgánicos' => ['min' => 0, 'max' => 200, 'severity' => 'warning', 'message' => 'Compuestos orgánicos volátiles elevados'],
-            'Humo' => ['min' => 0, 'max' => 5, 'severity' => 'danger', 'message' => 'Partículas de humo detectadas'],
-            'Oxígeno' => ['min' => 19, 'max' => 23.5, 'severity' => 'danger', 'message' => 'Oxígeno fuera del rango saludable'],
-            'Vibración' => ['min' => 0, 'max' => 1.5, 'severity' => 'danger', 'message' => 'Vibración estructural inusual'],
-            'Presión Atmosférica' => ['min' => 985, 'max' => 1030, 'severity' => 'info', 'message' => 'Presión atmosférica fuera de lo normal'],
+            'Temperatura' => ['min' => 15, 'max' => 35, 'severity' => 'warning', 'message' => 'Temperatura fuera del rango operacional'],
+            'pH' => ['min' => 6.5, 'max' => 8.5, 'severity' => 'warning', 'message' => 'pH fuera del rango objetivo'],
+            'Oxigeno Disuelto' => ['min' => 2, 'max' => 10, 'severity' => 'danger', 'message' => 'Oxigeno disuelto fuera de rango critico'],
+            'Conductividad' => ['min' => 200, 'max' => 15000, 'severity' => 'info', 'message' => 'Conductividad fuera del rango esperado'],
+            'Turbidez' => ['min' => 0, 'max' => 200, 'severity' => 'warning', 'message' => 'Turbidez elevada'],
+            'ORP' => ['min' => -100, 'max' => 400, 'severity' => 'info', 'message' => 'ORP fuera del rango esperado'],
+            'Caudal' => ['min' => 5, 'max' => 250, 'severity' => 'warning', 'message' => 'Caudal fuera del rango operativo'],
         ];
 
-        $sensors = Sensor::with(['sensorType', 'device.classroom'])->get();
+        $sensors = Sensor::with(['sensorType', 'device.lab'])->get();
 
         foreach ($sensors as $sensor) {
             if (!$sensor->sensorType || !$sensor->device) {
@@ -41,7 +39,7 @@ class AlertRuleSeeder extends Seeder
                 'message' => 'Valores fuera de rango para ' . $typeName,
             ];
 
-            $location = $sensor->device->classroom->name ?? $sensor->device->name;
+            $location = $sensor->device->lab->name ?? $sensor->device->name;
 
             AlertRule::updateOrCreate(
                 ['sensor_id' => $sensor->id],

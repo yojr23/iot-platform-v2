@@ -61,21 +61,21 @@
                     </div>
                 </div>
 
-                <!-- Ubicación (Aula) -->
+                <!-- Laboratorio -->
                 <div class="col-md-6">
                     <div class="form-floating">
-                        <select class="form-select @error('classroom_id') is-invalid @enderror" 
-                                id="classroom_id" name="classroom_id" required>
-                            <option value="" disabled selected>Seleccione una ubicación</option>
-                            @foreach($classrooms as $classroom)
-                                <option value="{{ $classroom->id }}" 
-                                    {{ old('classroom_id', $device->classroom_id ?? '') == $classroom->id ? 'selected' : '' }}>
-                                    {{ $classroom->name }} (Edificio {{ $classroom->building }}, Piso {{ $classroom->floor }})
+                        <select class="form-select @error('lab_id') is-invalid @enderror" 
+                                id="lab_id" name="lab_id" required>
+                            <option value="" disabled selected>Seleccione un laboratorio</option>
+                            @foreach($labs as $lab)
+                                <option value="{{ $lab->id }}" 
+                                    {{ old('lab_id', $device->lab_id ?? '') == $lab->id ? 'selected' : '' }}>
+                                    {{ $lab->name }} ({{ $lab->area }} · {{ $lab->process_line }})
                                 </option>
                             @endforeach
                         </select>
-                        <label for="classroom_id">Ubicación (Aula)</label>
-                        @error('classroom_id')
+                        <label for="lab_id">Laboratorio</label>
+                        @error('lab_id')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                     </div>
