@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 class Lab extends Model
 {
     use HasFactory;
-
     protected $fillable = ['name', 'area', 'process_line', 'description'];
 
     public function devices()

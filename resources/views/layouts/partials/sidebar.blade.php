@@ -33,9 +33,12 @@
             <li class="nav-item">
                 <a class="nav-link {{ request()->is('alerts*') ? 'active' : '' }}" href="{{ route('alerts.index') }}">
                     <i class="fas fa-bell me-2"></i> Alertas
-                    @if(($unresolvedAlertsCount ?? 0) > 0)
-                        <span class="badge bg-danger float-end">{{ $unresolvedAlertsCount }}</span>
-                    @endif
+                    <span
+                        id="unresolvedAlertsSidebarBadge"
+                        class="badge bg-danger float-end {{ (($unresolvedAlertsCount ?? 0) > 0) ? '' : 'd-none' }}"
+                    >
+                        {{ $unresolvedAlertsCount ?? 0 }}
+                    </span>
                 </a>
             </li>
             <li class="nav-item mt-3">

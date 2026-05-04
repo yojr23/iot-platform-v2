@@ -21,6 +21,7 @@ class ConfigController extends Controller
             'mail_from' => SystemSetting::get('mail_from_address', config('mail.from.address')),
             'mail_to' => SystemSetting::get('mail_to', config('mail.recipient_email') ?? env('MAIL_TO_ALERT')),
             'mail_enabled' => SystemSetting::get('mail_enabled', true),
+            'alert_sound_enabled' => SystemSetting::get('alert_sound_enabled', true),
             'alert_threshold' => SystemSetting::get('alert_threshold', 5),
             'sensor_update_interval' => SystemSetting::get('sensor_update_interval', 2000),
         ];
@@ -42,6 +43,7 @@ class ConfigController extends Controller
             'app_name' => 'required|string|max:255',
             'app_url' => 'required|url',
             'mail_enabled' => 'nullable|boolean',
+            'alert_sound_enabled' => 'nullable|boolean',
             'alert_threshold' => 'required|numeric|min:0',
             'sensor_update_interval' => 'required|numeric|min:1000',
         ]);
@@ -50,6 +52,7 @@ class ConfigController extends Controller
             'app_name' => ['value' => $validated['app_name'], 'type' => 'string', 'group' => 'general'],
             'app_url' => ['value' => $validated['app_url'], 'type' => 'string', 'group' => 'general'],
             'mail_enabled' => ['value' => (int) ($validated['mail_enabled'] ?? 0), 'type' => 'boolean', 'group' => 'mail'],
+            'alert_sound_enabled' => ['value' => (int) ($validated['alert_sound_enabled'] ?? 0), 'type' => 'boolean', 'group' => 'alerts'],
             'alert_threshold' => ['value' => $validated['alert_threshold'], 'type' => 'integer', 'group' => 'alerts'],
             'sensor_update_interval' => ['value' => $validated['sensor_update_interval'], 'type' => 'integer', 'group' => 'alerts'],
         ];

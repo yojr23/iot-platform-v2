@@ -13,8 +13,12 @@ from requests.exceptions import ConnectionError, RequestException, Timeout
 BASE_URL = os.getenv("IOT_BASE_URL", "http://127.0.0.1:8000")
 API_SENSORS_URL = f"{BASE_URL}/api/iot/sensors"
 API_URL = f"{BASE_URL}/api/sensors/{{sensor_id}}/readings"
-DEFAULT_API_KEY = ""
+DEFAULT_API_KEY = "E7X1GAFf9xgkdoP69LcYSD4KoNuuYGn_ju01uIY2448"
 LOG_LEVEL = os.getenv("IOT_LOG_LEVEL", "INFO").upper()
+CYCLE_INTERVAL_SECONDS = max(3, int(os.getenv("IOT_CYCLE_INTERVAL", "10")))
+SENSOR_BATCH_SIZE = max(1, int(os.getenv("IOT_SENSOR_BATCH_SIZE", "3")))
+OUTLIER_PROBABILITY = min(max(float(os.getenv("IOT_OUTLIER_PROBABILITY", "0.02")), 0.0), 0.25)
+SLEEP_JITTER_SECONDS = max(0.0, float(os.getenv("IOT_SLEEP_JITTER_SECONDS", "2.0")))
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -23,6 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger("iot-simulator")
 
 running = True
+SENSOR_LAST_VALUES = {}
 
 
 def log_event(level, message, **context):
@@ -146,7 +151,7 @@ def get_sensors(get_fn=None, api_key=None):
 
 
 def simulate_value(sensor):
-    # Simula un valor dentro del rango, pero a veces genera un valor fuera de rango para alertas
+    # Simula un valor estable dentro del rango; ocasionalmente dispara un outlier.
     sensor_type = sensor.get("sensor_type", {}) or {}
     min_r = sensor_type.get("min_range")
     max_r = sensor_type.get("max_range")
@@ -161,14 +166,31 @@ def simulate_value(sensor):
         )
         return random.uniform(0, 100)
 
-    # 10% de las veces, genera un valor fuera de rango
-    if random.random() < 0.1:
-        if random.random() < 0.5:
-            return min_r - random.uniform(1, 5)  # Debajo del mínimo
-        return max_r + random.uniform(1, 5)  # Encima del máximo
+    sensor_id = sensor.get("id")
+    range_span = max_r - min_r
+    safe_min = min_r + (0.05 * range_span)
+    safe_max = max_r - (0.05 * range_span)
 
-    # Valor normal dentro del rango
-    return random.uniform(min_r + 0.1, max_r - 0.1)
+    # Valor inicial centrado en rango seguro.
+    previous_value = SENSOR_LAST_VALUES.get(sensor_id)
+    if previous_value is None:
+        previous_value = random.uniform(safe_min, safe_max)
+
+    # Deriva suave para evitar saltos bruscos y lecturas irreales.
+    max_step = max(0.02 * range_span, 0.15)
+    next_value = previous_value + random.uniform(-max_step, max_step)
+    next_value = max(safe_min, min(safe_max, next_value))
+
+    # Outlier raro y controlado.
+    if random.random() < OUTLIER_PROBABILITY:
+        outlier_margin = max(0.04 * range_span, 0.5)
+        if random.random() < 0.5:
+            next_value = min_r - random.uniform(outlier_margin * 0.6, outlier_margin * 1.4)
+        else:
+            next_value = max_r + random.uniform(outlier_margin * 0.6, outlier_margin * 1.4)
+
+    SENSOR_LAST_VALUES[sensor_id] = next_value
+    return next_value
 
 
 def send_sensor_data(sensor, api_key=None, now_fn=None, post_fn=None):
@@ -274,7 +296,6 @@ def send_sensor_data(sensor, api_key=None, now_fn=None, post_fn=None):
 
 
 if __name__ == "__main__":
-    interval = 3  # segundos entre cada ciclo
     log_event(logging.INFO, "Iniciando simulador IoT", base_url=BASE_URL)
 
     api_key = require_api_key()
@@ -285,10 +306,22 @@ if __name__ == "__main__":
         logging.INFO,
         "Sensores listos para simulacion",
         sensor_count=len(sensors),
-        interval_seconds=interval,
+        interval_seconds=CYCLE_INTERVAL_SECONDS,
+        batch_size=min(SENSOR_BATCH_SIZE, len(sensors)),
+        outlier_probability=OUTLIER_PROBABILITY,
     )
 
     while running:
-        for sensor in sensors:
+        if not sensors:
+            log_event(logging.WARNING, "No hay sensores disponibles para enviar lecturas")
+            time.sleep(CYCLE_INTERVAL_SECONDS)
+            continue
+
+        current_batch_size = min(SENSOR_BATCH_SIZE, len(sensors))
+        selected_sensors = random.sample(sensors, current_batch_size)
+
+        for sensor in selected_sensors:
             send_sensor_data(sensor, api_key=api_key)
-        time.sleep(interval)
+
+        sleep_seconds = CYCLE_INTERVAL_SECONDS + random.uniform(0, SLEEP_JITTER_SECONDS)
+        time.sleep(sleep_seconds)

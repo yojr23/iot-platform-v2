@@ -27,6 +27,7 @@
         const deviceSelectMain = document.getElementById('deviceSelect_main');
         const sensorSelectMain = document.getElementById('sensorSelect_main');
         const csrfToken = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : null;
+        const canPersistPreferences = @json(auth()->check());
         const preferencesEndpoints = {
             load: '{{ route('dashboard.preferences.show') }}',
             save: '{{ route('dashboard.preferences.store') }}',
@@ -60,11 +61,12 @@
         };
         let isRestoring = false;
         let saveTimeout;
+        let dashboardAlertsUnsubscribe = null;
+        let dashboardAlertsFallbackInterval = null;
         const CLOCK_DRIFT_TOLERANCE_MS = 60 * 1000;
         const liveUpdateIntervals = new Map();
         const chartInstances = new Map();
         const sensorChannelSubscriptions = new Map();
-        let alertsChannel = null;
 
         function addSafeListener(element, event, handler, options) {
             if (!element) {
@@ -134,25 +136,43 @@
         function updateAlertsUI(data) {
             const alertsHeader = document.getElementById('alertsHeader');
             const alertsList = document.getElementById('alertsList');
+            const safeCount = Number(data?.count ?? 0);
+            const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
 
             if (alertsHeader) {
-                alertsHeader.textContent = `Últimas Alertas (${data.count})`;
+                alertsHeader.textContent = `Últimas Alertas (${safeCount})`;
             }
 
-            if (alertsList && data.alerts) {
-                if (data.alerts.length > 0) {
+            if (alertsList) {
+                if (alerts.length > 0) {
                     const alertsHtml = `
                         <div class="list-group list-group-flush">
-                            ${data.alerts.map(alert => `
-                                <a href="#" class="list-group-item list-group-item-action">
+                            ${alerts.map(alert => {
+                                const reading = alert?.sensor_reading ?? alert?.sensorReading ?? {};
+                                const sensor = reading?.sensor ?? {};
+                                const sensorType = sensor?.sensor_type ?? sensor?.sensorType ?? {};
+                                const rule = alert?.alert_rule ?? alert?.alertRule ?? {};
+                                const severityRaw = String(rule?.severity ?? 'warning').toLowerCase();
+                                const severity = ['danger', 'warning', 'info'].includes(severityRaw) ? severityRaw : 'warning';
+                                const createdAt = alert?.created_at ? new Date(alert.created_at).toLocaleString() : 'Sin fecha';
+                                const sensorName = sensor?.name ?? 'Sensor desconocido';
+                                const message = rule?.message ?? 'Alerta activa';
+                                const value = reading?.value ?? 'N/D';
+                                const unit = sensorType?.unit ?? '';
+                                return `
+                                <a href="#" class="list-group-item list-group-item-action border-start border-4 border-${severity}">
                                     <div class="d-flex w-100 justify-content-between">
-                                        <h6 class="mb-1">Sensor: ${alert.sensor_reading.sensor.name}</h6>
-                                        <small>${new Date(alert.created_at).toLocaleString()}</small>
+                                        <h6 class="mb-1">Sensor: ${sensorName}</h6>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-${severity}">${severity.toUpperCase()}</span>
+                                            <small>${createdAt}</small>
+                                        </div>
                                     </div>
-                                    <p class="mb-1">Mensaje: ${alert.alert_rule.message}</p>
-                                    <small>Valor detectado: ${alert.sensor_reading.value} ${alert.sensor_reading.sensor.sensor_type.unit}</small>
+                                    <p class="mb-1">Mensaje: ${message}</p>
+                                    <small>Valor detectado: ${value} ${unit}</small>
                                 </a>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </div>
                     `;
                     alertsList.innerHTML = alertsHtml;
@@ -168,33 +188,87 @@
                 setTimeout(adjustAlertsScrollHeight, 50);
             }
 
-            // Update the summary card count as well
-            const summaryAlertsCard = document.querySelector('.card-danger .display-4');
+            // Update summary card count
+            const summaryAlertsCard = document.getElementById('activeAlertsSummaryCount')
+                || document.querySelector('.card-danger .display-4');
             if (summaryAlertsCard) {
-                summaryAlertsCard.textContent = data.count;
+                summaryAlertsCard.textContent = safeCount;
+            }
+
+            // Update navbar badge
+            try {
+                const navbarBadge = document.getElementById('unresolvedAlertsNavbarBadge');
+                if (navbarBadge) {
+                    navbarBadge.textContent = String(safeCount);
+                    if (safeCount > 0) {
+                        navbarBadge.classList.remove('d-none');
+                    } else {
+                        navbarBadge.classList.add('d-none');
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating navbar alert badge:', error);
+            }
+
+            // Update sidebar badge
+            try {
+                const sidebarBadge = document.getElementById('unresolvedAlertsSidebarBadge');
+                if (sidebarBadge) {
+                    sidebarBadge.textContent = String(safeCount);
+                    if (safeCount > 0) {
+                        sidebarBadge.classList.remove('d-none');
+                    } else {
+                        sidebarBadge.classList.add('d-none');
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating sidebar alert badge:', error);
+            }
+
+            if (window.AppAlerts && typeof window.AppAlerts.updateGlobalAlertBadges === 'function') {
+                window.AppAlerts.updateGlobalAlertBadges(safeCount);
             }
         }
 
-        function loadActiveAlerts() {
-            fetch('/api/alerts/active')
-                .then(response => response.json())
-                .then(data => updateAlertsUI(data))
-                .catch(error => console.error('Error loading active alerts:', error));
-        }
+        function bindDashboardAlerts() {
+            if (dashboardAlertsUnsubscribe) {
+                dashboardAlertsUnsubscribe();
+                dashboardAlertsUnsubscribe = null;
+            }
+            if (dashboardAlertsFallbackInterval) {
+                clearInterval(dashboardAlertsFallbackInterval);
+                dashboardAlertsFallbackInterval = null;
+            }
 
-        function subscribeToAlertsChannel() {
-            if (!window.pusher) {
-                console.info('Pusher no disponible; usando actualización por sondeo.');
-                loadActiveAlerts();
-                setInterval(loadActiveAlerts, 5000);
+            if (window.AppAlerts && typeof window.AppAlerts.subscribe === 'function') {
+                dashboardAlertsUnsubscribe = window.AppAlerts.subscribe(updateAlertsUI);
+                if (typeof window.AppAlerts.loadActiveAlertsSnapshot === 'function') {
+                    window.AppAlerts.loadActiveAlertsSnapshot();
+                }
                 return;
             }
 
-            alertsChannel = pusher.subscribe('alerts');
-            alertsChannel.bind('App\\Events\\NewAlertTriggered', function(data) {
-                console.log('New alert triggered:', data);
-                loadActiveAlerts();
-            });
+            // Fallback defensivo si el módulo global no está disponible.
+            const fallbackLoad = () => {
+                fetch('/api/alerts/active', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache',
+                    },
+                    cache: 'no-store',
+                })
+                    .then(response => response.ok ? response.json() : null)
+                    .then(data => {
+                        if (data) {
+                            updateAlertsUI(data);
+                        }
+                    })
+                    .catch(error => console.error('Error loading active alerts (fallback):', error));
+            };
+
+            fallbackLoad();
+            dashboardAlertsFallbackInterval = setInterval(fallbackLoad, 5000);
         }
 
         function toggleAlertsChevron() {
@@ -369,6 +443,10 @@
         }
 
         async function persistPreferences() {
+            if (!canPersistPreferences) {
+                return;
+            }
+
             if (!csrfToken) {
                 console.error('CSRF token not found');
                 return;
@@ -711,6 +789,15 @@
         });
 
         async function loadPreferences() {
+            if (!canPersistPreferences) {
+                dashboardState = {
+                    main: { device_id: null, sensor_id: null },
+                    monitors: [],
+                };
+
+                return;
+            }
+
             try {
                 const response = await fetch(preferencesEndpoints.load, {
                     headers: {
@@ -808,8 +895,11 @@
 
         loadPreferences()
             .then(applyPreferences)
-            .then(() => {
-                subscribeToAlertsChannel();
+            .catch(error => {
+                console.error('No se pudieron aplicar las preferencias:', error);
+            })
+            .finally(() => {
+                bindDashboardAlerts();
                 toggleAlertsChevron();
                 adjustLayoutForSidebar();
                 setupAlertsScrollResize();
@@ -817,8 +907,16 @@
                 setTimeout(() => {
                     adjustAlertsScrollHeight();
                 }, 500);
-            })
-            .catch(error => console.error('No se pudieron aplicar las preferencias:', error));
+            });
+
+        window.addEventListener('beforeunload', () => {
+            if (dashboardAlertsUnsubscribe) {
+                dashboardAlertsUnsubscribe();
+            }
+            if (dashboardAlertsFallbackInterval) {
+                clearInterval(dashboardAlertsFallbackInterval);
+            }
+        });
 
         // Función para ajustar el layout cuando el sidebar se colapsa/expande
         function adjustLayoutForSidebar() {

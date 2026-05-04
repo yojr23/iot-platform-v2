@@ -25,6 +25,14 @@ Route::get('/iot/sensors', [SensorApiController::class, 'iotIndex'])
 Route::post('/sensors/{sensor}/readings', [SensorApiController::class, 'storeReading'])
     ->middleware('throttle:api-write');
 
+// Endpoints públicos para visualización del dashboard sin sesión.
+Route::get('/sensors/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])
+    ->middleware('throttle:api-read');
+Route::get('/devices/{device}/sensors', [DashboardController::class, 'getSensors'])
+    ->middleware('throttle:api-read');
+Route::get('/alerts/active', [DashboardController::class, 'getActiveAlerts'])
+    ->middleware('throttle:api-read');
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
@@ -40,14 +48,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // API para sensores (lectura)
     Route::prefix('sensors')->group(function () {
-        Route::get('/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])->middleware('throttle:api-read');
         Route::get('/{sensor}/readings', [SensorApiController::class, 'readings'])->middleware('throttle:api-read');
         Route::get('/', [SensorApiController::class, 'index'])->middleware('throttle:api-read');
     });
 
-    Route::get('/devices/{device}/sensors', [DashboardController::class, 'getSensors'])->middleware('throttle:api-read');
     Route::get('/sensors/all/readings', [SensorController::class, 'getLatestReadings'])->middleware('throttle:api-read');
-    Route::get('/alerts/active', [DashboardController::class, 'getActiveAlerts'])->middleware('throttle:api-read');
 
     // Ruta para reglas de alerta
     Route::prefix('alert-rules')->middleware('admin')->group(function () {

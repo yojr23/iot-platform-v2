@@ -42,6 +42,7 @@
 
                 <!-- Campo oculto para mail_enabled -->
                 <input type="hidden" id="mail_enabled_hidden" name="mail_enabled" value="{{ $settings['mail_enabled'] ? 1 : 0 }}">
+                <input type="hidden" id="alert_sound_enabled_hidden" name="alert_sound_enabled" value="{{ $settings['alert_sound_enabled'] ? 1 : 0 }}">
 
                 <!-- Configuración General -->
                 <div class="card mb-4">
@@ -116,10 +117,24 @@
 
                 <!-- Configuración de Alertas -->
                 <div class="card mb-4">
-                    <div class="card-header bg-light">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-bell me-2"></i> Configuración de Alertas</h5>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="alert_sound_enabled_toggle"
+                                {{ $settings['alert_sound_enabled'] ? 'checked' : '' }}
+                                onchange="updateAlertSoundStatus(this)" @disabled(!$isAdmin)>
+                            <label class="form-check-label" for="alert_sound_enabled_toggle" id="alertSoundToggleLabel">
+                                <span class="badge" id="alertSoundStatusBadge" style="background-color: {{ $settings['alert_sound_enabled'] ? '#198754' : '#6c757d' }}">
+                                    Sonido {{ $settings['alert_sound_enabled'] ? 'Activo' : 'Desactivado' }}
+                                </span>
+                            </label>
+                        </div>
                     </div>
                     <div class="card-body">
+                        <div class="alert alert-secondary border-0 mb-3">
+                            <i class="fas fa-volume-up me-2"></i>
+                            Controla si el dashboard reproduce sonido al dispararse nuevas alertas en tiempo real.
+                        </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label for="alert_threshold" class="form-label">Umbral de Alerta (en minutos)</label>
@@ -318,6 +333,21 @@
         } else {
             hiddenInput.value = 0;
             statusBadge.textContent = 'Desactivado';
+            statusBadge.style.backgroundColor = '#6c757d';
+        }
+    }
+
+    function updateAlertSoundStatus(checkbox) {
+        const hiddenInput = document.getElementById('alert_sound_enabled_hidden');
+        const statusBadge = document.getElementById('alertSoundStatusBadge');
+
+        if (checkbox.checked) {
+            hiddenInput.value = 1;
+            statusBadge.textContent = 'Sonido Activo';
+            statusBadge.style.backgroundColor = '#198754';
+        } else {
+            hiddenInput.value = 0;
+            statusBadge.textContent = 'Sonido Desactivado';
             statusBadge.style.backgroundColor = '#6c757d';
         }
     }

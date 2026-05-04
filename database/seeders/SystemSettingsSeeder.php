@@ -113,6 +113,14 @@ class SystemSettingsSeeder extends Seeder
                 'description' => 'Intervalo de actualización de sensores en milisegundos',
                 'is_public' => false,
             ],
+            [
+                'key' => 'alert_sound_enabled',
+                'value' => '1',
+                'type' => 'boolean',
+                'group' => 'alerts',
+                'description' => 'Habilita sonido en el dashboard al dispararse alertas',
+                'is_public' => false,
+            ],
 
             // Configuración General
             [

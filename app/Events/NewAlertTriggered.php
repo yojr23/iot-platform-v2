@@ -6,13 +6,11 @@ use App\Models\Alert;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
-use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class NewAlertTriggered implements ShouldBroadcast
+class NewAlertTriggered implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -30,16 +28,23 @@ class NewAlertTriggered implements ShouldBroadcast
 
     public function broadcastWith()
     {
+        $reading = $this->alert->sensorReading;
+        $sensor = $reading?->sensor;
+        $sensorType = $sensor?->sensorType;
+        $device = $sensor?->device;
+        $lab = $device?->lab;
+        $rule = $this->alert->alertRule;
+
         return [
             'id' => $this->alert->id,
-            'message' => $this->alert->alertRule->message,
-            'severity' => $this->alert->alertRule->severity,
-            'value' => $this->alert->sensorReading->value,
-            'sensor_name' => $this->alert->sensorReading->sensor->name,
-            'sensor_type' => $this->alert->sensorReading->sensor->sensorType->name,
-            'unit' => $this->alert->sensorReading->sensor->sensorType->unit,
-            'device_name' => $this->alert->sensorReading->sensor->device->name,
-            'lab_name' => $this->alert->sensorReading->sensor->device->lab->name,
+            'message' => $rule?->message ?? 'Alerta generada',
+            'severity' => $rule?->severity ?? 'warning',
+            'value' => $reading?->value,
+            'sensor_name' => $sensor?->name ?? 'Sensor desconocido',
+            'sensor_type' => $sensorType?->name ?? '',
+            'unit' => $sensorType?->unit ?? '',
+            'device_name' => $device?->name ?? 'Dispositivo desconocido',
+            'lab_name' => $lab?->name ?? 'Lab no definido',
             'timestamp' => $this->alert->created_at,
         ];
     }

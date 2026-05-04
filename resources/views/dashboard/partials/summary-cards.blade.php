@@ -19,7 +19,7 @@
         <div class="card text-white bg-danger mb-3">
             <div class="card-body">
                 <h5 class="card-title">Alertas Activas</h5>
-                <p class="card-text display-4">{{ $summary['activeAlerts'] }}</p>
+                <p id="activeAlertsSummaryCount" class="card-text display-4">{{ $summary['activeAlerts'] }}</p>
             </div>
         </div>
     </div>

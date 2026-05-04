@@ -25,18 +25,21 @@ Route::get('/', function () {
     return redirect()->route('dashboard');
 });
 
-Auth::routes();
+Auth::routes(['verify' => true]);
 
-Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('auth')->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->name('dashboard');
 
-Route::get('/profile', [App\Http\Controllers\HomeController::class, 'profile'])->name('profile')->middleware('auth');
+Route::get('/profile', [App\Http\Controllers\HomeController::class, 'profile'])
+    ->name('profile')
+    ->middleware(['auth', 'verified']);
 
-Route::middleware('auth')->prefix('dashboard')->group(function () {
+Route::middleware(['auth', 'verified'])->prefix('dashboard')->group(function () {
     Route::get('preferences', [DashboardPreferenceController::class, 'show'])->name('dashboard.preferences.show');
     Route::post('preferences', [DashboardPreferenceController::class, 'store'])->name('dashboard.preferences.store');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
     // Dispositivos
     Route::resource('devices', DeviceController::class);
     Route::post('devices/{device}/toggle-status', [DeviceController::class, 'toggleStatus'])->name('devices.toggle-status');

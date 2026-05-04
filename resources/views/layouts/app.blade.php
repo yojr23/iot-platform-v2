@@ -57,6 +57,9 @@
     @php
         $pusherKey = env('PUSHER_APP_KEY');
         $pusherCluster = env('PUSHER_APP_CLUSTER');
+        $globalAlertSoundEnabled = auth()->check()
+            ? (bool) \App\Models\SystemSetting::get('alert_sound_enabled', true)
+            : false;
     @endphp
 
     @if($pusherKey && $pusherCluster)
@@ -76,6 +79,316 @@
             window.pusher = null;
         </script>
     @endif
+
+    @auth
+    <script>
+        (function () {
+            const alertSoundEnabled = @json($globalAlertSoundEnabled);
+            const seenAlertIds = window.__seenAlertIdsGlobal || new Set();
+            window.__seenAlertIdsGlobal = seenAlertIds;
+            let alertsChannel = null;
+            let pollingHandle = null;
+            let snapshotInitialized = false;
+            let latestSnapshot = null;
+            const updateListeners = new Set();
+
+            function getAlertColorClass(severity = 'warning') {
+                const normalized = String(severity).toLowerCase();
+                if (normalized === 'danger') {
+                    return 'danger';
+                }
+                if (normalized === 'info') {
+                    return 'info';
+                }
+                return 'warning';
+            }
+
+            function playAlertSound(severity = 'warning') {
+                if (!alertSoundEnabled) {
+                    return;
+                }
+
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) {
+                    return;
+                }
+
+                if (!window.__alertsAudioContext) {
+                    window.__alertsAudioContext = new AudioCtx();
+                }
+
+                const ctx = window.__alertsAudioContext;
+                if (ctx.state === 'suspended') {
+                    ctx.resume().then(() => playAlertSound(severity)).catch(() => {});
+                    return;
+                }
+
+                const now = ctx.currentTime;
+                const isDanger = String(severity).toLowerCase() === 'danger';
+                const pattern = isDanger
+                    ? [{ f: 880, t: 0, d: 0.12 }, { f: 740, t: 0.16, d: 0.18 }]
+                    : [{ f: 740, t: 0, d: 0.12 }];
+
+                pattern.forEach(({ f, t, d }) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(f, now + t);
+                    gain.gain.setValueAtTime(0.0001, now + t);
+                    gain.gain.exponentialRampToValueAtTime(0.14, now + t + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + t + d);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + t);
+                    osc.stop(now + t + d + 0.02);
+                });
+            }
+
+            function unlockAlertAudio() {
+                if (!alertSoundEnabled) {
+                    return;
+                }
+
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) {
+                    return;
+                }
+
+                if (!window.__alertsAudioContext) {
+                    window.__alertsAudioContext = new AudioCtx();
+                }
+
+                const ctx = window.__alertsAudioContext;
+                const tryUnlock = () => {
+                    if (ctx.state === 'suspended') {
+                        ctx.resume().catch(() => {});
+                    }
+                    document.removeEventListener('click', tryUnlock);
+                    document.removeEventListener('keydown', tryUnlock);
+                    document.removeEventListener('touchstart', tryUnlock);
+                };
+
+                document.addEventListener('click', tryUnlock, { passive: true });
+                document.addEventListener('keydown', tryUnlock, { passive: true });
+                document.addEventListener('touchstart', tryUnlock, { passive: true });
+            }
+
+            function showAlertPopup(data) {
+                let container = document.getElementById('alertPopupsContainer');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = 'alertPopupsContainer';
+                    container.style.position = 'fixed';
+                    container.style.top = '90px';
+                    container.style.right = '16px';
+                    container.style.zIndex = '1085';
+                    container.style.width = 'min(360px, calc(100vw - 24px))';
+                    container.style.display = 'flex';
+                    container.style.flexDirection = 'column';
+                    container.style.gap = '8px';
+                    document.body.appendChild(container);
+                }
+
+                const colorClass = getAlertColorClass(data?.severity);
+                const title = data?.sensor_name ?? 'Alerta de sensor';
+                const message = data?.message ?? 'Se disparó una alerta';
+                const value = data?.value ?? 'N/D';
+                const unit = data?.unit ?? '';
+                const device = data?.device_name ?? 'Dispositivo desconocido';
+                const lab = data?.lab_name ?? 'Lab no definido';
+                const createdAt = data?.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString();
+
+                const toast = document.createElement('div');
+                toast.className = `alert alert-${colorClass} shadow-sm mb-0`;
+                toast.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <strong>${title}</strong>
+                            <div class="small">${message}</div>
+                            <div class="small">Valor: <strong>${value} ${unit}</strong></div>
+                            <div class="small">Dispositivo: ${device}</div>
+                            <div class="small">Laboratorio: ${lab}</div>
+                            <div class="small text-muted">${createdAt}</div>
+                        </div>
+                        <button type="button" class="btn-close" aria-label="Cerrar"></button>
+                    </div>
+                `;
+
+                const closeButton = toast.querySelector('.btn-close');
+                closeButton?.addEventListener('click', () => toast.remove());
+                container.prepend(toast);
+
+                setTimeout(() => {
+                    toast.remove();
+                }, 9000);
+            }
+
+            function updateGlobalAlertBadges(count) {
+                const safeCount = Number.isFinite(Number(count)) ? Number(count) : 0;
+                const navbarBadge = document.getElementById('unresolvedAlertsNavbarBadge');
+                if (navbarBadge) {
+                    navbarBadge.textContent = String(safeCount);
+                    navbarBadge.classList.toggle('d-none', safeCount <= 0);
+                }
+
+                const sidebarBadge = document.getElementById('unresolvedAlertsSidebarBadge');
+                if (sidebarBadge) {
+                    sidebarBadge.textContent = String(safeCount);
+                    sidebarBadge.classList.toggle('d-none', safeCount <= 0);
+                }
+            }
+
+            function notifyUpdate(snapshot) {
+                latestSnapshot = snapshot;
+                updateListeners.forEach(listener => {
+                    try {
+                        listener(snapshot);
+                    } catch (error) {
+                        console.error('AppAlerts listener failed:', error);
+                    }
+                });
+            }
+
+            function notifyIncomingAlert(data) {
+                const alertId = Number(data?.id);
+                if (!Number.isFinite(alertId) || seenAlertIds.has(alertId)) {
+                    return;
+                }
+
+                seenAlertIds.add(alertId);
+                playAlertSound(data?.severity);
+                showAlertPopup(data);
+            }
+
+            function normalizeAlertForNotification(alert) {
+                if (!alert || typeof alert !== 'object') {
+                    return null;
+                }
+
+                const reading = alert.sensor_reading ?? alert.sensorReading ?? {};
+                const sensor = reading.sensor ?? {};
+                const sensorType = sensor.sensor_type ?? sensor.sensorType ?? {};
+                const rule = alert.alert_rule ?? alert.alertRule ?? {};
+                const device = sensor.device ?? {};
+                const lab = device.lab ?? {};
+
+                return {
+                    id: alert.id,
+                    message: rule.message ?? '',
+                    severity: rule.severity ?? 'warning',
+                    value: reading.value ?? null,
+                    unit: sensorType.unit ?? '',
+                    sensor_name: sensor.name ?? '',
+                    device_name: device.name ?? '',
+                    lab_name: lab.name ?? '',
+                    timestamp: alert.created_at ?? null,
+                };
+            }
+
+            function processIncomingAlerts(alerts) {
+                if (!Array.isArray(alerts)) {
+                    return;
+                }
+
+                if (!snapshotInitialized) {
+                    alerts.forEach(alert => {
+                        const id = Number(alert?.id);
+                        if (Number.isFinite(id)) {
+                            seenAlertIds.add(id);
+                        }
+                    });
+                    snapshotInitialized = true;
+                    return;
+                }
+
+                [...alerts]
+                    .sort((a, b) => Number(a?.id ?? 0) - Number(b?.id ?? 0))
+                    .forEach(alert => {
+                        const normalized = normalizeAlertForNotification(alert);
+                        if (normalized) {
+                            notifyIncomingAlert(normalized);
+                        }
+                    });
+            }
+
+            function loadActiveAlertsSnapshot() {
+                fetch('/api/alerts/active', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache',
+                    },
+                    cache: 'no-store',
+                })
+                    .then(response => response.ok ? response.json() : null)
+                    .then(data => {
+                        if (!data) {
+                            return;
+                        }
+                        updateGlobalAlertBadges(data.count ?? 0);
+                        processIncomingAlerts(data.alerts ?? []);
+                        notifyUpdate(data);
+                    })
+                    .catch(() => {});
+            }
+
+            function startGlobalAlerts() {
+                if (window.__appAlertsInitialized) {
+                    return;
+                }
+                window.__appAlertsInitialized = true;
+
+                unlockAlertAudio();
+                loadActiveAlertsSnapshot();
+                pollingHandle = setInterval(loadActiveAlertsSnapshot, 10000);
+
+                if (!window.pusher) {
+                    return;
+                }
+
+                alertsChannel = pusher.subscribe('alerts');
+                alertsChannel.bind('App\\Events\\NewAlertTriggered', function (data) {
+                    notifyIncomingAlert(data);
+                    loadActiveAlertsSnapshot();
+                });
+            }
+
+            window.AppAlerts = window.AppAlerts || {};
+            window.AppAlerts.notifyIncomingAlert = notifyIncomingAlert;
+            window.AppAlerts.updateGlobalAlertBadges = updateGlobalAlertBadges;
+            window.AppAlerts.loadActiveAlertsSnapshot = loadActiveAlertsSnapshot;
+            window.AppAlerts.getLatestSnapshot = function () {
+                return latestSnapshot;
+            };
+            window.AppAlerts.subscribe = function (listener) {
+                if (typeof listener !== 'function') {
+                    return function () {};
+                }
+                updateListeners.add(listener);
+                if (latestSnapshot) {
+                    try {
+                        listener(latestSnapshot);
+                    } catch (error) {
+                        console.error('AppAlerts immediate listener failed:', error);
+                    }
+                }
+                return function () {
+                    updateListeners.delete(listener);
+                };
+            };
+
+            document.addEventListener('DOMContentLoaded', startGlobalAlerts);
+            window.addEventListener('beforeunload', function () {
+                if (pollingHandle) {
+                    clearInterval(pollingHandle);
+                }
+                if (alertsChannel && window.pusher) {
+                    pusher.unsubscribe('alerts');
+                }
+            });
+        })();
+    </script>
+    @endauth
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {

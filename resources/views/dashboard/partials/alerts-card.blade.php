@@ -18,10 +18,17 @@
                     @if(isset($activeAlertsList) && !$activeAlertsList->isEmpty())
                         <div class="list-group list-group-flush">
                             @foreach($activeAlertsList as $alert)
-                                <a href="#" class="list-group-item list-group-item-action">
+                                @php
+                                    $severity = strtolower($alert->alertRule->severity ?? 'warning');
+                                    $severityClass = in_array($severity, ['danger', 'warning', 'info'], true) ? $severity : 'warning';
+                                @endphp
+                                <a href="#" class="list-group-item list-group-item-action border-start border-4 border-{{ $severityClass }}">
                                     <div class="d-flex w-100 justify-content-between">
                                         <h6 class="mb-1">Sensor: {{ $alert->sensorReading->sensor->name }}</h6>
-                                        <small>{{ \Carbon\Carbon::parse($alert->created_at)->diffForHumans() }}</small>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-{{ $severityClass }}">{{ strtoupper($severityClass) }}</span>
+                                            <small>{{ \Carbon\Carbon::parse($alert->created_at)->diffForHumans() }}</small>
+                                        </div>
                                     </div>
                                     <p class="mb-1">Mensaje: {{ $alert->alertRule->message }}</p>
                                     <small>Valor detectado: {{ $alert->sensorReading->value }} {{ $alert->sensorReading->sensor->sensorType->unit }}</small>

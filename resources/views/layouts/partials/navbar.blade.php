@@ -21,11 +21,12 @@
                     <li class="nav-item">
                         <a class="nav-link position-relative" href="{{ route('alerts.index') }}">
                             <i class="fas fa-bell"></i>
-                            @if(($unresolvedAlertsCount ?? 0) > 0)
-                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                                    {{ $unresolvedAlertsCount }}
-                                </span>
-                            @endif
+                            <span
+                                id="unresolvedAlertsNavbarBadge"
+                                class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger {{ (($unresolvedAlertsCount ?? 0) > 0) ? '' : 'd-none' }}"
+                            >
+                                {{ $unresolvedAlertsCount ?? 0 }}
+                            </span>
                         </a>
                     </li>
                 @endauth

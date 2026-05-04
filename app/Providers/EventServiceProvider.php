@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use Illuminate\Auth\Events\Registered;
+use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use App\Models\SensorReading;
 use App\Observers\SensorReadingObserver;
@@ -16,7 +18,9 @@ class EventServiceProvider extends ServiceProvider
      * @var array
      */
     protected $listen = [
-        // ...existing code...
+        Registered::class => [
+            SendEmailVerificationNotification::class,
+        ],
         \App\Events\DeviceCommunicationReceived::class => [
             \App\Listeners\UpdateDeviceLastCommunication::class,
         ],

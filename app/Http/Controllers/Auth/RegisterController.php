@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Foundation\Auth\RegistersUsers;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
@@ -22,6 +23,13 @@ class RegisterController extends Controller
     */
 
     use RegistersUsers;
+
+    private const ALLOWED_EMAIL_DOMAINS = [
+        'gmail.com',
+        'hotmail.com',
+        'outlook.com',
+        'unab.edu.co',
+    ];
 
     /**
      * Where to redirect users after registration.
@@ -50,9 +58,27 @@ class RegisterController extends Controller
     {
         return Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'email' => [
+                'required',
+                'string',
+                'email',
+                'max:255',
+                'unique:users',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! $this->hasAllowedEmailDomain((string) $value)) {
+                        $fail('Solo se permiten correos con dominio @gmail.com, @hotmail.com, @outlook.com o @unab.edu.co.');
+                    }
+                },
+            ],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
+    }
+
+    private function hasAllowedEmailDomain(string $email): bool
+    {
+        $domain = strtolower((string) substr(strrchr($email, '@') ?: '', 1));
+
+        return in_array($domain, self::ALLOWED_EMAIL_DOMAINS, true);
     }
 
     /**
@@ -68,5 +94,21 @@ class RegisterController extends Controller
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
         ]);
+    }
+
+    /**
+     * Handle post-registration actions.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Models\User  $user
+     * @return \Illuminate\Http\RedirectResponse|null
+     */
+    protected function registered(Request $request, $user)
+    {
+        if (! $user->hasVerifiedEmail()) {
+            return redirect()->route('verification.notice');
+        }
+
+        return null;
     }
 }

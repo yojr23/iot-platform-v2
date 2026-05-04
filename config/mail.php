@@ -37,11 +37,11 @@ return [
     'mailers' => [
         'smtp' => [
             'transport' => 'smtp',
-            'host' => env('SMTP_SERVER', 'smtp.mailtrap.io'),
-            'port' => env('SMTP_PORT', 2525),
+            'host' => env('MAIL_HOST', env('SMTP_SERVER', 'smtp.mailtrap.io')),
+            'port' => env('MAIL_PORT', env('SMTP_PORT', 2525)),
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
-            'username' => env('EMAIL_USER'),
-            'password' => env('EMAIL_PASS'),
+            'username' => env('MAIL_USERNAME', env('EMAIL_USER')),
+            'password' => env('MAIL_PASSWORD', env('EMAIL_PASS')),
             'timeout' => null,
             'auth_mode' => null,
         ],
@@ -110,4 +110,11 @@ return [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
+
+    // Compatibilidad para componentes que leen estos valores desde mail.*.
+    'host' => env('MAIL_HOST', env('SMTP_SERVER', 'smtp.mailtrap.io')),
+    'port' => env('MAIL_PORT', env('SMTP_PORT', 2525)),
+    'username' => env('MAIL_USERNAME', env('EMAIL_USER')),
+    'password' => env('MAIL_PASSWORD', env('EMAIL_PASS')),
+    'encryption' => env('MAIL_ENCRYPTION', 'tls'),
 ];
