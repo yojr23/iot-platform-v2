@@ -1,32 +1,29 @@
 # TITULO DEL DOCUMENTO
 
-**Autor(es):** [Nombre completo]  
-**Programa / Area:** [Programa academico o area tecnica]  
-**Institucion:** [Universidad / Empresa]  
-**Ciudad:** [Ciudad]  
-**Ano:** [AAAA]
-
----
+Autor(es): [Nombre completo]  
+Programa / Area: [Programa academico o area tecnica]  
+Institucion: [Universidad / Empresa]  
+Ciudad: [Ciudad]  
+Ano: [AAAA]  
+Fecha: [AAAA-MM-DD]
 
 ## Tabla de contenido
 
-1. Introduccion  
-2. Objetivos  
-3. Alcance  
-4. Marco teorico / normativo  
-5. Cumplimiento normativo (ICONTEC e ISO)  
-6. Desarrollo  
-7. Resultados  
-8. Conclusiones  
-9. Recomendaciones  
-10. Bibliografia  
+1. Introduccion
+2. Objetivos
+3. Alcance
+4. Marco normativo
+5. Metodologia
+6. Resultados
+7. Discusion
+8. Conclusiones
+9. Cumplimiento normativo (ICONTEC e ISO)
+10. Bibliografia
 11. Anexos
-
----
 
 ## 1. Introduccion
 
-[Contexto general, problema y motivacion del documento]
+[Contexto, problema, pertinencia y contribucion]
 
 ## 2. Objetivos
 
@@ -42,33 +39,23 @@
 
 ## 3. Alcance
 
-[Que cubre y que no cubre este documento]
+[Que cubre y que no cubre el documento]
 
-## 4. Marco teorico / normativo
+## 4. Marco normativo
 
-[Conceptos tecnicos, normas aplicables, criterios de evaluacion]
+[Normas, estandares y referencias tecnicas aplicables]
 
-## 5. Cumplimiento normativo (ICONTEC e ISO)
+## 5. Metodologia
 
-[Matriz de trazabilidad de criterios a evidencias]
+[Metodo, fuentes de evidencia, criterios de evaluacion]
 
-## 6. Desarrollo
+## 6. Resultados
 
-### 6.1 Metodologia
+[Resultados medibles, tablas, metricas, figuras]
 
-[Metodo de trabajo]
+## 7. Discusion
 
-### 6.2 Implementacion
-
-[Descripcion de implementacion, arquitectura, decisiones]
-
-### 6.3 Validacion
-
-[Pruebas, verificaciones y evidencia]
-
-## 7. Resultados
-
-[Resultados medibles, metricas, evidencia]
+[Interpretacion de resultados, limites, comparacion]
 
 ## 8. Conclusiones
 
@@ -76,24 +63,22 @@
 2. [Conclusion 2]
 3. [Conclusion 3]
 
-## 9. Recomendaciones
+## 9. Cumplimiento normativo (ICONTEC e ISO)
 
-1. [Recomendacion 1]
-2. [Recomendacion 2]
+- Matriz de trazabilidad: `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`
+- Declarar explicitamente `alineacion` o `certificacion`.
 
 ## 10. Bibliografia
 
-Registrar cada fuente con formato ICONTEC (ver `docs/REFERENCIAS_ICONTEC.md`).
+Registrar cada fuente segun `docs/REFERENCIAS_ICONTEC.md`.
 
 ## 11. Anexos
 
 - Anexo A. [Nombre]
 - Anexo B. [Nombre]
 
----
-
 ## Notas de entrega
 
-- Si el entregable final es academico, exportar a `DOCX/PDF` y aplicar el formato institucional solicitado por la facultad.
+- Si el entregable final es academico, exportar a `DOCX/PDF` y aplicar formato institucional de la facultad.
 - Para citas y referencias usar `NTC 5613` y `NTC 4490`.
-- Para afirmaciones de calidad o seguridad, indicar si el estado es `alineado` o `certificado` respecto a ISO.
+- Toda fuente web debe incluir fecha de consulta.

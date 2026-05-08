@@ -25,6 +25,8 @@ Documentos oficiales del marco:
 
 - Politica de cumplimiento ICONTEC + ISO: `docs/ICONTEC_COMPLIANCE.md`
 - Matriz de trazabilidad normativa: `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`
+- Evidencia tecnica de codigo y estructura: `docs/EVIDENCIA_CUMPLIMIENTO_CODIGO_ESTRUCTURA.md`
+- Procedimiento de auditoria interna: `docs/PROCEDIMIENTO_AUDITORIA_NORMATIVA.md`
 - Plantilla base para entregables: `docs/PLANTILLA_TRABAJO_ICONTEC.md`
 - Guia de referencias: `docs/REFERENCIAS_ICONTEC.md`
 - Documentacion tecnica formal: `DOCUMENTACION_PROYECTO.md`
@@ -34,6 +36,7 @@ Declaracion de alcance:
 
 - Se declara alineacion tecnica y documental con las normas listadas.
 - No se declara certificacion ISO emitida por organismo acreditado.
+- La evidencia de cumplimiento sobre codigo y estructura se mantiene con trazas por archivo/linea.
 
 ## Como correr el proyecto
 

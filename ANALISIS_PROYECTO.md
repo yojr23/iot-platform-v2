@@ -73,6 +73,7 @@ Hallazgos:
 - Se formalizo marco de cumplimiento en `docs/ICONTEC_COMPLIANCE.md`.
 - Se dispone de plantilla y guia de referencias para documentos cientificos.
 - La documentacion principal fue normalizada a estructura de trabajo tecnico.
+- Se consolido evidencia tecnica por archivo/linea en `docs/EVIDENCIA_CUMPLIMIENTO_CODIGO_ESTRUCTURA.md`.
 
 Valoracion: suficiente para revision por pares con enfoque aplicado, siempre que se agreguen resultados experimentales cuantitativos.
 
@@ -101,6 +102,7 @@ Mapeo sintetico:
 - ISO/IEC/IEEE 12207:2026: practicas de ciclo de vida soportadas por estructura del proyecto, pruebas y mantenimiento.
 
 La trazabilidad detallada se registra en `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`.
+El procedimiento de auditoria recurrente se mantiene en `docs/PROCEDIMIENTO_AUDITORIA_NORMATIVA.md`.
 
 ## 6. Discusion tecnica
 
@@ -111,6 +113,7 @@ El proyecto demuestra madurez suficiente para ser reportado como caso aplicado d
 1. Dependencia de configuracion local del entorno para reproducir resultados.
 2. Potencial desfase temporal entre codigo y artefactos externos si no se versionan juntos.
 3. Falta de validacion en despliegue productivo multiusuario con carga sostenida.
+4. No conformidad de pruebas unitarias: `DashboardMetricsServiceTest` falla por dependencia no inyectada en constructor.
 
 ## 8. Recomendaciones para articulo cientifico
 
@@ -119,6 +122,7 @@ El proyecto demuestra madurez suficiente para ser reportado como caso aplicado d
 3. Anexar diagrama de arquitectura final y matriz de cumplimiento normativa.
 4. Declarar explicitamente el alcance: alineacion ISO/ICONTEC, no certificacion institucional.
 5. Incorporar seccion de trabajo futuro centrada en seguridad avanzada y escalabilidad.
+6. Corregir y estabilizar la suite de pruebas unitarias antes de la entrega final del manuscrito.
 
 ## 9. Conclusiones
 

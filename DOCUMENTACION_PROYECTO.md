@@ -87,6 +87,13 @@ La trazabilidad detallada se mantiene en `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.m
 3. Contraste entre comportamiento implementado y documentacion.
 4. Consolidacion de evidencias con rutas de archivo.
 
+### 4.4 Artefactos de evidencia normativa
+
+- Politica marco: `docs/ICONTEC_COMPLIANCE.md`.
+- Matriz de trazabilidad: `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`.
+- Evidencia de codigo/estructura: `docs/EVIDENCIA_CUMPLIMIENTO_CODIGO_ESTRUCTURA.md`.
+- Procedimiento de auditoria: `docs/PROCEDIMIENTO_AUDITORIA_NORMATIVA.md`.
+
 ## 5. Arquitectura del sistema
 
 ### 5.1 Capas
@@ -163,6 +170,7 @@ flowchart LR
 - Gestion de secretos pendiente de endurecimiento para produccion.
 - Necesidad de politica formal de rotacion de llaves.
 - Reforzar sincronizacion continua de especificacion API.
+- Corregir no conformidad de pruebas unitarias en `DashboardMetricsServiceTest` tras cambio de constructor en `DashboardMetricsService`.
 
 ## 8. Calidad y pruebas
 
@@ -212,4 +220,6 @@ INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INTERNATIONAL ELECTROTECHN
 ## 12. Anexos
 
 - Anexo A. Matriz de trazabilidad normativa: `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`.
-- Anexo B. Especificacion API: `docs/api/openapi.yaml`.
+- Anexo B. Evidencia de codigo y estructura: `docs/EVIDENCIA_CUMPLIMIENTO_CODIGO_ESTRUCTURA.md`.
+- Anexo C. Procedimiento de auditoria normativa: `docs/PROCEDIMIENTO_AUDITORIA_NORMATIVA.md`.
+- Anexo D. Especificacion API: `docs/api/openapi.yaml`.

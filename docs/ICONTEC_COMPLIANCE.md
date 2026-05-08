@@ -1,77 +1,102 @@
 # Marco de Cumplimiento ICONTEC e ISO - IoT Platform v2
 
-Fecha de adopcion en repositorio: 2026-05-08.
-Version del marco: 2.0.
+Fecha de adopcion: 2026-05-08  
+Ultima actualizacion: 2026-05-08  
+Version: 3.0
 
 ## 1. Objetivo
 
-Definir el marco normativo documental y de calidad para que el repositorio soporte evaluacion academica y revision de articulo cientifico.
+Establecer un marco verificable de alineacion normativa para documentacion, codigo y estructura del repositorio IoT Platform v2, orientado a evaluacion academica y soporte de articulo cientifico.
 
 ## 2. Alcance
 
 Aplica a:
 
-- `README.md` en su rol de documento de entrada.
-- `DOCUMENTACION_PROYECTO.md`.
-- `ANALISIS_PROYECTO.md`.
-- Documentos de `docs/` usados como evidencia tecnica.
+- Documentacion tecnica del proyecto (`README.md`, `DOCUMENTACION_PROYECTO.md`, `ANALISIS_PROYECTO.md`, `docs/*.md`).
+- Estructura del software (`app/`, `routes/`, `tests/`, `config/`, `database/`).
+- Controles de calidad, seguridad y trazabilidad.
 
-No aplica a formato de codigo fuente ni a certificacion oficial de terceros.
+No aplica a:
+
+- Certificacion formal emitida por organismo acreditado.
+- Cumplimiento legal/regulatorio sectorial externo no implementado en el alcance del proyecto.
 
 ## 3. Referencias normativas base
 
 ### 3.1 ICONTEC
 
-- `NTC 1486`: Presentacion de trabajos escritos.
-- `NTC 5613`: Referencias bibliograficas.
-- `NTC 4490`: Referencias documentales para fuentes electronicas.
+- `NTC 1486`: presentacion de trabajos escritos.
+- `NTC 5613`: referencias bibliograficas.
+- `NTC 4490`: referencias documentales para fuentes electronicas.
 
 ### 3.2 ISO
 
-- `ISO 9001:2015` (vigente al 2026-05-08): sistema de gestion de calidad.
-- `ISO/IEC 27001:2022`: sistema de gestion de seguridad de la informacion.
-- `ISO/IEC 25010:2023`: modelo de calidad de producto software.
-- `ISO/IEC/IEEE 29148:2018`: ingenieria de requisitos.
-- `ISO/IEC/IEEE 12207:2026`: procesos del ciclo de vida de software.
+- `ISO 9001:2015` (ref. ISO 62085).
+- `ISO/IEC 27001:2022` (ref. ISO 27001).
+- `ISO/IEC 25010:2023` (ref. ISO 78176).
+- `ISO/IEC/IEEE 29148:2018` (ref. ISO 72089).
+- `ISO/IEC/IEEE 12207:2026` (ref. ISO 90219).
 
-Nota de rigor: este repositorio declara alineacion tecnica y documental con las normas listadas. No declara certificacion ISO emitida por ente acreditado.
+## 4. Politica de declaracion normativa
 
-## 4. Criterios de cumplimiento para articulo cientifico
+1. El repositorio declara `alineacion` con las normas listadas.
+2. Ningun documento debe afirmar `certificacion` sin auditoria externa formal.
+3. Toda afirmacion de cumplimiento debe enlazar evidencia concreta (archivo y linea o comando de verificacion).
 
-1. Estructura formal de documento tecnico en secciones numeradas.
-2. Trazabilidad de requisitos normativos a evidencias del repositorio.
-3. Bibliografia normalizada con fuentes primarias de estandares.
-4. Declaracion explicita de limites, riesgos y trabajo futuro.
-5. Consistencia terminologica entre README, documentacion y analisis.
+## 5. Aplicacion de norma sobre codigo y estructura
 
-## 5. Reglas operativas obligatorias
+### 5.1 Estructura y ciclo de vida (ISO/IEC/IEEE 12207)
 
-1. Todo documento tecnico nuevo parte de `docs/PLANTILLA_TRABAJO_ICONTEC.md`.
-2. Toda fuente externa se registra en bibliografia con formato definido.
-3. Fuentes web incluyen `fecha de consulta`.
-4. Cada entregable cientifico incluye seccion `Metodologia`, `Resultados` y `Conclusiones`.
-5. Toda declaracion ISO debe decir si es `alineacion` o `certificacion`.
+- Separacion por capas en `app/Http`, `app/Models`, `app/Services`, `app/Observers`.
+- Rutas desacopladas en `routes/web.php` y `routes/api.php`.
+- Pruebas de verificacion y regresion en `tests/` y `tests_python/`.
 
-## 6. Estandar de equivalencia en Markdown
+### 5.2 Requisitos y trazabilidad (ISO/IEC/IEEE 29148)
 
-Markdown no codifica margenes, tipografia, ni paginacion de impresion. Para entrega academica final en PDF/DOCX se debe:
+- Objetivos, alcance y criterios de evaluacion en `DOCUMENTACION_PROYECTO.md` y `ANALISIS_PROYECTO.md`.
+- Matriz de trazabilidad normativa en `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`.
 
-1. Exportar el documento desde Markdown.
-2. Ajustar formato segun lineamientos institucionales.
-3. Conservar estructura y referencias ya validadas en repositorio.
+### 5.3 Calidad de producto (ISO/IEC 25010)
 
-## 7. Matriz de trazabilidad obligatoria
+- Adecuacion funcional: endpoints y flujos IoT definidos y probados.
+- Seguridad: autenticacion, autorizacion, validaciones y controles anti abuso.
+- Mantenibilidad: convenciones de estructura y separacion de responsabilidades.
 
-La trazabilidad de cumplimiento se mantiene en:
+### 5.4 Seguridad de la informacion (ISO/IEC 27001)
+
+- Control de acceso en middleware y autenticacion Sanctum.
+- Registro de eventos y errores en flujo API.
+- Politicas de limitacion de tasa para reducir abuso.
+
+### 5.5 Gestion de calidad (ISO 9001)
+
+- Informacion documentada versionada en Git.
+- Revision periodica de evidencias y brechas.
+- Integracion de pruebas como criterio de calidad tecnica.
+
+## 6. Evidencia obligatoria
+
+Los documentos que materializan evidencia de cumplimiento son:
 
 - `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`
+- `docs/EVIDENCIA_CUMPLIMIENTO_CODIGO_ESTRUCTURA.md`
+- `docs/PROCEDIMIENTO_AUDITORIA_NORMATIVA.md`
+- `docs/REFERENCIAS_ICONTEC.md`
+- `docs/PLANTILLA_TRABAJO_ICONTEC.md`
 
-Sin matriz actualizada, el documento no se considera listo para evaluacion externa.
+## 7. Criterios de aceptacion para reporte cientifico
+
+Un entregable se considera listo si cumple:
+
+1. Estructura formal (portada tecnica, objetivos, metodologia, resultados, conclusiones, bibliografia).
+2. Bibliografia validada con formato ICONTEC.
+3. Trazabilidad normativa con evidencia objetiva.
+4. Declaracion explicita de limites, riesgos y trabajo futuro.
 
 ## 8. Checklist de cierre
 
-- [ ] Documento con estructura formal.
-- [ ] Bibliografia completa y consistente.
-- [ ] Evidencias tecnicas verificables por ruta de archivo.
-- [ ] Riesgos y limitaciones declarados.
-- [ ] Declaracion de alcance normativo (alineacion, no certificacion) visible.
+- [ ] Documento en estructura formal.
+- [ ] Fuentes citadas segun `NTC 5613` y `NTC 4490`.
+- [ ] Matriz de trazabilidad actualizada.
+- [ ] Evidencia de codigo y estructura actualizada.
+- [ ] Declaracion de `alineacion` (sin afirmar certificacion).
