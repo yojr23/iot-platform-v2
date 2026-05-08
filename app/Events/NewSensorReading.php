@@ -6,12 +6,12 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use App\Models\SensorReading;
 
-class NewSensorReading implements ShouldBroadcast
+class NewSensorReading implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -30,9 +30,10 @@ class NewSensorReading implements ShouldBroadcast
     public function broadcastWith()
     {
         return [
+            'reading_id' => $this->reading->id,
             'sensor_id' => $this->reading->sensor_id,
             'value' => $this->reading->value,
-            'reading_time' => $this->reading->reading_time,
+            'reading_time' => $this->reading->reading_time?->toIso8601String(),
             'sensor_name' => $this->reading->sensor->name,
             'sensor_type' => $this->reading->sensor->sensorType->name,
             'unit' => $this->reading->sensor->sensorType->unit,

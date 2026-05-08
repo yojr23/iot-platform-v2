@@ -33,4 +33,13 @@ class AdminAccessTest extends TestCase
 
         $response->assertForbidden();
     }
+
+    public function test_non_admin_cannot_access_metrics_dashboard()
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $response = $this->actingAs($user)->get(route('metrics.index'));
+
+        $response->assertForbidden();
+    }
 }

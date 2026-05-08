@@ -14,6 +14,7 @@ use App\Http\Controllers\DashboardPreferenceController;
 use App\Http\Controllers\LabController;
 use App\Http\Controllers\DeviceTypeController;
 use App\Http\Controllers\UserRoleController;
+use App\Http\Controllers\MetricsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -91,6 +92,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('config', [ConfigController::class, 'update'])->name('config.update');
         Route::get('config/user-roles', [UserRoleController::class, 'index'])->name('config.user-roles.index');
         Route::patch('config/user-roles/{user}', [UserRoleController::class, 'update'])->name('config.user-roles.update');
+        Route::get('metrics', [MetricsController::class, 'index'])->name('metrics.index');
+        Route::get('metrics/data', [MetricsController::class, 'data'])->name('metrics.data');
 
         // Configuración de Email
         Route::get('email-config', [EmailConfigController::class, 'index'])->name('email-config.index');

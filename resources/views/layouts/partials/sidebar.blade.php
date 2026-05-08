@@ -49,6 +49,15 @@
                     <i class="fas fa-cog me-2"></i> Configuración
                 </a>
             </li>
+            @auth
+                @if(auth()->user()->is_admin)
+                    <li class="nav-item">
+                        <a class="nav-link {{ request()->is('metrics*') ? 'active' : '' }}" href="{{ route('metrics.index') }}">
+                            <i class="fas fa-chart-line me-2"></i> Métricas
+                        </a>
+                    </li>
+                @endif
+            @endauth
         </ul>
     </div>
 </div>

@@ -14,6 +14,27 @@ Implementado hoy en el repo:
 - Logging estructurado en controladores API, excepciones globales y simulador Python.
 - Observers/eventos para automatizar alertas y correo (`SensorReadingObserver`, `AlertObserver`).
 
+## Cumplimiento Normativo para Revision Cientifica (actualizado: 2026-05-08)
+
+El repositorio fue normalizado para evaluacion academica con enfoque de articulo cientifico, bajo:
+
+- ICONTEC: NTC 1486, NTC 5613 y NTC 4490.
+- ISO: ISO 9001:2015, ISO/IEC 27001:2022, ISO/IEC 25010:2023, ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017.
+
+Documentos oficiales del marco:
+
+- Politica de cumplimiento ICONTEC + ISO: `docs/ICONTEC_COMPLIANCE.md`
+- Matriz de trazabilidad normativa: `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`
+- Plantilla base para entregables: `docs/PLANTILLA_TRABAJO_ICONTEC.md`
+- Guia de referencias: `docs/REFERENCIAS_ICONTEC.md`
+- Documentacion tecnica formal: `DOCUMENTACION_PROYECTO.md`
+- Analisis tecnico formal: `ANALISIS_PROYECTO.md`
+
+Declaracion de alcance:
+
+- Se declara alineacion tecnica y documental con las normas listadas.
+- No se declara certificacion ISO emitida por organismo acreditado.
+
 ## Como correr el proyecto
 
 ### Requisitos

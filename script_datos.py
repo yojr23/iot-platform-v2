@@ -1,8 +1,10 @@
 import logging
 import os
+import queue
 import random
 import signal
 import sys
+import threading
 import time
 from datetime import datetime
 
@@ -15,10 +17,21 @@ API_SENSORS_URL = f"{BASE_URL}/api/iot/sensors"
 API_URL = f"{BASE_URL}/api/sensors/{{sensor_id}}/readings"
 DEFAULT_API_KEY = "E7X1GAFf9xgkdoP69LcYSD4KoNuuYGn_ju01uIY2448"
 LOG_LEVEL = os.getenv("IOT_LOG_LEVEL", "INFO").upper()
-CYCLE_INTERVAL_SECONDS = max(3, int(os.getenv("IOT_CYCLE_INTERVAL", "10")))
+CYCLE_INTERVAL_SECONDS = max(0.2, float(os.getenv("IOT_CYCLE_INTERVAL", "1.0")))
 SENSOR_BATCH_SIZE = max(1, int(os.getenv("IOT_SENSOR_BATCH_SIZE", "3")))
+SCHEDULER_MODE = (os.getenv("IOT_SCHEDULER_MODE", "all") or "all").strip().lower()
 OUTLIER_PROBABILITY = min(max(float(os.getenv("IOT_OUTLIER_PROBABILITY", "0.02")), 0.0), 0.25)
-SLEEP_JITTER_SECONDS = max(0.0, float(os.getenv("IOT_SLEEP_JITTER_SECONDS", "2.0")))
+SLEEP_JITTER_SECONDS = max(0.0, float(os.getenv("IOT_SLEEP_JITTER_SECONDS", "0.0")))
+MAX_PARALLEL_SENDS = max(1, int(os.getenv("IOT_MAX_PARALLEL_SENDS", "4")))
+SEND_WORKER_COUNT = max(1, int(os.getenv("IOT_SEND_WORKERS", str(MAX_PARALLEL_SENDS))))
+SEND_QUEUE_MAXSIZE = max(10, int(os.getenv("IOT_SEND_QUEUE_MAXSIZE", "500")))
+DEVICE_QUEUE_MAXSIZE = max(10, int(os.getenv("IOT_DEVICE_QUEUE_MAXSIZE", str(SEND_QUEUE_MAXSIZE))))
+SENSORS_FETCH_MAX_RETRIES = max(1, int(os.getenv("IOT_SENSORS_FETCH_MAX_RETRIES", "30")))
+SENSORS_FETCH_RETRY_BASE_SECONDS = max(0.5, float(os.getenv("IOT_SENSORS_FETCH_RETRY_BASE_SECONDS", "2.0")))
+SENSORS_FETCH_RETRY_MAX_SECONDS = max(
+    SENSORS_FETCH_RETRY_BASE_SECONDS,
+    float(os.getenv("IOT_SENSORS_FETCH_RETRY_MAX_SECONDS", "20.0")),
+)
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -96,25 +109,89 @@ def get_sensors(get_fn=None, api_key=None):
         "X-Device-Key": effective_key,
     }
 
-    try:
-        log_event(logging.INFO, "Consultando sensores desde API", url=API_SENSORS_URL)
-        response = get_fn(API_SENSORS_URL, headers=headers, timeout=10)
-    except Timeout as exc:
-        log_event(logging.ERROR, "Timeout al obtener lista de sensores", error=str(exc))
-        sys.exit(1)
-    except ConnectionError as exc:
-        log_event(logging.ERROR, "Error de conexión al obtener sensores", error=str(exc))
-        sys.exit(1)
-    except RequestException as exc:
-        log_event(logging.ERROR, "Error HTTP al obtener sensores", error=str(exc))
-        sys.exit(1)
+    for attempt in range(1, SENSORS_FETCH_MAX_RETRIES + 1):
+        try:
+            log_event(
+                logging.INFO,
+                "Consultando sensores desde API",
+                url=API_SENSORS_URL,
+                attempt=attempt,
+                max_retries=SENSORS_FETCH_MAX_RETRIES,
+            )
+            response = get_fn(API_SENSORS_URL, headers=headers, timeout=10)
+        except Timeout as exc:
+            retry_seconds = min(SENSORS_FETCH_RETRY_MAX_SECONDS, SENSORS_FETCH_RETRY_BASE_SECONDS * attempt)
+            log_event(
+                logging.WARNING,
+                "Timeout al obtener lista de sensores; reintentando",
+                attempt=attempt,
+                retry_in_seconds=retry_seconds,
+                error=str(exc),
+            )
+            time.sleep(retry_seconds)
+            continue
+        except ConnectionError as exc:
+            retry_seconds = min(SENSORS_FETCH_RETRY_MAX_SECONDS, SENSORS_FETCH_RETRY_BASE_SECONDS * attempt)
+            log_event(
+                logging.WARNING,
+                "Error de conexión al obtener sensores; reintentando",
+                attempt=attempt,
+                retry_in_seconds=retry_seconds,
+                error=str(exc),
+            )
+            time.sleep(retry_seconds)
+            continue
+        except RequestException as exc:
+            retry_seconds = min(SENSORS_FETCH_RETRY_MAX_SECONDS, SENSORS_FETCH_RETRY_BASE_SECONDS * attempt)
+            log_event(
+                logging.WARNING,
+                "Error HTTP al obtener sensores; reintentando",
+                attempt=attempt,
+                retry_in_seconds=retry_seconds,
+                error=str(exc),
+            )
+            time.sleep(retry_seconds)
+            continue
 
-    if response.status_code != 200:
+        if response.status_code == 200:
+            break
+
+        if response.status_code == 429:
+            retry_after_header = response.headers.get("Retry-After")
+            try:
+                retry_after_seconds = float(retry_after_header) if retry_after_header is not None else 0.0
+            except ValueError:
+                retry_after_seconds = 0.0
+
+            retry_seconds = max(
+                retry_after_seconds,
+                min(SENSORS_FETCH_RETRY_MAX_SECONDS, SENSORS_FETCH_RETRY_BASE_SECONDS * attempt),
+            )
+            log_event(
+                logging.WARNING,
+                "Rate limit al obtener sensores; esperando antes de reintentar",
+                attempt=attempt,
+                retry_in_seconds=retry_seconds,
+                status_code=response.status_code,
+                body=response.text[:180],
+            )
+            time.sleep(retry_seconds)
+            continue
+
+        log_event(
+            logging.WARNING,
+            "Respuesta inesperada al obtener sensores; reintentando",
+            status_code=response.status_code,
+            attempt=attempt,
+            body=response.text[:180],
+        )
+        retry_seconds = min(SENSORS_FETCH_RETRY_MAX_SECONDS, SENSORS_FETCH_RETRY_BASE_SECONDS * attempt)
+        time.sleep(retry_seconds)
+    else:
         log_event(
             logging.ERROR,
-            "Respuesta inesperada al obtener sensores",
-            status_code=response.status_code,
-            body=response.text[:300],
+            "No se pudo obtener la lista de sensores tras múltiples reintentos",
+            max_retries=SENSORS_FETCH_MAX_RETRIES,
         )
         sys.exit(1)
 
@@ -294,6 +371,31 @@ def send_sensor_data(sensor, api_key=None, now_fn=None, post_fn=None):
             body=body_snippet,
         )
 
+def get_sensor_device_key(sensor):
+    device_id = sensor.get("device_id")
+    if isinstance(device_id, int):
+        return f"device:{device_id}"
+    return "device:unknown"
+
+def device_sender_worker(device_key, send_queue):
+    while running:
+        try:
+            item = send_queue.get(timeout=0.5)
+        except queue.Empty:
+            continue
+
+        if item is None:
+            send_queue.task_done()
+            break
+
+        sensor, api_key = item
+        try:
+            send_sensor_data(sensor, api_key=api_key)
+        except Exception as exc:  # noqa: BLE001
+            log_event(logging.ERROR, "Error inesperado en worker por dispositivo", device_key=device_key, error=str(exc))
+        finally:
+            send_queue.task_done()
+
 
 if __name__ == "__main__":
     log_event(logging.INFO, "Iniciando simulador IoT", base_url=BASE_URL)
@@ -307,21 +409,98 @@ if __name__ == "__main__":
         "Sensores listos para simulacion",
         sensor_count=len(sensors),
         interval_seconds=CYCLE_INTERVAL_SECONDS,
+        scheduler_mode=SCHEDULER_MODE,
         batch_size=min(SENSOR_BATCH_SIZE, len(sensors)),
+        max_parallel_sends=MAX_PARALLEL_SENDS,
+        send_worker_count=SEND_WORKER_COUNT,
+        send_queue_maxsize=SEND_QUEUE_MAXSIZE,
+        device_queue_maxsize=DEVICE_QUEUE_MAXSIZE,
         outlier_probability=OUTLIER_PROBABILITY,
     )
 
-    while running:
-        if not sensors:
-            log_event(logging.WARNING, "No hay sensores disponibles para enviar lecturas")
-            time.sleep(CYCLE_INTERVAL_SECONDS)
+    device_queues = {}
+    device_workers = {}
+
+    for sensor in sensors:
+        device_key = get_sensor_device_key(sensor)
+        if device_key in device_queues:
             continue
 
-        current_batch_size = min(SENSOR_BATCH_SIZE, len(sensors))
-        selected_sensors = random.sample(sensors, current_batch_size)
+        device_queue = queue.Queue(maxsize=DEVICE_QUEUE_MAXSIZE)
+        worker = threading.Thread(
+            target=device_sender_worker,
+            args=(device_key, device_queue),
+            name=f"iot-{device_key}",
+            daemon=True,
+        )
+        worker.start()
+        device_queues[device_key] = device_queue
+        device_workers[device_key] = worker
 
-        for sensor in selected_sensors:
-            send_sensor_data(sensor, api_key=api_key)
+    sensor_cursor = 0
 
-        sleep_seconds = CYCLE_INTERVAL_SECONDS + random.uniform(0, SLEEP_JITTER_SECONDS)
-        time.sleep(sleep_seconds)
+    try:
+        while running:
+            if not sensors:
+                log_event(logging.WARNING, "No hay sensores disponibles para enviar lecturas")
+                time.sleep(CYCLE_INTERVAL_SECONDS)
+                continue
+
+            if SCHEDULER_MODE == "sample":
+                current_batch_size = min(SENSOR_BATCH_SIZE, len(sensors))
+                selected_sensors = random.sample(sensors, current_batch_size)
+            elif SCHEDULER_MODE == "round_robin":
+                current_batch_size = min(SENSOR_BATCH_SIZE, len(sensors))
+                selected_sensors = []
+                for offset in range(current_batch_size):
+                    idx = (sensor_cursor + offset) % len(sensors)
+                    selected_sensors.append(sensors[idx])
+                sensor_cursor = (sensor_cursor + current_batch_size) % len(sensors)
+            else:
+                # Modo por defecto: envía lecturas de todos los sensores en cada ciclo.
+                selected_sensors = sensors
+
+            for sensor in selected_sensors:
+                device_key = get_sensor_device_key(sensor)
+                device_queue = device_queues.get(device_key)
+                if device_queue is None:
+                    device_queue = queue.Queue(maxsize=DEVICE_QUEUE_MAXSIZE)
+                    worker = threading.Thread(
+                        target=device_sender_worker,
+                        args=(device_key, device_queue),
+                        name=f"iot-{device_key}",
+                        daemon=True,
+                    )
+                    worker.start()
+                    device_queues[device_key] = device_queue
+                    device_workers[device_key] = worker
+
+                try:
+                    device_queue.put((sensor, api_key), timeout=0.25)
+                except queue.Full:
+                    log_event(
+                        logging.WARNING,
+                        "Cola FIFO del dispositivo llena, se omite lectura para evitar bloqueo global",
+                        sensor_id=sensor.get("id"),
+                        device_key=device_key,
+                        queue_maxsize=DEVICE_QUEUE_MAXSIZE,
+                    )
+
+            sleep_seconds = CYCLE_INTERVAL_SECONDS + random.uniform(0, SLEEP_JITTER_SECONDS)
+            time.sleep(sleep_seconds)
+    finally:
+        for device_key, device_queue in device_queues.items():
+            inserted = False
+            while not inserted:
+                try:
+                    device_queue.put(None, timeout=0.2)
+                    inserted = True
+                except queue.Full:
+                    log_event(
+                        logging.WARNING,
+                        "Esperando espacio para detener worker por dispositivo",
+                        device_key=device_key,
+                    )
+
+        for worker in device_workers.values():
+            worker.join(timeout=3.0)

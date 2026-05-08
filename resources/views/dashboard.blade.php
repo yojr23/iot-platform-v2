@@ -15,12 +15,24 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        @php
+            $sensorsSeed = $sensors->map(function ($sensor) {
+                return [
+                    'id' => $sensor->id,
+                    'name' => $sensor->name,
+                    'device_id' => $sensor->device_id,
+                ];
+            })->values()->all();
+        @endphp
+
         // Initialize tooltips
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"], [data-tooltip="true"]'));
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
             return new bootstrap.Tooltip(tooltipTriggerEl);
         });
-        const MAX_POINTS = 10;
+        const MAX_POINTS = 60;
+        const LIVE_POLL_INTERVAL_MS = 1000;
+        const LIVE_STALE_THRESHOLD_MS = 2500;
         const monitorsContainer = document.getElementById('monitorsContainer');
         const addMonitorButton = document.getElementById('addMonitorButton');
         const realTimeToggle = document.getElementById('realTimeToggle');
@@ -32,6 +44,7 @@
             load: '{{ route('dashboard.preferences.show') }}',
             save: '{{ route('dashboard.preferences.store') }}',
         };
+        const sensorsSeed = @json($sensorsSeed);
 
         // Null checks for critical elements
         if (!monitorsContainer) {
@@ -67,6 +80,10 @@
         const liveUpdateIntervals = new Map();
         const chartInstances = new Map();
         const sensorChannelSubscriptions = new Map();
+        const pendingChartFrameRenders = new Map();
+        const lastReadingEpochByChart = new Map();
+        const lastRealtimeSignalAt = new Map();
+        const recentReadingIdsByChart = new Map();
 
         function addSafeListener(element, event, handler, options) {
             if (!element) {
@@ -108,14 +125,81 @@
                 liveUpdateIntervals.delete(chartId);
             }
             unsubscribeFromSensorChannel(chartId);
+            const frameId = pendingChartFrameRenders.get(chartId);
+            if (frameId) {
+                cancelAnimationFrame(frameId);
+                pendingChartFrameRenders.delete(chartId);
+            }
+        }
+
+        function markReadingId(chartId, readingId) {
+            if (!Number.isFinite(readingId)) {
+                return false;
+            }
+
+            let seenIds = recentReadingIdsByChart.get(chartId);
+            if (!seenIds) {
+                seenIds = new Set();
+                recentReadingIdsByChart.set(chartId, seenIds);
+            }
+
+            if (seenIds.has(readingId)) {
+                return true;
+            }
+
+            seenIds.add(readingId);
+
+            if (seenIds.size > MAX_POINTS * 4) {
+                const overflow = seenIds.size - (MAX_POINTS * 3);
+                let removed = 0;
+                for (const id of seenIds) {
+                    seenIds.delete(id);
+                    removed += 1;
+                    if (removed >= overflow) {
+                        break;
+                    }
+                }
+            }
+
+            return false;
         }
 
         function parseTimestamp(timestamp) {
             if (!timestamp) {
                 return null;
             }
-            const date = new Date(timestamp);
-            return Number.isNaN(date.getTime()) ? null : date;
+            if (timestamp instanceof Date) {
+                return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+            }
+
+            // Soporta ISO y formato SQL "YYYY-MM-DD HH:mm:ss[.u]"
+            const raw = String(timestamp).trim();
+            let date = new Date(raw);
+            if (!Number.isNaN(date.getTime())) {
+                return date;
+            }
+
+            const normalized = raw.replace(' ', 'T').replace(/\.\d+$/, '');
+            date = new Date(normalized);
+            if (!Number.isNaN(date.getTime())) {
+                return date;
+            }
+
+            const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/);
+            if (!match) {
+                return null;
+            }
+
+            const [, y, m, d, hh, mm, ss] = match;
+            const localDate = new Date(
+                Number(y),
+                Number(m) - 1,
+                Number(d),
+                Number(hh),
+                Number(mm),
+                Number(ss)
+            );
+            return Number.isNaN(localDate.getTime()) ? null : localDate;
         }
 
         function isFutureTimestamp(timestamp) {
@@ -127,10 +211,38 @@
         }
 
         function formatTimestamp(timestamp) {
-            if (!timestamp) {
+            const parsed = parseTimestamp(timestamp);
+            if (!parsed) {
                 return '';
             }
-            return timestamp.toString().replace('T', ' ').slice(0, 19);
+            const yyyy = parsed.getFullYear();
+            const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+            const dd = String(parsed.getDate()).padStart(2, '0');
+            const hh = String(parsed.getHours()).padStart(2, '0');
+            const min = String(parsed.getMinutes()).padStart(2, '0');
+            const ss = String(parsed.getSeconds()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+        }
+
+        function resolveRealtimeDate(timestamp) {
+            const parsed = parseTimestamp(timestamp);
+            if (!parsed) {
+                return new Date();
+            }
+
+            if (isFutureTimestamp(parsed)) {
+                return new Date();
+            }
+
+            return parsed;
+        }
+
+        function resolveHistoricalDate(timestamp) {
+            const parsed = parseTimestamp(timestamp);
+            if (!parsed) {
+                return null;
+            }
+            return parsed;
         }
 
         function updateAlertsUI(data) {
@@ -195,38 +307,18 @@
                 summaryAlertsCard.textContent = safeCount;
             }
 
-            // Update navbar badge
-            try {
-                const navbarBadge = document.getElementById('unresolvedAlertsNavbarBadge');
-                if (navbarBadge) {
-                    navbarBadge.textContent = String(safeCount);
-                    if (safeCount > 0) {
-                        navbarBadge.classList.remove('d-none');
-                    } else {
-                        navbarBadge.classList.add('d-none');
-                    }
-                }
-            } catch (error) {
-                console.error('Error updating navbar alert badge:', error);
-            }
-
-            // Update sidebar badge
-            try {
-                const sidebarBadge = document.getElementById('unresolvedAlertsSidebarBadge');
-                if (sidebarBadge) {
-                    sidebarBadge.textContent = String(safeCount);
-                    if (safeCount > 0) {
-                        sidebarBadge.classList.remove('d-none');
-                    } else {
-                        sidebarBadge.classList.add('d-none');
-                    }
-                }
-            } catch (error) {
-                console.error('Error updating sidebar alert badge:', error);
-            }
-
             if (window.AppAlerts && typeof window.AppAlerts.updateGlobalAlertBadges === 'function') {
                 window.AppAlerts.updateGlobalAlertBadges(safeCount);
+            } else {
+                const navbarBadge = document.getElementById('unresolvedAlertsNavbarBadge');
+                const sidebarBadge = document.getElementById('unresolvedAlertsSidebarBadge');
+                [navbarBadge, sidebarBadge].forEach((badge) => {
+                    if (!badge) {
+                        return;
+                    }
+                    badge.textContent = String(safeCount);
+                    badge.classList.toggle('d-none', safeCount <= 0);
+                });
             }
         }
 
@@ -346,11 +438,15 @@
                     const availableHeight = cardHeight - headerHeight;
 
                     // Aplicar la altura calculada al área scrolleable
-                    // Usamos maxHeight para limitar el scroll y permitir que flexbox maneje el resto
+                    // Fijar altura efectiva del subcontenedor al alto disponible de la columna
                     if (availableHeight > 0) {
+                        alertsList.style.height = availableHeight + 'px';
                         alertsList.style.maxHeight = availableHeight + 'px';
                     }
                 });
+            } else if (alertsList) {
+                alertsList.style.height = '';
+                alertsList.style.maxHeight = '';
             }
         }
 
@@ -363,27 +459,49 @@
             });
         }
 
-        function pushDataPoint(chartInstance, timestamp, value) {
+        function scheduleChartRender(chartId, chartInstance) {
+            if (!chartInstance || pendingChartFrameRenders.has(chartId)) {
+                return;
+            }
+
+            const frameId = requestAnimationFrame(() => {
+                pendingChartFrameRenders.delete(chartId);
+                chartInstance.update('none');
+            });
+
+            pendingChartFrameRenders.set(chartId, frameId);
+        }
+
+        function pushDataPoint(chartId, chartInstance, timestamp, value, readingEpoch = null, options = {}) {
             if (!chartInstance || !timestamp || Number.isNaN(value)) {
                 return;
+            }
+            const markRealtimeSignal = Boolean(options.markRealtimeSignal);
+            const readingId = Number(options.readingId);
+
+            if (markReadingId(chartId, readingId)) {
+                return;
+            }
+
+            if (readingEpoch !== null) {
+                const lastEpoch = lastReadingEpochByChart.get(chartId);
+                lastReadingEpochByChart.set(chartId, Math.max(Number(lastEpoch || 0), readingEpoch));
+                if (markRealtimeSignal) {
+                    lastRealtimeSignalAt.set(chartId, Date.now());
+                }
             }
 
             const labels = chartInstance.data.labels;
             const dataset = chartInstance.data.datasets[0].data;
-            const existingIndex = labels.indexOf(timestamp);
 
-            if (existingIndex !== -1) {
-                dataset[existingIndex] = value;
-            } else {
-                labels.push(timestamp);
-                dataset.push(value);
-                if (labels.length > MAX_POINTS) {
-                    labels.shift();
-                    dataset.shift();
-                }
+            labels.push(timestamp);
+            dataset.push(value);
+            if (labels.length > MAX_POINTS) {
+                labels.shift();
+                dataset.shift();
             }
 
-            chartInstance.update();
+            scheduleChartRender(chartId, chartInstance);
         }
 
         function buildReadingsUrl(sensorId, limit = MAX_POINTS) {
@@ -400,15 +518,25 @@
 
             const channelName = `sensor.${sensorId}`;
             const channel = pusher.channel(channelName) ?? pusher.subscribe(channelName);
+            lastRealtimeSignalAt.delete(chartId);
 
             const handler = function (data) {
                 if (!data || Number(data.sensor_id) !== Number(sensorId)) {
                     return;
                 }
-                if (isFutureTimestamp(data.reading_time)) {
-                    return;
-                }
-                pushDataPoint(chartInstance, formatTimestamp(data.reading_time), parseFloat(data.value));
+                const readingDate = resolveRealtimeDate(data.reading_time);
+
+                pushDataPoint(
+                    chartId,
+                    chartInstance,
+                    formatTimestamp(readingDate),
+                    parseFloat(data.value),
+                    readingDate.getTime(),
+                    {
+                        markRealtimeSignal: true,
+                        readingId: Number(data.reading_id),
+                    }
+                );
             };
 
             channel.bind('App\\Events\\NewSensorReading', handler);
@@ -492,7 +620,13 @@
             }
 
             try {
-                const response = await fetch(`/api/devices/${deviceId}/sensors`);
+                const response = await fetch(`/api/devices/${deviceId}/sensors`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache',
+                    },
+                    cache: 'no-store',
+                });
                 if (!response.ok) {
                     throw new Error(`Error ${response.status}: ${response.statusText}`);
                 }
@@ -512,13 +646,29 @@
 
                 return sensors;
             } catch (error) {
-                console.error('Error al cargar sensores:', error);
-                sensorSelect.innerHTML = '<option value="" disabled selected>Error al cargar sensores</option>';
-                return [];
+                console.error('Error al cargar sensores desde API, usando fallback local:', error);
+
+                const fallbackSensors = Array.isArray(sensorsSeed)
+                    ? sensorsSeed.filter(sensor => Number(sensor.device_id) === Number(deviceId))
+                    : [];
+
+                if (fallbackSensors.length === 0) {
+                    sensorSelect.innerHTML = '<option value="" disabled selected>Error al cargar sensores</option>';
+                    return [];
+                }
+
+                fallbackSensors.forEach(sensor => {
+                    const option = document.createElement('option');
+                    option.value = sensor.id;
+                    option.textContent = sensor.name;
+                    sensorSelect.appendChild(option);
+                });
+
+                return fallbackSensors;
             }
         }
 
-        async function loadHistoricalData(sensorId, chartInstance) {
+        async function loadHistoricalData(chartId, sensorId, chartInstance) {
             if (!sensorId || !chartInstance) {
                 return;
             }
@@ -538,17 +688,43 @@
                             ? rawData.data
                             : [];
 
-                rawData = rawData.filter(lectura => !isFutureTimestamp(lectura.reading_time || lectura.created_at));
-
                 // Reverse to get chronological order (oldest first) since backend returns desc
                 rawData = rawData.reverse();
+                const normalizedData = rawData
+                    .map((lectura) => {
+                        const readingDate = resolveHistoricalDate(lectura.reading_time || lectura.created_at);
+                        const value = parseFloat(lectura.value);
+                        if (!readingDate || Number.isNaN(value)) {
+                            return null;
+                        }
+                        const readingId = Number(lectura.id);
+                        return {
+                            readingId: Number.isFinite(readingId) ? readingId : null,
+                            epoch: readingDate.getTime(),
+                            label: formatTimestamp(readingDate),
+                            value,
+                        };
+                    })
+                    .filter((item) => item !== null);
 
-                const labels = rawData.map(lectura => formatTimestamp(lectura.reading_time || lectura.created_at));
-                const values = rawData.map(lectura => parseFloat(lectura.value));
+                const labels = normalizedData.map(item => item.label);
+                const values = normalizedData.map(item => item.value);
 
                 chartInstance.data.labels = labels;
                 chartInstance.data.datasets[0].data = values;
                 chartInstance.update('none');
+
+                const seenIds = new Set(
+                    normalizedData
+                        .map(item => item.readingId)
+                        .filter(id => Number.isFinite(id))
+                );
+                recentReadingIdsByChart.set(chartId, seenIds);
+
+                const newest = normalizedData[normalizedData.length - 1];
+                if (newest) {
+                    lastReadingEpochByChart.set(chartId, newest.epoch);
+                }
             } catch (error) {
                 console.error('Error al cargar datos históricos:', error);
             }
@@ -562,6 +738,17 @@
             }
 
             const intervalId = setInterval(async () => {
+                if (!realTimeToggle.checked) {
+                    return;
+                }
+
+                if (window.pusher) {
+                    const lastSignalTs = lastRealtimeSignalAt.get(chartId) ?? 0;
+                    if (lastSignalTs > 0 && Date.now() - lastSignalTs < LIVE_STALE_THRESHOLD_MS) {
+                        return;
+                    }
+                }
+
                 try {
                     const response = await fetch(buildReadingsUrl(sensorId, 1));
                     if (!response.ok) {
@@ -580,15 +767,20 @@
                         return;
                     }
                     const lecturaTimestamp = lectura.reading_time || lectura.created_at;
-                    if (isFutureTimestamp(lecturaTimestamp)) {
-                        return;
-                    }
+                    const lecturaDate = resolveRealtimeDate(lecturaTimestamp);
 
-                    pushDataPoint(chartInstance, formatTimestamp(lecturaTimestamp), parseFloat(lectura.value));
+                    pushDataPoint(
+                        chartId,
+                        chartInstance,
+                        formatTimestamp(lecturaDate),
+                        parseFloat(lectura.value),
+                        lecturaDate.getTime(),
+                        { readingId: Number(lectura.id) }
+                    );
                 } catch (error) {
                     console.error('Error al actualizar lecturas:', error);
                 }
-            }, 2000);
+            }, LIVE_POLL_INTERVAL_MS);
 
             liveUpdateIntervals.set(chartId, intervalId);
         }
@@ -626,7 +818,7 @@
                 },
                 options: {
                     responsive: true,
-                    animation: { duration: 500 },
+                    animation: false,
                     scales: {
                         x: {
                             display: true,
@@ -650,6 +842,9 @@
                 });
 
                 clearLiveUpdate(chartId);
+                lastReadingEpochByChart.delete(chartId);
+                lastRealtimeSignalAt.delete(chartId);
+                recentReadingIdsByChart.delete(chartId);
                 sensorSelect.innerHTML = '<option value="" disabled selected>Seleccione un sensor</option>';
                 await loadSensors(deviceId, sensorSelect);
 
@@ -665,9 +860,12 @@
                 });
 
                 clearLiveUpdate(chartId);
+                lastReadingEpochByChart.delete(chartId);
+                lastRealtimeSignalAt.delete(chartId);
+                recentReadingIdsByChart.delete(chartId);
 
                 if (sensorId) {
-                    await loadHistoricalData(sensorId, chartInstance);
+                    await loadHistoricalData(chartId, sensorId, chartInstance);
                     if (realTimeToggle.checked) {
                         startLiveUpdates(chartId, sensorId, chartInstance);
                         subscribeToSensorChannel(chartId, sensorId, chartInstance);
@@ -734,7 +932,7 @@
 
             if (monitor.sensor_id && sensorSelect) {
                 sensorSelect.value = monitor.sensor_id;
-                await loadHistoricalData(monitor.sensor_id, chartInstance);
+                await loadHistoricalData(chartId, monitor.sensor_id, chartInstance);
                 if (realTimeToggle.checked) {
                     startLiveUpdates(chartId, monitor.sensor_id, chartInstance);
                     subscribeToSensorChannel(chartId, monitor.sensor_id, chartInstance);
@@ -766,6 +964,9 @@
 
             chartInstances.delete(chartId);
             clearLiveUpdate(chartId);
+            lastReadingEpochByChart.delete(chartId);
+            lastRealtimeSignalAt.delete(chartId);
+            recentReadingIdsByChart.delete(chartId);
 
             if (!isRestoring) {
                 persistPreferencesDebounced();
@@ -872,7 +1073,7 @@
 
                 if (selectedSensorId) {
                     sensorSelectMain.value = selectedSensorId;
-                    await loadHistoricalData(selectedSensorId, chartInstances.get('main'));
+                    await loadHistoricalData('main', selectedSensorId, chartInstances.get('main'));
                     if (realTimeToggle.checked) {
                         const mainInstance = chartInstances.get('main');
                         if (mainInstance) {

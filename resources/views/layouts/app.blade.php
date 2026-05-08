@@ -19,9 +19,6 @@
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-SgOJa3DmI69IUzQ2PVdRZhwQ+dy64/BUtbMJw1MZ8t5HZApcHrRKUc4W0kG879m7" crossorigin="anonymous">
 
-    <!-- Lightweight Charts -->
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-
     <!-- Custom CSS -->
     <link href="{{ asset('css/app.css') }}" rel="stylesheet">
     <link href="{{ asset('css/custom-pagination.css') }}" rel="stylesheet">
@@ -49,10 +46,10 @@
     </div>
 
     <!-- Bootstrap Bundle with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js" integrity="sha384-k6d4wzSIapyDyv1kpU366/PK5hCdSbCRGRCMv+eplOQJWyd1fbcAu9OCUj5zNLiq" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js" integrity="sha384-k6d4wzSIapyDyv1kpU366/PK5hCdSbCRGRCMv+eplOQJWyd1fbcAu9OCUj5zNLiq" crossorigin="anonymous"></script>
 
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     @php
         $pusherKey = env('PUSHER_APP_KEY');
@@ -66,8 +63,8 @@
         <!-- Pusher para actualización en tiempo real -->
         <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
         <script>
-            // Enable pusher logging - don't include this in production
-            Pusher.logToConsole = true;
+            // Debug de Pusher deshabilitado para evitar sobrecarga en consola.
+            Pusher.logToConsole = false;
 
             window.pusher = new Pusher('{{ $pusherKey }}', {
                 cluster: '{{ $pusherCluster }}',
@@ -174,6 +171,9 @@
             }
 
             function showAlertPopup(data) {
+                const AUTO_DISMISS_MS = 9000;
+                const FADE_OUT_MS = 450;
+
                 let container = document.getElementById('alertPopupsContainer');
                 if (!container) {
                     container = document.createElement('div');
@@ -200,6 +200,9 @@
 
                 const toast = document.createElement('div');
                 toast.className = `alert alert-${colorClass} shadow-sm mb-0`;
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-6px)';
+                toast.style.transition = `opacity ${FADE_OUT_MS}ms ease, transform ${FADE_OUT_MS}ms ease`;
                 toast.innerHTML = `
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div>
@@ -214,13 +217,29 @@
                     </div>
                 `;
 
+                let dismissed = false;
+                const dismissToast = () => {
+                    if (dismissed) {
+                        return;
+                    }
+                    dismissed = true;
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-6px)';
+                    setTimeout(() => {
+                        toast.remove();
+                    }, FADE_OUT_MS + 50);
+                };
+
                 const closeButton = toast.querySelector('.btn-close');
-                closeButton?.addEventListener('click', () => toast.remove());
+                closeButton?.addEventListener('click', dismissToast);
                 container.prepend(toast);
 
-                setTimeout(() => {
-                    toast.remove();
-                }, 9000);
+                requestAnimationFrame(() => {
+                    toast.style.opacity = '1';
+                    toast.style.transform = 'translateY(0)';
+                });
+
+                setTimeout(dismissToast, AUTO_DISMISS_MS);
             }
 
             function updateGlobalAlertBadges(count) {
@@ -523,21 +542,30 @@
             min-height: 0;
         }
 
-        /* Cuando está expandido, usar block como Bootstrap espera, pero el contenido interno usa flex */
+        /* Cuando está expandido, hacerlo flex para que el listado ocupe todo el alto disponible */
         .alerts-card #alertsCollapse.collapse.show {
-            display: block;
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
         /* El card-body interno maneja el flexbox */
         .alerts-card #alertsCollapse .card-body {
             display: flex;
             flex-direction: column;
+            flex: 1 1 auto;
+            min-height: 0;
             height: 100%;
+            overflow: hidden;
+            padding: 0;
         }
 
         .alerts-scroll {
             flex: 1 1 auto;
             min-height: 0;
+            height: 100%;
+            max-height: none !important;
             overflow-y: auto;
             overflow-x: hidden;
         }

@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\AuthApiController;
 use App\Http\Controllers\API\DeviceApiController;
 use App\Http\Controllers\API\SensorApiController;
+use App\Http\Controllers\Api\AlertFeedController;
+use App\Http\Controllers\Api\InternalMetricsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SensorController;
 use App\Http\Controllers\AlertRuleController;
@@ -20,17 +22,26 @@ Route::prefix('auth')->group(function () {
 
 // API para ingestión IoT (sin sesión web, protegida por api_key del payload/header).
 Route::get('/iot/sensors', [SensorApiController::class, 'iotIndex'])
+    ->middleware('api.metrics')
     ->middleware('throttle:api-read');
 
 Route::post('/sensors/{sensor}/readings', [SensorApiController::class, 'storeReading'])
+    ->middleware('api.metrics')
     ->middleware('throttle:api-write');
 
 // Endpoints públicos para visualización del dashboard sin sesión.
 Route::get('/sensors/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])
+    ->middleware('api.metrics')
     ->middleware('throttle:api-read');
 Route::get('/devices/{device}/sensors', [DashboardController::class, 'getSensors'])
+    ->middleware('api.metrics')
     ->middleware('throttle:api-read');
-Route::get('/alerts/active', [DashboardController::class, 'getActiveAlerts'])
+Route::get('/alerts/active', [AlertFeedController::class, 'active'])
+    ->middleware('api.metrics')
+    ->middleware('throttle:api-read');
+
+Route::get('/internal/metrics/api-performance', [InternalMetricsController::class, 'apiPerformance'])
+    ->middleware('api.metrics')
     ->middleware('throttle:api-read');
 
 Route::middleware('auth:sanctum')->group(function () {

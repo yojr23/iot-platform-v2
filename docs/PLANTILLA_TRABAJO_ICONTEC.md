@@ -1,0 +1,93 @@
+# TITULO DEL DOCUMENTO
+
+**Autor(es):** [Nombre completo]  
+**Programa / Area:** [Programa academico o area tecnica]  
+**Institucion:** [Universidad / Empresa]  
+**Ciudad:** [Ciudad]  
+**Ano:** [AAAA]
+
+---
+
+## Tabla de contenido
+
+1. Introduccion  
+2. Objetivos  
+3. Alcance  
+4. Marco teorico / normativo  
+5. Desarrollo  
+6. Resultados  
+7. Conclusiones  
+8. Recomendaciones  
+9. Bibliografia  
+10. Anexos
+
+---
+
+## 1. Introduccion
+
+[Contexto general, problema y motivacion del documento]
+
+## 2. Objetivos
+
+### 2.1 Objetivo general
+
+[Objetivo principal]
+
+### 2.2 Objetivos especificos
+
+1. [Objetivo especifico 1]
+2. [Objetivo especifico 2]
+3. [Objetivo especifico 3]
+
+## 3. Alcance
+
+[Que cubre y que no cubre este documento]
+
+## 4. Marco teorico / normativo
+
+[Conceptos tecnicos, normas aplicables, criterios de evaluacion]
+
+## 5. Desarrollo
+
+### 5.1 Metodologia
+
+[Metodo de trabajo]
+
+### 5.2 Implementacion
+
+[Descripcion de implementacion, arquitectura, decisiones]
+
+### 5.3 Validacion
+
+[Pruebas, verificaciones y evidencia]
+
+## 6. Resultados
+
+[Resultados medibles, metricas, evidencia]
+
+## 7. Conclusiones
+
+1. [Conclusion 1]
+2. [Conclusion 2]
+3. [Conclusion 3]
+
+## 8. Recomendaciones
+
+1. [Recomendacion 1]
+2. [Recomendacion 2]
+
+## 9. Bibliografia
+
+Registrar cada fuente con formato ICONTEC (ver `docs/REFERENCIAS_ICONTEC.md`).
+
+## 10. Anexos
+
+- Anexo A. [Nombre]
+- Anexo B. [Nombre]
+
+---
+
+## Notas de entrega
+
+- Si el entregable final es academico, exportar a `DOCX/PDF` y aplicar el formato institucional solicitado por la facultad.
+- Para citas y referencias usar `NTC 5613` y `NTC 4490`.

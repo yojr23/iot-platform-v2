@@ -3,12 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
-use App\Models\Alert;
-use App\Models\SensorType;
-use App\Models\SensorReading; // Importar SensorReading
-use App\Models\SystemSetting;
+use App\Models\Sensor;
 use App\Services\DashboardMetricsService;
-use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
@@ -25,15 +21,13 @@ class DashboardController extends Controller
         $devices = $this->metrics->getDevicesForSelection();
         $sensorTypes = $this->metrics->getSensorTypes();
         $sensors = $this->metrics->getSensors();
-        $alertSoundEnabled = (bool) SystemSetting::get('alert_sound_enabled', true);
 
         return view('dashboard', compact(
             'summary',
             'activeAlertsList',
             'devices',
             'sensorTypes',
-            'sensors',
-            'alertSoundEnabled'
+            'sensors'
         ));
     }
     
@@ -44,7 +38,7 @@ class DashboardController extends Controller
 
     public function getSensorReadings($sensorId)
     {
-        $sensor = \App\Models\Sensor::findOrFail($sensorId);
+        $sensor = Sensor::findOrFail($sensorId);
         $readings = $sensor->readings()
             ->where('reading_time', '<=', now())
             ->orderBy('reading_time', 'desc')

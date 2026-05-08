@@ -1,342 +1,215 @@
-# Documentacion integral - IoT Platform v2
+# Documentacion Tecnica Formal - IoT Platform v2
 
-Documento tecnico y funcional del estado real del sistema.
-Fecha de verificacion en codigo: 2026-04-26.
+Autor: Equipo de desarrollo IoT Platform v2  
+Institucion: Universidad Autonoma de Bucaramanga (UNAB)  
+Ciudad: Bucaramanga  
+Ano: 2026  
+Fecha de verificacion de codigo: 2026-05-08
 
-## 1. Objetivo del sistema
+## Tabla de contenido
 
-IoT Platform v2 permite operar un entorno IoT desde web y API:
+1. Introduccion
+2. Objetivos
+3. Alcance
+4. Marco normativo y metodologico
+5. Arquitectura del sistema
+6. Flujo operativo y API
+7. Seguridad y controles
+8. Calidad y pruebas
+9. Riesgos y limitaciones
+10. Conclusiones
+11. Bibliografia
+12. Anexos
 
-- Registrar dispositivos, sensores, tipos y laboratorios.
-- Ingerir lecturas de sensores via API.
-- Evaluar reglas de umbral para generar alertas.
-- Visualizar estado en dashboard en tiempo real.
-- Enviar correo para alertas de severidad `danger`.
+## 1. Introduccion
 
-## 2. Alcance actual
+IoT Platform v2 es una plataforma para gestion de dispositivos y sensores IoT, ingesta de telemetria, evaluacion de reglas de alerta y visualizacion operativa en tiempo real. El proyecto integra backend Laravel, interfaz web y simulador Python para emular trafico de dispositivos.
 
-### 2.1 Incluido
+Esta version del documento fue normalizada para evaluacion academica y posible uso como base de articulo cientifico, con alineacion a lineamientos ICONTEC e ISO.
+
+## 2. Objetivos
+
+### 2.1 Objetivo general
+
+Documentar el estado tecnico real del sistema IoT Platform v2 con trazabilidad de arquitectura, seguridad, calidad y cumplimiento normativo.
+
+### 2.2 Objetivos especificos
+
+1. Describir alcance funcional y limites actuales.
+2. Registrar arquitectura y flujo operativo extremo a extremo.
+3. Evidenciar controles de seguridad implementados.
+4. Relacionar practicas del repositorio con normas ICONTEC e ISO.
+5. Consolidar base documental verificable para revision cientifica.
+
+## 3. Alcance
+
+### 3.1 Incluido
 
 - Aplicacion Laravel 12 con UI Blade.
-- API autenticada con Sanctum.
-- Superficie IoT key-based para simuladores/dispositivos.
-- Control de permisos con `is_admin` + middleware `admin`.
-- Logging estructurado en API y simulador.
-- Rate limiting por tipo de operacion.
-- Pruebas unitarias/feature enfocadas en reglas, seguridad y regresiones.
+- API protegida por Sanctum y rutas IoT con API key.
+- Pipeline de alertas con observers y eventos.
+- Simulador `script_datos.py` para carga de lecturas.
+- Suite de pruebas en `tests/` y `tests_python/`.
 
-### 2.2 Fuera de alcance (actual)
+### 3.2 Excluido
 
-- Multi-tenant.
-- Integracion nativa con MQTT/AMQP.
-- Motor de analitica predictiva.
-- Notificaciones SMS/WhatsApp/Push.
+- Certificacion formal ISO por organismo acreditado.
+- Integracion nativa MQTT/AMQP.
+- Analitica predictiva avanzada.
+- Modelo multi-tenant.
 
-## 3. Usuarios y permisos
+## 4. Marco normativo y metodologico
 
-### 3.1 Usuario estandar
+### 4.1 Marco ICONTEC
 
-- Acceso al dashboard y modulos de consulta autenticados.
-- No puede ejecutar operaciones administrativas.
+El documento usa estructura formal y criterio de referencias conforme a:
 
-### 3.2 Administrador
+- NTC 1486 (presentacion de trabajos).
+- NTC 5613 (referencias bibliograficas).
+- NTC 4490 (fuentes electronicas).
 
-- Gestion completa de catalogos y configuracion.
-- Gestion de reglas de alerta.
-- Cambio de roles de usuario.
-- Acceso a endpoints API protegidos por middleware `admin`.
+### 4.2 Marco ISO de alineacion tecnica
 
-## 4. Arquitectura
+Se declara alineacion con:
 
-### 4.1 Capas
+- ISO 9001:2015 (gestion de calidad).
+- ISO/IEC 27001:2022 (seguridad de la informacion).
+- ISO/IEC 25010:2023 (calidad de producto software).
+- ISO/IEC/IEEE 29148:2018 (ingenieria de requisitos).
+- ISO/IEC/IEEE 12207:2017 (procesos de ciclo de vida).
 
-- Presentacion: Blade + JS dashboard.
-- Aplicacion: controllers web/API + middleware.
-- Dominio: modelos, servicios, observers, eventos.
-- Infraestructura: BD, cache, broadcast, SMTP.
+La trazabilidad detallada se mantiene en `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`.
 
-### 4.2 Componentes
+### 4.3 Metodologia de verificacion
 
-- Backend Laravel.
-- API REST.
-- Simulador Python (`script_datos.py`).
-- Base de datos relacional.
-- Broadcast realtime.
-- Correo SMTP configurable.
+1. Lectura de rutas, controladores, servicios, middleware y observadores.
+2. Revision de configuracion, scripts y pruebas automatizadas.
+3. Contraste entre comportamiento implementado y documentacion.
+4. Consolidacion de evidencias con rutas de archivo.
 
-### 4.3 Diagrama de componentes
+## 5. Arquitectura del sistema
+
+### 5.1 Capas
+
+- Presentacion: Blade + JavaScript.
+- Aplicacion: controladores web/API y middleware.
+- Dominio: modelos, servicios, observers y eventos.
+- Infraestructura: base de datos, cache, broadcast y SMTP.
+
+### 5.2 Componentes principales
+
+- Backend Laravel (`app/`, `routes/`).
+- Persistencia relacional (`database/`).
+- Simulador IoT (`script_datos.py`).
+- Vistas dashboard (`resources/views/dashboard`).
+
+### 5.3 Diagrama de componentes
 
 ```mermaid
 flowchart LR
-    Web["Usuario Web"] --> UI["Laravel UI"]
+    Web["Usuario web"] --> UI["Laravel UI"]
     Sim["script_datos.py"] --> Api["API Laravel"]
-    Api --> Db[(Base de datos)]
-    Db --> UI
-    Api --> Obs["Observers y eventos"]
+    Api --> Db[("Base de datos")]
+    Api --> Obs["Observers/Eventos"]
     Obs --> Br["Broadcast realtime"]
-    Br --> UI
     Obs --> Mail["SMTP"]
+    Br --> UI
 ```
 
-## 5. Flujo operativo end-to-end
+## 6. Flujo operativo y API
 
-1. Se inicia backend con `php artisan serve`.
-2. El simulador obtiene sensores con `GET /api/iot/sensors` enviando `X-Device-Key`.
-3. El simulador envia lecturas periodicas a `POST /api/sensors/{sensor}/readings`.
-4. API valida payload, API key y estado del dispositivo.
-5. Se persiste `sensor_readings`.
-6. Se dispara evento `NewSensorReading`.
-7. `SensorReadingObserver` evalua reglas y crea alertas.
-8. `AlertObserver` emite `NewAlertTriggered` y envia email si corresponde.
-9. Dashboard consume datos y alertas actualizadas.
+### 6.1 Flujo operativo
 
-### 5.1 Diagrama de secuencia
+1. Inicio de backend con `php artisan serve`.
+2. Descubrimiento de sensores por `GET /api/iot/sensors`.
+3. Ingesta por `POST /api/sensors/{sensor}/readings`.
+4. Persistencia de lecturas y evaluacion de reglas.
+5. Emision de alertas, eventos y notificacion de correo.
 
-```mermaid
-sequenceDiagram
-    participant Sim as script_datos.py
-    participant Api as SensorApiController
-    participant Db as DB
-    participant Obs as Observers
-    participant Ui as Dashboard
-    participant Mail as SMTP
+### 6.2 Control de acceso
 
-    Sim->>Api: GET /api/iot/sensors (X-Device-Key)
-    Api-->>Sim: sensores
+- Superficie IoT: API key.
+- Superficie privada: `auth:sanctum`.
+- Operaciones administrativas: middleware `admin`.
+- Rate limits por tipo de operacion (`api-read`, `api-write`, `auth-login`).
 
-    loop cada ciclo
-        Sim->>Api: POST /api/sensors/{id}/readings
-        Api->>Db: insert sensor_reading
-        Api-->>Sim: 201 Created
-        Api->>Obs: evento lectura
-        Obs->>Db: evalua reglas
-        Obs-->>Ui: broadcast
-        Obs->>Mail: notificacion danger
-    end
-```
+### 6.3 Endpoints representativos
 
-## 6. API real y control de acceso
-
-### 6.1 Rutas IoT (sin sesion, con API key)
-
+- `POST /api/auth/login`
+- `GET /api/auth/me`
 - `GET /api/iot/sensors`
 - `POST /api/sensors/{sensor}/readings`
-
-### 6.2 Rutas autenticadas (`auth:sanctum`)
-
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
-- `GET /api/devices`
-- `GET /api/devices/{device}`
-- `POST /api/devices/{device}/status` (`admin`)
-- `GET /api/sensors`
-- `GET /api/sensors/{sensor}/readings`
-- `GET /api/sensors/{sensor}/latest-readings`
 - `GET /api/alerts/active`
-- `GET /api/devices/{device}/sensor-list`
-- `GET /api/devices/{device}/sensors`
-- `GET /api/sensors/all/readings`
-- `GET/POST/DELETE /api/alert-rules/*` (`admin`)
 
-### 6.3 Rutas de autenticacion API
-
-- `POST /api/auth/login` (throttle `auth-login`)
-
-### 6.4 Diagrama de seguridad por superficie
-
-```mermaid
-flowchart TB
-    subgraph IoT["IoT ingress"]
-        I1["GET /api/iot/sensors"]
-        I2["POST /api/sensors/{sensor}/readings"]
-        K["API key"] --> I1
-        K --> I2
-    end
-
-    subgraph Private["Private API"]
-        P1["/api/devices"]
-        P2["/api/sensors"]
-        P3["/api/alerts/active"]
-        P4["/api/alert-rules/*"]
-        S["auth:sanctum"] --> P1
-        S --> P2
-        S --> P3
-        S --> P4
-        A["admin"] --> P4
-    end
-
-    T1["throttle:api-read"] --> IoT
-    T2["throttle:api-write"] --> IoT
-    T3["throttle:auth-login"] --> Private
-```
-
-## 7. Seguridad (estado real del codigo)
+## 7. Seguridad y controles
 
 ### 7.1 Controles implementados
 
-- Autenticacion API con Sanctum en `AuthApiController`.
-- Ability de token segun rol: admin `*`, usuario `read`.
-- Middleware `admin` para endpoints sensibles.
-- Validacion fuerte de payloads en `SensorApiController` y `DeviceApiController`.
-- Rechazo de valores no finitos y formatos inesperados.
-- Verificacion de `status` e `is_active` antes de aceptar telemetria.
-- Actualizacion consistente de estado de dispositivo en API (`status` + `is_active`).
-- Rate limits configurados en `AppServiceProvider`.
-- Limite `api-read`: 120 req/min.
-- Limite `api-write`: 60 req/min.
-- Limite `auth-login`: 5 req/min por email+ip.
-- Logging global de excepciones API en `bootstrap/app.php`.
-- Proteccion anti elevacion de privilegios en `User`.
-- `is_admin` no es mass assignable.
-- Cambios de `is_admin` requieren actor admin autenticado.
+- Validacion de payload y tipos.
+- Verificacion de estado de dispositivo antes de aceptar telemetria.
+- Control de privilegios por rol y middleware.
+- Registro estructurado de eventos y excepciones.
+- Restriccion de tasa por ventana temporal.
 
-### 7.2 Evidencia en pruebas
+### 7.2 Evidencia de pruebas de seguridad
 
-- `tests/Feature/IotApiKeyAccessTest.php`
-- `tests/Feature/ApiAuthTokenTest.php`
-- `tests/Feature/SecurityRateLimitTest.php`
 - `tests/Feature/SecurityAccessControlTest.php`
+- `tests/Feature/SecurityRateLimitTest.php`
 - `tests/Feature/SecuritySqlInjectionTest.php`
 - `tests/Feature/SecurityPrivilegeEscalationTest.php`
-- `tests/Feature/ApiRoutingRegressionTest.php`
-- `tests/Feature/DeviceApiStatusUpdateTest.php`
 
-### 7.3 Riesgos y gaps abiertos
+### 7.3 Brechas vigentes
 
-- `database/seeders/SystemSettingsSeeder.php` contiene credenciales SMTP reales.
-- `script_datos.py` mantiene `DEFAULT_API_KEY` vacia como fallback; en produccion debe eliminarse fallback y fallar temprano.
-- Los artefactos `docs/api/openapi.yaml` y Postman pueden quedar desfasados si no se regeneran junto a cambios de rutas.
-- Para ambientes productivos, falta documentar formalmente politicas de rotacion de claves, TLS obligatorio y gestion de secretos.
+- Gestion de secretos pendiente de endurecimiento para produccion.
+- Necesidad de politica formal de rotacion de llaves.
+- Reforzar sincronizacion continua de especificacion API.
 
-## 8. Observabilidad y manejo de errores
+## 8. Calidad y pruebas
 
-### 8.1 Backend
+### 8.1 Practicas de calidad
 
-- `SensorApiController`: logs `info`, `warning`, `error` para ingesta y validaciones.
-- `DeviceApiController`: logs `info`, `warning`, `error` para consultas y cambios de estado.
-- `bootstrap/app.php`: logging global de excepciones API.
-- Severidad `warning`: `ValidationException`, `BadRequestHttpException`.
-- Severidad `error`: `QueryException`.
-- Severidad `critical`: `PDOException`.
+- Formateo y consistencia de codigo con herramientas del ecosistema Laravel.
+- Pruebas funcionales y de regresion automatizadas.
+- Uso de servicios para desacoplar logica de negocio.
 
-### 8.2 Simulador
+### 8.2 Alineacion con ISO/IEC 25010
 
-`script_datos.py` registra:
+- Adecuacion funcional: endpoints y casos de uso implementados.
+- Confiabilidad: observabilidad y manejo de errores.
+- Seguridad: autenticacion, autorizacion y limitacion de peticiones.
+- Mantenibilidad: estructura por capas y modularizacion.
 
-- Inicio de simulacion y carga de sensores.
-- Errores de red (`Timeout`, `ConnectionError`).
-- Errores de formato inesperado en respuestas.
-- Rechazos API `401`, `403`, `422`, `429`.
-- Errores servidor `5xx`.
+## 9. Riesgos y limitaciones
 
-Ubicaciones:
+1. Dependencia de configuracion correcta de entorno para seguridad operativa.
+2. Posible desfase entre rutas reales y artefactos externos (OpenAPI/Postman).
+3. Falta de proceso formal de certificacion externa para normas ISO.
 
-- Laravel: `storage/logs/laravel.log`
-- Simulador: consola
+## 10. Conclusiones
 
-## 9. Guia tecnica de instalacion y uso
+1. El sistema es funcional para escenarios academicos y de laboratorio con trazabilidad tecnica suficiente.
+2. Existe base de cumplimiento documental ICONTEC e integracion de criterios ISO por alineacion.
+3. Para publicacion cientifica robusta, se recomienda anexar metricas experimentales y resultados de desempeno reproducibles.
 
-### 9.1 Requisitos
+## 11. Bibliografia
 
-- PHP 8.2+
-- Composer
-- Node.js 20+
-- npm
-- Python 3.10+
-- pip
+INSTITUTO COLOMBIANO DE NORMAS TECNICAS Y CERTIFICACION (ICONTEC). NTC 1486: documentacion, presentacion de trabajos escritos. Bogota: ICONTEC.
 
-### 9.2 Instalacion
+INSTITUTO COLOMBIANO DE NORMAS TECNICAS Y CERTIFICACION (ICONTEC). NTC 5613: referencias bibliograficas, contenido, forma y estructura. Bogota: ICONTEC.
 
-```bash
-composer install
-npm install
-cp .env.example .env
-php artisan key:generate
-php artisan migrate --seed
-```
+INSTITUTO COLOMBIANO DE NORMAS TECNICAS Y CERTIFICACION (ICONTEC). NTC 4490: referencias documentales para fuentes de informacion electronicas. Bogota: ICONTEC.
 
-### 9.3 Ejecucion
+INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO). ISO 9001:2015. Quality management systems - Requirements. Geneva: ISO, 2015.
 
-Terminal 1:
+INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INTERNATIONAL ELECTROTECHNICAL COMMISSION (IEC). ISO/IEC 27001:2022. Information security, cybersecurity and privacy protection - Information security management systems - Requirements. Geneva: ISO, 2022.
 
-```bash
-php artisan serve
-```
+INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INTERNATIONAL ELECTROTECHNICAL COMMISSION (IEC). ISO/IEC 25010:2023. Systems and software engineering - Systems and software Quality Requirements and Evaluation (SQuaRE) - Product quality model. Geneva: ISO, 2023.
 
-Terminal 2:
+INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INSTITUTE OF ELECTRICAL AND ELECTRONICS ENGINEERS (IEEE). ISO/IEC/IEEE 29148:2018. Systems and software engineering - Life cycle processes - Requirements engineering. Geneva: ISO, 2018.
 
-```bash
-pip install requests
-python script_datos.py
-```
+INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INTERNATIONAL ELECTROTECHNICAL COMMISSION (IEC); INSTITUTE OF ELECTRICAL AND ELECTRONICS ENGINEERS (IEEE). ISO/IEC/IEEE 12207:2017. Systems and software engineering - Software life cycle processes. Geneva: ISO, 2017.
 
-### 9.4 Variables de entorno criticas
+## 12. Anexos
 
-- `API_KEY`
-- `APP_URL`
-- `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
-- `BROADCAST_DRIVER`, `PUSHER_APP_KEY`, `PUSHER_APP_CLUSTER`
-- `IOT_BASE_URL`, `IOT_API_KEY`, `IOT_LOG_LEVEL`
-
-## 10. Modelo de datos
-
-Entidades principales:
-
-- `users`
-- `device_types`
-- `labs`
-- `devices`
-- `sensor_types`
-- `sensors`
-- `sensor_readings`
-- `alert_rules`
-- `alerts`
-- `device_status_logs`
-- `dashboard_preferences`
-- `system_settings`
-
-### 10.1 Diagrama ER simplificado
-
-```mermaid
-erDiagram
-    USER ||--o{ DASHBOARD_PREFERENCE : tiene
-    DEVICE_TYPE ||--o{ DEVICE : clasifica
-    LAB ||--o{ DEVICE : ubica
-    DEVICE ||--o{ SENSOR : contiene
-    SENSOR_TYPE ||--o{ SENSOR : define
-    SENSOR ||--o{ SENSOR_READING : registra
-    ALERT_RULE ||--o{ ALERT : origina
-    SENSOR_READING ||--o{ ALERT : dispara
-```
-
-## 11. Calidad, pruebas y mantenibilidad
-
-Fortalezas actuales:
-
-- Separacion por capas y responsabilidades.
-- Side effects desacoplados (observers/eventos).
-- Cobertura de seguridad y regresion en feature tests.
-- Endpoints y reglas con validaciones explicitas.
-
-Comando de pruebas:
-
-```bash
-php artisan test
-```
-
-## 12. Estructura relevante del repositorio
-
-- `app/Http/Controllers` - logica web y API.
-- `app/Models` - dominio y relaciones.
-- `app/Observers` - automatizacion de alertas y correo.
-- `app/Events` y `app/Listeners` - flujo reactivo.
-- `app/Providers/AppServiceProvider.php` - rate limiting.
-- `bootstrap/app.php` - middleware y excepciones.
-- `routes/web.php` y `routes/api.php` - superficie HTTP.
-- `database/migrations` y `database/seeders` - esquema y datos base.
-- `tests` - pruebas automatizadas.
-- `script_datos.py` - simulador IoT.
-
-## 13. Resumen ejecutivo
-
-El sistema esta funcional para operacion IoT interna y demos tecnicas: ingesta, monitoreo, alertas y notificaciones. El nivel de seguridad es bueno para entorno controlado (Sanctum, middleware admin, rate limit, validacion y logs), pero para un despliegue productivo formal deben cerrarse gaps de secretos, documentacion API sincronizada y politicas operativas de seguridad.
+- Anexo A. Matriz de trazabilidad normativa: `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`.
+- Anexo B. Especificacion API: `docs/api/openapi.yaml`.

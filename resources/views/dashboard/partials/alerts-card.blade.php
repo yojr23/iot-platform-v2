@@ -1,5 +1,5 @@
-<div class="col-md-4">
-    <div class="card alerts-card h-100" id="alertsCardContainer">
+<div class="col-md-4 d-flex">
+    <div class="card alerts-card h-100 w-100" id="alertsCardContainer">
         <div class="card-header d-flex justify-content-between align-items-center alerts-toggle"
              role="button"
              data-bs-toggle="collapse"
@@ -8,13 +8,13 @@
              aria-controls="alertsCollapse"
              data-tooltip="true"
              title="Haz clic para expandir o colapsar las alertas"
-             style="cursor: pointer; flex-shrink: 0;">
+             style="cursor: pointer;">
             <h5 id="alertsHeader" class="mb-0">Últimas Alertas ({{ $summary['activeAlerts'] }})</h5>
             <i class="fas fa-chevron-up" id="alertsChevron"></i>
         </div>
         <div id="alertsCollapse" class="collapse show">
-            <div class="card-body d-flex flex-column" style="flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 0;">
-                <div id="alertsList" class="alerts-scroll flex-grow-1" style="overflow-y: auto; overflow-x: hidden;">
+            <div class="card-body d-flex flex-column">
+                <div id="alertsList" class="alerts-scroll flex-grow-1">
                     @if(isset($activeAlertsList) && !$activeAlertsList->isEmpty())
                         <div class="list-group list-group-flush">
                             @foreach($activeAlertsList as $alert)

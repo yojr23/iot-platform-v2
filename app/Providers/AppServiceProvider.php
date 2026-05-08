@@ -24,17 +24,24 @@ class AppServiceProvider extends ServiceProvider
     {
         \Illuminate\Pagination\Paginator::defaultView('pagination::custom');
         \Illuminate\Pagination\Paginator::defaultSimpleView('pagination::custom');
-
         // Política de rate limit para API:
         // - Lectura: más permisivo
         // - Escritura: más estricto por IP/usuario + sensor objetivo
         RateLimiter::for('api-read', function (Request $request) {
+            if ($this->app->environment('local')) {
+                return Limit::none();
+            }
+
             $identifier = $request->user()?->id ? 'user:'.$request->user()->id : 'ip:'.$request->ip();
 
             return Limit::perMinute(120)->by($identifier);
         });
 
         RateLimiter::for('api-write', function (Request $request) {
+            if ($this->app->environment('local')) {
+                return Limit::none();
+            }
+
             $identifier = $request->user()?->id ? 'user:'.$request->user()->id : 'ip:'.$request->ip();
             $sensor = $request->route('sensor');
             $sensorId = is_object($sensor) && method_exists($sensor, 'getKey')
@@ -47,6 +54,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Login de API más estricto para reducir credential stuffing.
         RateLimiter::for('auth-login', function (Request $request) {
+            if ($this->app->environment('local')) {
+                return Limit::none();
+            }
+
             $email = strtolower((string) $request->input('email'));
 
             return Limit::perMinute(5)->by('email:'.$email.'|ip:'.$request->ip());

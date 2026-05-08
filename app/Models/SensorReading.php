@@ -1,6 +1,8 @@
 <?php
 
 namespace App\Models;
+
+use App\Services\Alerts\AlertService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -29,59 +31,11 @@ class SensorReading extends Model
      */
     public function triggeredAlertRules(): Collection
     {
-        $sensor = $this->sensor()->with(['device.lab'])->first();
-
-        if (!$sensor) {
-            return collect();
-        }
-
-        $alertRules = AlertRule::query()
-            ->where('sensor_type_id', $sensor->sensor_type_id)
-            ->where(function ($query) {
-                $query->whereNotNull('min_value')
-                    ->orWhereNotNull('max_value');
-            })
-            ->where(function ($query) use ($sensor) {
-                $query->whereNull('device_id')
-                    ->orWhere('device_id', $sensor->device_id);
-            })
-            ->where(function ($query) use ($sensor) {
-                $query->whereNull('sensor_id')
-                    ->orWhere('sensor_id', $sensor->id);
-            })
-            ->get();
-
-        return $alertRules->filter(function ($alertRule) {
-            $minDefined = is_numeric($alertRule->min_value);
-            $maxDefined = is_numeric($alertRule->max_value);
-
-            $belowMin = $minDefined && $this->value <= $alertRule->min_value;
-            $aboveMax = $maxDefined && $this->value >= $alertRule->max_value;
-
-            return $belowMin || $aboveMax;
-        })->values();
+        return app(AlertService::class)->triggeredRulesForReading($this);
     }
 
     public function checkForAlert(): Collection
     {
-        $triggeredRules = $this->triggeredAlertRules();
-
-        foreach ($triggeredRules as $alertRule) {
-            $alreadyExists = Alert::where('sensor_reading_id', $this->id)
-                ->where('alert_rule_id', $alertRule->id)
-                ->exists();
-
-            if ($alreadyExists) {
-                continue;
-            }
-
-            Alert::create([
-                'sensor_reading_id' => $this->id,
-                'alert_rule_id' => $alertRule->id,
-                'resolved' => false,
-            ]);
-        }
-
-        return $triggeredRules;
+        return app(AlertService::class)->createAlertsForReading($this);
     }
 }

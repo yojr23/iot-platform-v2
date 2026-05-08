@@ -3,19 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Alert;
-use Illuminate\Http\Request;
-
 class AlertController extends Controller
 {
     public function index()
     {
-        $activeAlerts = Alert::with(['sensorReading.sensor.device.lab', 'alertRule'])
-            ->where('resolved', false)
+        $activeAlerts = Alert::withContext()
+            ->active()
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        $alertHistory = Alert::with(['sensorReading.sensor.device.lab', 'alertRule'])
-            ->where('resolved', true)
+        $alertHistory = Alert::withContext()
+            ->resolved()
             ->orderByDesc('resolved_at')
             ->paginate(20);
 
@@ -34,8 +32,8 @@ class AlertController extends Controller
 
     public function unresolved()
     {
-        $alerts = Alert::with(['sensorReading.sensor.device.lab', 'alertRule'])
-            ->where('resolved', false)
+        $alerts = Alert::withContext()
+            ->active()
             ->orderBy('created_at', 'desc')
             ->paginate(20);
             
@@ -44,13 +42,16 @@ class AlertController extends Controller
 
     public function history()
     {
-        $alertHistory = Alert::where('resolved', true)->orderBy('updated_at', 'desc')->paginate(20);
+        $alertHistory = Alert::withContext()
+            ->resolved()
+            ->orderBy('updated_at', 'desc')
+            ->paginate(20);
         return view('alerts.history', compact('alertHistory'));
     }
 
     public function markAllAsResolved()
     {
-        Alert::where('resolved', false)->update([
+        Alert::active()->update([
             'resolved' => true,
             'resolved_at' => now()
         ]);

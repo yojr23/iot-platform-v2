@@ -25,6 +25,25 @@ class Alert extends Model
         return $this->belongsTo(AlertRule::class);
     }
 
+    public function scopeWithContext($query)
+    {
+        return $query->with([
+            'sensorReading.sensor.sensorType',
+            'sensorReading.sensor.device.lab',
+            'alertRule',
+        ]);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('resolved', false);
+    }
+
+    public function scopeResolved($query)
+    {
+        return $query->where('resolved', true);
+    }
+
     public static function sendDangerAlertEmail($alertDetails)
     {
         try {

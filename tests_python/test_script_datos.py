@@ -6,6 +6,9 @@ import script_datos
 
 
 class ScriptDatosTest(unittest.TestCase):
+    def setUp(self):
+        script_datos.SENSOR_LAST_VALUES.clear()
+
     def test_get_api_key_prefers_environment_variables(self):
         with patch.dict('os.environ', {'IOT_API_KEY': 'iot-key', 'API_KEY': 'legacy-key'}, clear=False):
             self.assertEqual('iot-key', script_datos.get_api_key())
@@ -21,21 +24,23 @@ class ScriptDatosTest(unittest.TestCase):
         self.assertEqual(1, ctx.exception.code)
 
     def test_simulate_value_returns_in_range_when_random_branch_is_normal(self):
-        sensor = {'sensor_type': {'min_range': 10, 'max_range': 20}}
+        sensor = {'id': 11, 'sensor_type': {'min_range': 10, 'max_range': 20}}
+        script_datos.SENSOR_LAST_VALUES[sensor['id']] = 15.0
 
-        with patch('script_datos.random.random', return_value=0.9), patch('script_datos.random.uniform', return_value=15.5) as uniform_mock:
+        with patch('script_datos.random.random', return_value=0.9), patch('script_datos.random.uniform', return_value=0.2) as uniform_mock:
             value = script_datos.simulate_value(sensor)
 
-        self.assertEqual(15.5, value)
-        uniform_mock.assert_called_once_with(10.1, 19.9)
+        self.assertEqual(15.2, value)
+        uniform_mock.assert_called_once_with(-0.2, 0.2)
 
     def test_simulate_value_can_generate_below_minimum_for_alerts(self):
-        sensor = {'sensor_type': {'min_range': 10, 'max_range': 20}}
+        sensor = {'id': 12, 'sensor_type': {'min_range': 10, 'max_range': 20}}
+        script_datos.SENSOR_LAST_VALUES[sensor['id']] = 15.0
 
-        with patch('script_datos.random.random', side_effect=[0.05, 0.3]), patch('script_datos.random.uniform', return_value=2.0):
+        with patch('script_datos.random.random', side_effect=[0.0, 0.3]), patch('script_datos.random.uniform', return_value=1.0):
             value = script_datos.simulate_value(sensor)
 
-        self.assertEqual(8.0, value)
+        self.assertEqual(9.0, value)
 
     def test_send_sensor_data_posts_expected_payload(self):
         sensor = {
