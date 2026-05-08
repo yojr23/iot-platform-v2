@@ -19,7 +19,7 @@ Implementado hoy en el repo:
 El repositorio fue normalizado para evaluacion academica con enfoque de articulo cientifico, bajo:
 
 - ICONTEC: NTC 1486, NTC 5613 y NTC 4490.
-- ISO: ISO 9001:2015, ISO/IEC 27001:2022, ISO/IEC 25010:2023, ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017.
+- ISO: ISO 9001:2015, ISO/IEC 27001:2022, ISO/IEC 25010:2023, ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2026.
 
 Documentos oficiales del marco:
 

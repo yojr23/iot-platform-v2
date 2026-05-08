@@ -98,7 +98,7 @@ Mapeo sintetico:
 - ISO/IEC 27001: controles de acceso y seguridad operativa basica.
 - ISO/IEC 25010: enfoque en adecuacion funcional, seguridad y mantenibilidad.
 - ISO/IEC/IEEE 29148: documentacion de objetivos, alcance y requisitos operativos.
-- ISO/IEC/IEEE 12207: practicas de ciclo de vida soportadas por estructura del proyecto, pruebas y mantenimiento.
+- ISO/IEC/IEEE 12207:2026: practicas de ciclo de vida soportadas por estructura del proyecto, pruebas y mantenimiento.
 
 La trazabilidad detallada se registra en `docs/MATRIZ_TRAZABILIDAD_ICONTEC_ISO.md`.
 
@@ -142,4 +142,4 @@ INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INTERNATIONAL ELECTROTECHN
 
 INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INSTITUTE OF ELECTRICAL AND ELECTRONICS ENGINEERS (IEEE). ISO/IEC/IEEE 29148:2018. Systems and software engineering - Life cycle processes - Requirements engineering. Geneva: ISO, 2018.
 
-INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INTERNATIONAL ELECTROTECHNICAL COMMISSION (IEC); INSTITUTE OF ELECTRICAL AND ELECTRONICS ENGINEERS (IEEE). ISO/IEC/IEEE 12207:2017. Systems and software engineering - Software life cycle processes. Geneva: ISO, 2017.
+INTERNATIONAL ORGANIZATION FOR STANDARDIZATION (ISO); INTERNATIONAL ELECTROTECHNICAL COMMISSION (IEC); INSTITUTE OF ELECTRICAL AND ELECTRONICS ENGINEERS (IEEE). ISO/IEC/IEEE 12207:2026. Systems and software engineering - Software life cycle processes. Geneva: ISO, 2026.

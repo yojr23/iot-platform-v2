@@ -31,8 +31,8 @@ No aplica a formato de codigo fuente ni a certificacion oficial de terceros.
 - `ISO 9001:2015` (vigente al 2026-05-08): sistema de gestion de calidad.
 - `ISO/IEC 27001:2022`: sistema de gestion de seguridad de la informacion.
 - `ISO/IEC 25010:2023`: modelo de calidad de producto software.
-- `ISO/IEC/IEEE 29148:2018` (confirmada en 2024): ingenieria de requisitos.
-- `ISO/IEC/IEEE 12207:2017` (vigente y en proceso de reemplazo por edicion 2026): procesos del ciclo de vida de software.
+- `ISO/IEC/IEEE 29148:2018`: ingenieria de requisitos.
+- `ISO/IEC/IEEE 12207:2026`: procesos del ciclo de vida de software.
 
 Nota de rigor: este repositorio declara alineacion tecnica y documental con las normas listadas. No declara certificacion ISO emitida por ente acreditado.
 

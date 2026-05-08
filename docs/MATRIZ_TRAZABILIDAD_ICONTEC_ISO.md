@@ -19,7 +19,7 @@ Estado global: alineacion documental y tecnica (sin certificacion externa).
 | ISO/IEC 27001:2022 | Control de acceso y proteccion de informacion | `routes/api.php`, `app/Http/Middleware/EnsureUserIsAdmin.php`, pruebas de seguridad en `tests/Feature/` | Alineado |
 | ISO/IEC 25010:2023 | Calidad de producto: adecuacion funcional, seguridad, mantenibilidad | `DOCUMENTACION_PROYECTO.md#8`, arquitectura en `README.md` y `docs/` | Alineado |
 | ISO/IEC/IEEE 29148:2018 | Elicitacion y documentacion de requisitos | secciones de objetivos/alcance en `DOCUMENTACION_PROYECTO.md` y `ANALISIS_PROYECTO.md` | Alineado |
-| ISO/IEC/IEEE 12207:2017 | Procesos de ciclo de vida, pruebas y mantenimiento | estructura del proyecto, `tests/`, control de cambios en git | Alineado |
+| ISO/IEC/IEEE 12207:2026 | Procesos de ciclo de vida, pruebas y mantenimiento | estructura del proyecto, `tests/`, control de cambios en git | Alineado |
 
 ## 3. Brechas abiertas para madurez cientifica
 

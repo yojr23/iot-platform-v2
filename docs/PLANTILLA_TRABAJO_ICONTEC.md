@@ -14,12 +14,13 @@
 2. Objetivos  
 3. Alcance  
 4. Marco teorico / normativo  
-5. Desarrollo  
-6. Resultados  
-7. Conclusiones  
-8. Recomendaciones  
-9. Bibliografia  
-10. Anexos
+5. Cumplimiento normativo (ICONTEC e ISO)  
+6. Desarrollo  
+7. Resultados  
+8. Conclusiones  
+9. Recomendaciones  
+10. Bibliografia  
+11. Anexos
 
 ---
 
@@ -47,40 +48,44 @@
 
 [Conceptos tecnicos, normas aplicables, criterios de evaluacion]
 
-## 5. Desarrollo
+## 5. Cumplimiento normativo (ICONTEC e ISO)
 
-### 5.1 Metodologia
+[Matriz de trazabilidad de criterios a evidencias]
+
+## 6. Desarrollo
+
+### 6.1 Metodologia
 
 [Metodo de trabajo]
 
-### 5.2 Implementacion
+### 6.2 Implementacion
 
 [Descripcion de implementacion, arquitectura, decisiones]
 
-### 5.3 Validacion
+### 6.3 Validacion
 
 [Pruebas, verificaciones y evidencia]
 
-## 6. Resultados
+## 7. Resultados
 
 [Resultados medibles, metricas, evidencia]
 
-## 7. Conclusiones
+## 8. Conclusiones
 
 1. [Conclusion 1]
 2. [Conclusion 2]
 3. [Conclusion 3]
 
-## 8. Recomendaciones
+## 9. Recomendaciones
 
 1. [Recomendacion 1]
 2. [Recomendacion 2]
 
-## 9. Bibliografia
+## 10. Bibliografia
 
 Registrar cada fuente con formato ICONTEC (ver `docs/REFERENCIAS_ICONTEC.md`).
 
-## 10. Anexos
+## 11. Anexos
 
 - Anexo A. [Nombre]
 - Anexo B. [Nombre]
@@ -91,3 +96,4 @@ Registrar cada fuente con formato ICONTEC (ver `docs/REFERENCIAS_ICONTEC.md`).
 
 - Si el entregable final es academico, exportar a `DOCX/PDF` y aplicar el formato institucional solicitado por la facultad.
 - Para citas y referencias usar `NTC 5613` y `NTC 4490`.
+- Para afirmaciones de calidad o seguridad, indicar si el estado es `alineado` o `certificado` respecto a ISO.
