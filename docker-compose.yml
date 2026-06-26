@@ -1,0 +1,153 @@
+services:
+  db:
+    image: mysql:8.0
+    command:
+      - --log-bin-trust-function-creators=1
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-iot_platform}
+      MYSQL_USER: ${DB_USERNAME:-iot_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-iot_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD:-root_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - iot-platform
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - iot-platform
+
+  back:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    working_dir: /var/www/back
+    environment:
+      APP_URL: http://localhost:${BACK_PORT:-8000}
+      FRONT_URL: http://localhost:${FRONT_PORT:-5173}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-iot_platform}
+      DB_USERNAME: ${DB_USERNAME:-iot_user}
+      DB_PASSWORD: ${DB_PASSWORD:-iot_password}
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: ${CACHE_STORE:-database}
+      SESSION_DRIVER: ${SESSION_DRIVER:-database}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      INGESTION_SERVICE_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
+      INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
+      CORS_ALLOWED_ORIGINS: http://localhost:${FRONT_PORT:-5173},http://127.0.0.1:${FRONT_PORT:-5173}
+      SANCTUM_STATEFUL_DOMAINS: localhost:${FRONT_PORT:-5173},127.0.0.1:${FRONT_PORT:-5173},localhost:${BACK_PORT:-8000},127.0.0.1:${BACK_PORT:-8000}
+    ports:
+      - "${BACK_PORT:-8000}:8000"
+    volumes:
+      - ./back:/var/www/back
+      - back_vendor:/var/www/back/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - iot-platform
+
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    working_dir: /app
+    environment:
+      VITE_API_BASE_URL: http://localhost:${BACK_PORT:-8000}/api
+      VITE_API_PROXY_TARGET: http://back:8000
+      VITE_PUSHER_APP_KEY: ${VITE_PUSHER_APP_KEY:-}
+      VITE_PUSHER_APP_CLUSTER: ${VITE_PUSHER_APP_CLUSTER:-}
+      VITE_PUSHER_FORCE_TLS: ${VITE_PUSHER_FORCE_TLS:-true}
+      VITE_PUSHER_HOST: ${VITE_PUSHER_HOST:-}
+      VITE_PUSHER_PORT: ${VITE_PUSHER_PORT:-}
+      VITE_PUSHER_SCHEME: ${VITE_PUSHER_SCHEME:-https}
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${FRONT_PORT:-5173}:5173"
+    volumes:
+      - ./front:/app
+      - front_node_modules:/app/node_modules
+    depends_on:
+      back:
+        condition: service_healthy
+    networks:
+      - iot-platform
+
+  queue:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    working_dir: /var/www/back
+    environment:
+      APP_URL: http://localhost:${BACK_PORT:-8000}
+      FRONT_URL: http://localhost:${FRONT_PORT:-5173}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-iot_platform}
+      DB_USERNAME: ${DB_USERNAME:-iot_user}
+      DB_PASSWORD: ${DB_PASSWORD:-iot_password}
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: ${CACHE_STORE:-database}
+      SESSION_DRIVER: ${SESSION_DRIVER:-database}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      INGESTION_SERVICE_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
+      INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
+    command: php artisan queue:work --verbose --tries=3 --timeout=90
+    volumes:
+      - ./back:/var/www/back
+      - back_vendor:/var/www/back/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_healthy
+    profiles:
+      - queue
+    networks:
+      - iot-platform
+
+volumes:
+  db_data:
+  redis_data:
+  back_vendor:
+  front_node_modules:
+
+networks:
+  iot-platform:
+    driver: bridge

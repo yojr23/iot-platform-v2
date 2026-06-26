@@ -1,0 +1,12 @@
+.git
+.gitignore
+.DS_Store
+**/.DS_Store
+**/__pycache__
+back/vendor
+back/node_modules
+back/storage/logs/*.log
+back/.env
+front/node_modules
+front/dist
+front/.env

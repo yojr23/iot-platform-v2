@@ -42,14 +42,18 @@ class ScriptDatosTest(unittest.TestCase):
 
         self.assertEqual(9.0, value)
 
-    def test_send_sensor_data_posts_expected_payload(self):
+    def test_send_sensor_data_publishes_expected_mqtt_payload(self):
         sensor = {
             'id': 7,
-            'sensor_type': {'name': 'Temperatura', 'unit': 'C'}
+            'device_id': 3,
+            'device': {
+                'serial_number': 'LAB_POSTGRADO_NODO_01',
+                'lab': {'name': 'Laboratorio Posgrado Quimica - UNAB'},
+            },
+            'sensor_type': {'name': 'Temperatura', 'unit': 'C'},
         }
 
-        fake_response = Mock(status_code=201)
-        post_mock = Mock(return_value=fake_response)
+        publish_mock = Mock()
 
         fixed_now = datetime(2026, 4, 26, 12, 0, 0)
 
@@ -58,16 +62,16 @@ class ScriptDatosTest(unittest.TestCase):
                 sensor,
                 api_key='api-key-123',
                 now_fn=lambda: fixed_now,
-                post_fn=post_mock,
+                publish_fn=publish_mock,
             )
 
-        post_mock.assert_called_once()
-        args, kwargs = post_mock.call_args
-        self.assertEqual('http://127.0.0.1:8000/api/sensors/7/readings', args[0])
-        self.assertEqual(33.25, kwargs['json']['value'])
-        self.assertEqual('2026-04-26 12:00:00', kwargs['json']['reading_time'])
-        self.assertEqual('api-key-123', kwargs['json']['api_key'])
-        self.assertEqual(5, kwargs['timeout'])
+        publish_mock.assert_called_once()
+        args, kwargs = publish_mock.call_args
+        self.assertEqual('iot/lab_postgrado_nodo_01/readings', args[0])
+        self.assertIn('"sensors": {"temperature": {"value": 33.25', kwargs['payload'])
+        self.assertEqual(script_datos.MQTT_QOS, kwargs['qos'])
+        self.assertEqual(script_datos.MQTT_HOST, kwargs['hostname'])
+        self.assertEqual(script_datos.MQTT_PORT, kwargs['port'])
 
 
 if __name__ == '__main__':

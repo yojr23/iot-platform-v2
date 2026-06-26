@@ -1,0 +1,266 @@
+# Refactor Checklist
+
+Estados permitidos:
+- [ ] Pendiente
+- [~] En progreso
+- [x] Terminado
+- [!] Bloqueado
+- [-] Omitido intencionalmente
+
+## Fase 0 - Auditoria ejecutable y contrato real
+- [x] Leer /memory completo
+- [x] Ejecutar php artisan route:list y guardar resumen relevante
+- [x] Auditar routes/web.php
+- [x] Auditar routes/api.php
+- [x] Listar vistas Blade
+- [x] Mapear vistas Blade a controladores
+- [x] Detectar controladores que retornan view(), redirect() y JSON mezclado
+- [x] Detectar endpoints API existentes
+- [x] Detectar endpoints faltantes para la SPA
+- [x] Actualizar memory/04-api-contract.md
+- [x] Actualizar memory/06-pending-risks.md
+- [x] Actualizar memory/05-migration-log.md
+
+## Fase 1 - API base y autenticacion headless
+- [x] Definir estrategia de auth: Sanctum Bearer token o Sanctum SPA cookie
+- [x] Crear o ajustar AuthApiController
+- [x] Crear endpoint login
+- [x] Crear endpoint me
+- [x] Crear endpoint logout
+- [x] Crear endpoint register si aplica
+- [x] Crear endpoint forgot-password si aplica
+- [x] Crear endpoint reset-password si aplica
+- [x] Crear endpoint verify-email si aplica
+- [x] Configurar CORS para frontend
+- [x] Configurar FRONT_URL o equivalente
+- [x] Crear pruebas minimas de auth API
+- [x] Validar auth sin depender de Blade
+
+## Fase 2 - APIs funcionales para reemplazar Blade
+- [x] Validar estado de Fase 1 antes de iniciar
+- [x] Crear GET /api/health
+- [x] Normalizar endpoints de dashboard
+- [x] Normalizar endpoints de sensores
+- [x] Normalizar endpoints de dispositivos
+- [x] Crear/normalizar endpoints de alertas
+- [x] Crear/normalizar endpoints de reglas de alerta
+- [x] Crear/normalizar endpoints de configuracion publica
+- [x] Crear/normalizar endpoints de configuracion de alertas
+- [x] Crear/normalizar endpoints de configuracion email/SMTP
+- [x] Asegurar que endpoints API devuelvan JSON
+- [x] Crear FormRequest o validaciones donde aplique
+- [x] Crear JsonResource donde aplique
+- [x] Mantener logica de dominio intacta
+- [x] Crear pruebas minimas de APIs criticas
+- [x] Ejecutar php artisan route:list
+- [x] Ejecutar php artisan test
+- [x] Actualizar memory/04-api-contract.md
+- [x] Actualizar memory/05-migration-log.md
+- [x] Actualizar memory/09-session-progress.md
+- [x] Actualizar memory/10-functional-state.md
+
+## Fase 3 - Inicializacion frontend Vue 3
+- [x] Verificar que /memory esta actualizada despues de Fase 2
+- [x] Validar estado funcional del backend antes de crear frontend
+- [x] Crear carpeta /front
+- [x] Inicializar Vue 3 con Vite
+- [x] Instalar Bootstrap 5
+- [x] Instalar Axios
+- [x] Instalar Vue Router
+- [x] Instalar Pinia
+- [x] Instalar Chart.js/vue-chartjs
+- [x] Instalar laravel-echo y pusher-js
+- [x] Instalar sass
+- [x] Configurar VITE_API_BASE_URL
+- [x] Configurar VITE_PUSHER_APP_KEY
+- [x] Configurar VITE_PUSHER_APP_CLUSTER
+- [x] Configurar proxy Vite /api hacia http://localhost:8000
+- [x] Importar Bootstrap en main.js
+- [x] Crear cliente API centralizado
+- [x] Crear store de autenticacion
+- [x] Crear router con rutas publicas y protegidas
+- [x] Crear layout base
+- [x] Crear navbar base con badge de alertas preparado
+- [x] Crear componentes base reutilizables
+- [x] Crear pantalla login funcional contra API
+- [x] Crear pantalla dashboard placeholder protegida
+- [x] Crear pantalla sensors placeholder protegida
+- [x] Crear pantalla alerts placeholder protegida
+- [x] Crear pantalla alert rules placeholder protegida
+- [x] Crear pantalla config placeholder protegida
+- [x] Validar npm run dev
+- [x] Validar npm run build
+- [x] Actualizar memory/04-api-contract.md
+- [x] Actualizar memory/05-migration-log.md
+- [x] Actualizar memory/08-refactor-checklist.md
+- [x] Actualizar memory/09-session-progress.md
+- [x] Actualizar memory/10-functional-state.md
+
+## Fase 4 - Migracion progresiva de pantallas
+- [x] Verificar que /memory esta actualizada despues de Fase 3
+- [x] Validar estado funcional de backend antes de migrar pantallas
+- [x] Validar estado funcional de frontend antes de migrar pantallas
+- [x] Migrar login
+- [x] Migrar registro si aplica
+- [x] Migrar recuperacion de contrasena si aplica
+- [x] Migrar verificacion de email si aplica
+- [x] Migrar dashboard
+- [x] Migrar alertas activas
+- [x] Migrar listado de sensores
+- [x] Migrar detalle de sensor
+- [x] Migrar dispositivos
+- [x] Migrar reglas de alerta
+- [x] Migrar configuracion de alertas
+- [x] Migrar configuracion SMTP/email
+- [x] Mantener polling como fallback para alertas
+- [x] Mantener Blade legacy mientras no haya validacion manual
+- [x] Marcar vistas Blade reemplazadas como candidatas a eliminacion
+- [x] Ejecutar npm run build
+- [x] Ejecutar php artisan test
+- [x] Actualizar memory/04-api-contract.md
+- [x] Actualizar memory/05-migration-log.md
+- [x] Actualizar memory/08-refactor-checklist.md
+- [x] Actualizar memory/09-session-progress.md
+- [x] Actualizar memory/10-functional-state.md
+
+## Fase 5 - Tiempo real
+- [x] Verificar que /memory esta actualizada despues de Fase 4
+- [x] Validar estado funcional de backend antes de realtime
+- [x] Validar estado funcional de frontend antes de realtime
+- [x] Revisar configuracion actual de Pusher en Blade
+- [x] Revisar eventos Laravel existentes relacionados con alertas
+- [x] Revisar canales Laravel existentes
+- [x] Revisar configuracion broadcasting.php
+- [x] Revisar variables PUSHER existentes en .env.example
+- [x] Crear plugin/composable de Laravel Echo en Vue
+- [x] Configurar Echo sin exponer secretos
+- [x] Mover logica de alertas en vivo al frontend
+- [x] Crear o completar store realtime/alerts en Pinia
+- [x] Mostrar badge de alertas en navbar
+- [x] Mostrar toast/popup de alerta
+- [x] Reproducir sonido solo si config publica lo permite
+- [x] Mantener polling como fallback
+- [x] Evitar listeners duplicados al cambiar de ruta
+- [x] Limpiar suscripciones al desmontar componentes
+- [x] Integrar realtime en DashboardView
+- [x] Integrar realtime en NavBar
+- [x] Integrar realtime en AlertsView si aplica
+- [x] Preparar suscripcion de sensores en SensorDetailView
+- [~] Validar alerta generada desde backend/simulador
+- [x] Ejecutar npm run build
+- [x] Ejecutar npm run test:phase4 o test equivalente
+- [x] Ejecutar php artisan test
+- [x] Actualizar memory/04-api-contract.md si aplica
+- [x] Actualizar memory/05-migration-log.md
+- [x] Actualizar memory/06-pending-risks.md
+- [x] Actualizar memory/08-refactor-checklist.md
+- [x] Actualizar memory/09-session-progress.md
+- [x] Actualizar memory/10-functional-state.md
+
+## Fase 6 - Separacion fisica /back
+- [x] Verificar que /memory esta actualizada despues de Fase 5
+- [x] Confirmar que APIs y frontend funcionan antes de mover
+- [x] Identificar archivos/carpetas que pertenecen a Laravel backend
+- [x] Identificar archivos/carpetas que deben quedarse en raiz
+- [x] Crear carpeta /back
+- [x] Mover Laravel completo a /back usando git mv cuando sea posible
+- [x] Ajustar rutas de Composer
+- [x] Ajustar rutas de Artisan
+- [x] Ajustar phpunit.xml
+- [x] Ajustar referencias a storage/bootstrap/cache/public si aplica
+- [x] Ajustar Vite legacy Laravel si sigue existiendo
+- [x] Separar .env.example de backend
+- [x] Crear o ajustar .env.example raiz si aplica
+- [x] Asegurar que backend corre desde /back en localhost:8000
+- [x] Asegurar que tests backend corren desde /back
+- [x] Asegurar que frontend sigue corriendo desde /front
+- [x] Asegurar que build frontend pasa desde /front
+- [x] Revisar CORS despues del movimiento
+- [x] Revisar Sanctum despues del movimiento
+- [x] Revisar Pusher/Echo despues del movimiento
+- [x] Revisar rutas API despues del movimiento
+- [x] Documentar Blade legacy restante
+- [x] Marcar vistas Blade candidatas a eliminacion, sin borrar si hay riesgo
+- [x] Actualizar README con nueva estructura
+- [x] Actualizar memory/04-api-contract.md si aplica
+- [x] Actualizar memory/05-migration-log.md
+- [x] Actualizar memory/06-pending-risks.md
+- [x] Actualizar memory/08-refactor-checklist.md
+- [x] Actualizar memory/09-session-progress.md
+- [x] Actualizar memory/10-functional-state.md
+
+## Fase 6B - Limpieza Blade legacy y ajuste SPA produccion
+- [ ] Revisar rutas web legacy reemplazadas por Vue
+- [ ] Identificar vistas Blade dinamicas que ya tienen reemplazo SPA
+- [ ] Conservar vistas Blade de emails/notificaciones
+- [ ] Definir estrategia final para servir front/dist en produccion
+- [ ] Preparar catch-all SPA en routes/web.php si aplica
+- [ ] Eliminar rutas web sobrantes solo despues de validacion manual
+- [ ] Eliminar vistas Blade dinamicas solo despues de validacion manual
+- [ ] Ajustar tests legacy que todavia esperen vistas Blade
+- [ ] Validar que no quedan Blade dinamicos necesarios para UI principal
+
+## Fase 7 - Docker y compose
+- [x] Verificar que /memory esta actualizada despues de Fase 6
+- [x] Validar backend antes de Docker
+- [x] Validar frontend antes de Docker
+- [x] Crear Dockerfile para /back
+- [x] Crear Dockerfile para /front
+- [x] Crear docker-compose.yml
+- [x] Agregar servicio db
+- [x] Agregar servicio redis si aplica
+- [x] Agregar servicio queue si aplica
+- [x] Configurar red interna
+- [x] Configurar variables de entorno por servicio
+- [x] Crear .dockerignore raiz si aplica
+- [x] Crear back/.dockerignore si aplica
+- [x] Crear front/.dockerignore si aplica
+- [x] Validar que back levante en contenedor
+- [x] Validar que front levante en contenedor
+- [x] Validar que db levante en contenedor
+- [x] Validar que redis levante en contenedor si aplica
+- [x] Validar que queue levante en contenedor si aplica
+- [x] Validar comunicacion front -> back por API
+- [x] Validar /api/health en Docker
+- [x] Validar migraciones dentro del contenedor backend
+- [x] Validar tests backend dentro o fuera del contenedor
+- [x] Validar build frontend dentro o fuera del contenedor
+- [x] Crear tests/checks de Fase 7
+- [x] Documentar comandos Docker en README
+- [x] Documentar estado funcional actual de backend
+- [x] Documentar estado funcional actual de frontend
+- [x] Comparar contra version estable GitHub/Blade
+- [x] Identificar funcionalidades perdidas o parciales
+- [x] Actualizar /memory
+- [-] No iniciar Fase 6B
+
+## Fase 7B - Validacion operacional antes de limpieza Blade
+- [x] Leer /memory completa
+- [x] Validar Docker base
+- [x] Validar queue con un job real o documentar bloqueo
+- [x] Validar Pusher real end-to-end o documentar bloqueo
+- [~] Validar flujo manual SPA con checklist
+- [~] Validar login/register/reset/verify
+- [~] Validar dashboard
+- [~] Validar sensores
+- [~] Validar detalle de sensor
+- [~] Validar dispositivos
+- [~] Validar alertas
+- [~] Validar reglas de alerta
+- [~] Validar configuracion de alertas
+- [~] Validar configuracion SMTP/email
+- [x] Identificar rutas Blade todavia usadas
+- [x] Identificar vistas Blade que NO se pueden borrar
+- [x] Identificar vistas Blade seguras como candidatas a borrar
+- [x] Crear reporte go/no-go para Fase 6B
+- [x] Actualizar /memory
+- [-] No eliminar Blade
+
+## Fase 8 - Limpieza final
+- [ ] Eliminar rutas Blade reemplazadas
+- [ ] Mantener solo Blade de emails si aplica
+- [ ] Eliminar assets legacy no usados
+- [ ] Limpiar .DS_Store, __pycache__, logs pesados si estan trackeados
+- [ ] Actualizar documentacion final
+- [ ] Ejecutar pruebas finales
+- [ ] Registrar cierre de migracion

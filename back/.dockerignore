@@ -1,0 +1,12 @@
+vendor
+node_modules
+public/build
+storage/logs/*.log
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+.DS_Store

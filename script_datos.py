@@ -6,15 +6,22 @@ import signal
 import sys
 import threading
 import time
+import json
+import hashlib
+import re
+import unicodedata
 from datetime import datetime
 
 import requests
 from requests.exceptions import ConnectionError, RequestException, Timeout
+try:
+    import paho.mqtt.publish as mqtt_publish
+except Exception:  # noqa: BLE001
+    mqtt_publish = None
 
-# Endpoint para obtener sensores y enviar lecturas
+# Endpoint para obtener sensores y publicar payloads MQTT
 BASE_URL = os.getenv("IOT_BASE_URL", "http://127.0.0.1:8000")
 API_SENSORS_URL = f"{BASE_URL}/api/iot/sensors"
-API_URL = f"{BASE_URL}/api/sensors/{{sensor_id}}/readings"
 DEFAULT_API_KEY = "E7X1GAFf9xgkdoP69LcYSD4KoNuuYGn_ju01uIY2448"
 LOG_LEVEL = os.getenv("IOT_LOG_LEVEL", "INFO").upper()
 CYCLE_INTERVAL_SECONDS = max(0.2, float(os.getenv("IOT_CYCLE_INTERVAL", "1.0")))
@@ -32,6 +39,16 @@ SENSORS_FETCH_RETRY_MAX_SECONDS = max(
     SENSORS_FETCH_RETRY_BASE_SECONDS,
     float(os.getenv("IOT_SENSORS_FETCH_RETRY_MAX_SECONDS", "20.0")),
 )
+MQTT_HOST = os.getenv("MQTT_HOST", "127.0.0.1")
+MQTT_PORT = max(1, int(os.getenv("MQTT_PORT", "1883")))
+MQTT_QOS = max(0, min(2, int(os.getenv("MQTT_QOS", "1"))))
+MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID", "iot-platform-v2-simulator")
+MQTT_USERNAME = os.getenv("MQTT_USERNAME", "").strip()
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "").strip()
+MQTT_TOPIC_TEMPLATE = os.getenv("MQTT_TOPIC_TEMPLATE", "iot/{node_id}/readings")
+IOT_FIRMWARE_VERSION = os.getenv("IOT_FIRMWARE_VERSION", "sim-1.0.0")
+WIFI_RSSI_MIN_DBM = int(os.getenv("IOT_WIFI_RSSI_MIN_DBM", "-75"))
+WIFI_RSSI_MAX_DBM = int(os.getenv("IOT_WIFI_RSSI_MAX_DBM", "-55"))
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -41,6 +58,7 @@ logger = logging.getLogger("iot-simulator")
 
 running = True
 SENSOR_LAST_VALUES = {}
+DEVICE_SESSION_STATE = {}
 
 
 def log_event(level, message, **context):
@@ -99,6 +117,114 @@ def validate_sensor_descriptor(sensor):
         return False
 
     return True
+
+
+def normalize_token(value):
+    if not value:
+        return ""
+
+    value = str(value).strip()
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_value = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    ascii_value = re.sub(r"[^a-zA-Z0-9]+", "_", ascii_value).strip("_").lower()
+    return ascii_value
+
+
+def get_sensor_key(sensor):
+    sensor_type = sensor.get("sensor_type", {}) or {}
+    sensor_name = sensor_type.get("name") or sensor.get("name") or "sensor"
+    normalized_name = normalize_token(sensor_name)
+
+    aliases = {
+        "temperatura": "temperature",
+        "oxigeno_disuelto": "dissolved_oxygen",
+        "ph": "ph",
+        "conductividad": "conductivity",
+        "turbidez": "turbidity",
+        "orp": "orp",
+        "caudal": "flow_rate",
+    }
+
+    return aliases.get(normalized_name, normalized_name or "sensor")
+
+
+def get_node_id(sensor):
+    device = sensor.get("device", {}) or {}
+    serial = device.get("serial_number")
+    if serial:
+        return normalize_token(serial)
+
+    device_id = sensor.get("device_id")
+    if isinstance(device_id, int):
+        return f"device_{device_id:03d}"
+
+    return "device_unknown"
+
+
+def get_location(sensor):
+    device = sensor.get("device", {}) or {}
+    lab = device.get("lab", {}) or {}
+    if lab.get("name"):
+        return lab.get("name")
+    return "Ubicacion no definida"
+
+
+def get_session_payload(node_id):
+    state = DEVICE_SESSION_STATE.get(node_id)
+    if state is None:
+        state = {
+            "boot_count": 1,
+            "reading_index": 0,
+            "started_at": time.time(),
+        }
+        DEVICE_SESSION_STATE[node_id] = state
+
+    state["reading_index"] += 1
+
+    return {
+        "uptime_ms": max(0, int((time.time() - state["started_at"]) * 1000)),
+        "boot_count": state["boot_count"],
+        "reading_index": state["reading_index"],
+    }
+
+
+def build_qc_checksum(node_id, sensor_key, value, iso_timestamp):
+    checksum_seed = f"{node_id}|{sensor_key}|{value:.6f}|{iso_timestamp}"
+    return hashlib.sha1(checksum_seed.encode("utf-8")).hexdigest()[:4]
+
+
+def build_sensor_payload(sensor, value, now_dt):
+    sensor_type = sensor.get("sensor_type", {}) or {}
+    unit = sensor_type.get("unit", "")
+    sensor_key = get_sensor_key(sensor)
+    node_id = get_node_id(sensor)
+    iso_timestamp = now_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    return {
+        "device": {
+            "node_id": node_id,
+            "firmware_version": IOT_FIRMWARE_VERSION,
+            "location": get_location(sensor),
+        },
+        "timestamp": iso_timestamp,
+        "session": get_session_payload(node_id),
+        "network": {
+            "wifi_rssi_dbm": random.randint(min(WIFI_RSSI_MIN_DBM, WIFI_RSSI_MAX_DBM), max(WIFI_RSSI_MIN_DBM, WIFI_RSSI_MAX_DBM)),
+            "mqtt_reconnections": 0,
+        },
+        "sensors": {
+            sensor_key: {
+                "value": value,
+                "unit": unit,
+                "sensor_model": sensor_type.get("name", "Sensor generico"),
+                "status": "ok",
+            }
+        },
+        "qc": {
+            "checksum": build_qc_checksum(node_id, sensor_key, value, iso_timestamp),
+            "valid": True,
+        },
+    }, sensor_key, node_id
 
 
 def get_sensors(get_fn=None, api_key=None):
@@ -270,106 +396,69 @@ def simulate_value(sensor):
     return next_value
 
 
-def send_sensor_data(sensor, api_key=None, now_fn=None, post_fn=None):
+def send_sensor_data(sensor, api_key=None, now_fn=None, publish_fn=None):
     if not validate_sensor_descriptor(sensor):
         log_event(logging.ERROR, "No se puede enviar lectura: descriptor de sensor inválido")
         return
 
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
     effective_key = require_api_key(api_key)
     now_fn = now_fn or datetime.now
-    post_fn = post_fn or requests.post
+    publish_fn = publish_fn or (mqtt_publish.single if mqtt_publish else None)
+
+    if publish_fn is None:
+        log_event(
+            logging.ERROR,
+            "No se pudo inicializar el cliente MQTT. Instala paho-mqtt o inyecta publish_fn.",
+        )
+        return
 
     value = simulate_value(sensor)
-    payload = {
-        "value": value,
-        "reading_time": now_fn().strftime("%Y-%m-%d %H:%M:%S"),
-        "api_key": effective_key,
-    }
-
-    url = API_URL.format(sensor_id=sensor["id"])
+    now_dt = now_fn()
+    payload, sensor_key, node_id = build_sensor_payload(sensor, value, now_dt)
+    topic = MQTT_TOPIC_TEMPLATE.format(
+        node_id=node_id,
+        sensor_key=sensor_key,
+        sensor_id=sensor.get("id"),
+        device_id=sensor.get("device_id", "unknown"),
+    )
+    auth = {"username": MQTT_USERNAME, "password": MQTT_PASSWORD} if MQTT_USERNAME else None
 
     try:
-        response = post_fn(url, json=payload, headers=headers, timeout=5)
-    except Timeout as exc:
-        log_event(logging.ERROR, "Timeout enviando lectura", sensor_id=sensor["id"], url=url, error=str(exc))
-        return
-    except ConnectionError as exc:
-        log_event(logging.ERROR, "Error de conexión enviando lectura", sensor_id=sensor["id"], url=url, error=str(exc))
-        return
-    except RequestException as exc:
-        log_event(logging.ERROR, "Error HTTP enviando lectura", sensor_id=sensor["id"], url=url, error=str(exc))
+        publish_fn(
+            topic,
+            payload=json.dumps(payload, ensure_ascii=False),
+            qos=MQTT_QOS,
+            retain=False,
+            hostname=MQTT_HOST,
+            port=MQTT_PORT,
+            client_id=MQTT_CLIENT_ID,
+            auth=auth,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log_event(
+            logging.ERROR,
+            "Error publicando lectura MQTT",
+            sensor_id=sensor["id"],
+            topic=topic,
+            host=MQTT_HOST,
+            port=MQTT_PORT,
+            error=str(exc),
+        )
         return
 
     sensor_type = sensor.get("sensor_type", {}) or {}
     sensor_name = sensor_type.get("name", "Tipo desconocido")
     unit = sensor_type.get("unit", "")
 
-    if response.status_code == 201:
-        log_event(
-            logging.INFO,
-            f"Sensor {sensor['id']} ({sensor_name}): {value:.2f} {unit}",
-            sensor_id=sensor["id"],
-            status_code=response.status_code,
-        )
-        return
-
-    body_snippet = (response.text or "")[:300]
-
-    if response.status_code == 401:
-        log_event(
-            logging.WARNING,
-            "Lectura rechazada por API key inválida",
-            sensor_id=sensor["id"],
-            status_code=response.status_code,
-            api_key=mask_api_key(effective_key),
-            body=body_snippet,
-        )
-    elif response.status_code == 403:
-        log_event(
-            logging.WARNING,
-            "Lectura rechazada: dispositivo inactivo o sin permisos",
-            sensor_id=sensor["id"],
-            status_code=response.status_code,
-            body=body_snippet,
-        )
-    elif response.status_code == 422:
-        log_event(
-            logging.WARNING,
-            "Lectura rechazada: payload/campos inválidos o formato inesperado",
-            sensor_id=sensor["id"],
-            status_code=response.status_code,
-            payload={
-                "value": payload["value"],
-                "reading_time": payload["reading_time"],
-                "api_key": mask_api_key(payload["api_key"]),
-            },
-            body=body_snippet,
-        )
-    elif response.status_code == 429:
-        log_event(
-            logging.WARNING,
-            "Rate limit alcanzado al enviar lecturas",
-            sensor_id=sensor["id"],
-            status_code=response.status_code,
-            body=body_snippet,
-        )
-    elif response.status_code >= 500:
-        log_event(
-            logging.ERROR,
-            "Error del servidor al procesar lectura",
-            sensor_id=sensor["id"],
-            status_code=response.status_code,
-            body=body_snippet,
-        )
-    else:
-        log_event(
-            logging.WARNING,
-            "Respuesta inesperada al enviar lectura",
-            sensor_id=sensor["id"],
-            status_code=response.status_code,
-            body=body_snippet,
-        )
+    log_event(
+        logging.INFO,
+        f"Lectura MQTT publicada para sensor {sensor['id']} ({sensor_name}): {value:.2f} {unit}",
+        sensor_id=sensor["id"],
+        topic=topic,
+        mqtt_host=MQTT_HOST,
+        mqtt_port=MQTT_PORT,
+        api_key=mask_api_key(effective_key),
+    )
 
 def get_sensor_device_key(sensor):
     device_id = sensor.get("device_id")
@@ -398,7 +487,15 @@ def device_sender_worker(device_key, send_queue):
 
 
 if __name__ == "__main__":
-    log_event(logging.INFO, "Iniciando simulador IoT", base_url=BASE_URL)
+    log_event(
+        logging.INFO,
+        "Iniciando simulador IoT",
+        base_url=BASE_URL,
+        mqtt_host=MQTT_HOST,
+        mqtt_port=MQTT_PORT,
+        mqtt_topic_template=MQTT_TOPIC_TEMPLATE,
+        mqtt_qos=MQTT_QOS,
+    )
 
     api_key = require_api_key()
     log_event(logging.INFO, "API key cargada", api_key=mask_api_key(api_key))

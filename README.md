@@ -1,11 +1,22 @@
 # IoT Platform v2
 
-Plataforma IoT construida con Laravel 12 para operar dispositivos y sensores en tiempo real: ingesta de telemetria, evaluacion de reglas, generacion de alertas, visualizacion en dashboard y notificacion por correo.
+Monorepo IoT con:
 
-## Estado real del codigo (verificado: 2026-04-26)
+- `/back`: backend Laravel 12 como API REST + broadcasting.
+- `/front`: SPA Vue 3 + Vite + Bootstrap 5.
+- `/memory`: memoria tecnica persistente del refactor.
+- `/docs`: documentacion funcional y normativa.
+
+El sistema opera dispositivos y sensores en tiempo real: ingesta de telemetria, evaluacion de reglas, generacion de alertas, visualizacion en dashboard y notificacion por correo.
+
+## Estado actual (verificado: 2026-05-13)
 
 Implementado hoy en el repo:
 
+- Backend separado fisicamente en `/back`.
+- Frontend SPA separado fisicamente en `/front`.
+- Blade legacy conservado temporalmente en `/back/resources/views`.
+- Docker local implementado para desarrollo con `docker compose`.
 - API Auth con Sanctum: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`.
 - Flujo IoT sin sesion web con API key: `GET /api/iot/sensors` y `POST /api/sensors/{sensor}/readings`.
 - API operativa protegida con `auth:sanctum` para dispositivos, sensores, alertas y consultas de dashboard.
@@ -13,6 +24,17 @@ Implementado hoy en el repo:
 - Rate limiting diferenciado: `api-read`, `api-write`, `auth-login`.
 - Logging estructurado en controladores API, excepciones globales y simulador Python.
 - Observers/eventos para automatizar alertas y correo (`SensorReadingObserver`, `AlertObserver`).
+- Frontend Vue con auth, dashboard, sensores, dispositivos, alertas, reglas, configuracion y realtime progresivo con fallback polling.
+
+## Estructura
+
+```text
+/
+  back/     Laravel API + Broadcasting + Blade legacy temporal
+  front/    Vue 3 + Vite + Bootstrap 5 SPA
+  memory/   Memoria tecnica del refactor
+  docs/     Documentacion complementaria
+```
 
 ## Cumplimiento Normativo para Revision Cientifica (actualizado: 2026-05-08)
 
@@ -48,45 +70,192 @@ Declaracion de alcance:
 - npm
 - Python 3.10+
 - pip
+- Docker + Docker Compose plugin (opcional para entorno containerizado)
 
-### Instalacion
+### Backend
 
 ```bash
+cd back
 composer install
-npm install
 cp .env.example .env
 php artisan key:generate
-php artisan migrate --seed
+php artisan migrate
+php artisan serve --host=127.0.0.1 --port=8000
+```
+
+### Frontend
+
+```bash
+cd front
+npm install
+cp .env.example .env
+npm run dev
+```
+
+### Docker local
+
+Stack por defecto:
+
+```bash
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs -f back
+docker compose logs -f front
+docker compose logs -f db
+docker compose logs -f redis
+```
+
+Servicios:
+
+- `back`: Laravel API + broadcasting en `http://localhost:8000`
+- `front`: SPA Vue/Vite en `http://localhost:5173`
+- `db`: MySQL 8 en `localhost:3306`
+- `redis`: Redis 7 en `localhost:6379`
+- `queue`: worker opcional bajo profile `queue`
+
+Healthcheck backend:
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+Migraciones dentro del contenedor backend:
+
+```bash
+docker compose exec back php artisan migrate --force
+```
+
+Tests backend dentro de Docker usando entorno de testing explicito:
+
+```bash
+docker compose exec back env \
+  APP_ENV=testing \
+  DB_CONNECTION=sqlite \
+  DB_DATABASE=:memory: \
+  CACHE_STORE=array \
+  SESSION_DRIVER=array \
+  QUEUE_CONNECTION=sync \
+  APP_URL=http://localhost:8000 \
+  FRONT_URL=http://localhost:5173 \
+  php artisan test
+```
+
+Nota:
+
+- `docker compose exec back php artisan test` usa el runtime normal de Compose y puede dar falsos negativos al heredar MySQL/Redis reales.
+- Para una suite aislada y reproducible dentro del contenedor, usar el comando anterior con `APP_ENV=testing` y SQLite en memoria.
+
+Build frontend dentro de Docker:
+
+```bash
+docker compose exec front npm run build
+docker compose exec front npm run test:phase7
+```
+
+Worker de colas opcional:
+
+```bash
+docker compose --profile queue up -d queue
+```
+
+Estado actual de `queue`:
+
+- El servicio esta definido y puede quedar `Up` con el profile `queue`.
+- La validacion final se hizo repitiendo el mismo set de overrides de puertos del stack base.
+- Sigue pendiente validar una carga de trabajo real de colas dentro del contenedor.
+
+Si el stack se levanta con puertos alternos, el profile `queue` debe arrancarse repitiendo exactamente el mismo set de overrides:
+
+```bash
+COMPOSE_PROJECT_NAME=iotplatformv2 \
+BACK_PORT=18000 \
+FRONT_PORT=15173 \
+MYSQL_PORT=13306 \
+REDIS_PORT=16379 \
+docker compose --profile queue up -d
+```
+
+Si los puertos `8000`, `5173`, `3306` o `6379` ya estan ocupados en el host, se pueden sobreescribir al arrancar:
+
+```bash
+COMPOSE_PROJECT_NAME=iotplatformv2 \
+BACK_PORT=18000 \
+FRONT_PORT=15173 \
+MYSQL_PORT=13306 \
+REDIS_PORT=16379 \
+docker compose up -d
+```
+
+### Validaciones
+
+Backend:
+
+```bash
+cd back
+php artisan route:list --path=api
+php artisan test
+```
+
+Frontend:
+
+```bash
+cd front
+npm run build
+npm run test:structure
+npm run test:phase4
+npm run test:phase5
+npm run test:phase7
 ```
 
 ### Variables de entorno clave
 
-- `API_KEY` (clave global para validacion IoT).
+- `back/.env`: secretos y configuracion del backend.
+- `front/.env`: solo variables publicas `VITE_*`.
+- `.env.example` en raiz: guia de orquestacion para Docker Compose.
+- No poner secretos backend en el frontend.
+- `IOT_API_KEY` o `API_KEY` para validacion IoT.
 - `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
 - `BROADCAST_DRIVER`, `PUSHER_APP_KEY`, `PUSHER_APP_CLUSTER`.
 - `IOT_BASE_URL` (opcional, default `http://127.0.0.1:8000`).
 - `IOT_API_KEY` (opcional; si existe, el simulador la prioriza sobre `API_KEY`).
 - `IOT_LOG_LEVEL` (opcional, default `INFO`).
+- No poner secretos en variables `VITE_*`.
 
 ### Ejecucion diaria (orden recomendado)
 
 Terminal 1:
 
 ```bash
-php artisan serve
+cd back
+php artisan serve --host=127.0.0.1 --port=8000
 ```
 
 Terminal 2:
+
+```bash
+cd front
+npm run dev
+```
+
+Terminal 3:
 
 ```bash
 pip install requests
 python script_datos.py
 ```
 
-Opcional para assets en desarrollo:
+### Ejecucion diaria con Docker (opcional)
 
 ```bash
-npm run dev
+docker compose up -d
+docker compose ps
+```
+
+Para detener y limpiar contenedores/volumenes del stack local:
+
+```bash
+docker compose down -v
 ```
 
 ## Arquitectura y funcionamiento
@@ -444,7 +613,7 @@ Riesgos pendientes detectados:
 
 Ubicaciones:
 
-- Laravel: `storage/logs/laravel.log`
+- Laravel: `back/storage/logs/laravel.log`
 - Simulador: salida consola
 
 ## Runbook de operacion
@@ -474,7 +643,7 @@ curl -i -X POST http://127.0.0.1:8000/api/auth/login \
 ### Verificacion de logs
 
 ```bash
-tail -f storage/logs/laravel.log
+tail -f back/storage/logs/laravel.log
 ```
 
 En otra terminal, ejecutar el simulador para correlacionar eventos:
@@ -485,11 +654,13 @@ python script_datos.py
 
 ### Reinicios operativos
 
-- Servidor local Laravel (`php artisan serve`): detener con `Ctrl+C` y volver a ejecutar.
+- Backend Laravel (`cd back && php artisan serve --host=127.0.0.1 --port=8000`): detener con `Ctrl+C` y volver a ejecutar.
+- Frontend (`cd front && npm run dev`): detener con `Ctrl+C` y volver a ejecutar.
 - Simulador (`script_datos.py`): detener con `Ctrl+C` y volver a ejecutar.
 - Si hay problemas de cache/configuracion:
 
 ```bash
+cd back
 php artisan optimize:clear
 php artisan config:clear
 php artisan cache:clear
@@ -541,6 +712,7 @@ Ejemplos:
 ### Comandos recomendados
 
 ```bash
+cd back
 php artisan test
 php artisan test --testsuite=Unit
 php artisan test --testsuite=Feature
@@ -558,17 +730,20 @@ Se refleja una base de ingenieria limpia para evolucion:
 ## Pruebas
 
 ```bash
+cd back
 php artisan test
 ```
 
 ## Archivos clave
 
-- `routes/api.php`
-- `app/Http/Controllers/Api/AuthApiController.php`
-- `app/Http/Controllers/Api/SensorApiController.php`
-- `app/Http/Controllers/Api/DeviceApiController.php`
-- `app/Providers/AppServiceProvider.php`
-- `bootstrap/app.php`
-- `app/Models/User.php`
+- `back/routes/api.php`
+- `back/app/Http/Controllers/Api/AuthApiController.php`
+- `back/app/Http/Controllers/Api/SensorApiController.php`
+- `back/app/Http/Controllers/Api/DeviceApiController.php`
+- `back/app/Providers/AppServiceProvider.php`
+- `back/bootstrap/app.php`
+- `back/app/Models/User.php`
+- `front/src/router/index.js`
+- `front/src/stores/auth.js`
 - `script_datos.py`
 - `DOCUMENTACION_PROYECTO.md`
