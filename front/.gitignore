@@ -3,3 +3,5 @@ dist
 .env
 .env.local
 .env.*.local
+.audit-e2e/results
+.audit-e2e/*.png
