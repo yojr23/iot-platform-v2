@@ -142,6 +142,69 @@ services:
     networks:
       - iot-platform
 
+  # Stage 3 durable ingestion workers (PLAN.md Stage 3.2/3.3, ADR-1). Both reuse the back image and
+  # the same phpredis/DB env. Run under the `workers` profile: `docker compose --profile workers up`.
+  outbox-relay:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    working_dir: /var/www/back
+    environment: &worker_env
+      APP_URL: http://localhost:${BACK_PORT:-8000}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-iot_platform}
+      DB_USERNAME: ${DB_USERNAME:-iot_user}
+      DB_PASSWORD: ${DB_PASSWORD:-iot_password}
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: ${CACHE_STORE:-database}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
+      INGESTION_RAW_CONSUMER_GROUP: ${INGESTION_RAW_CONSUMER_GROUP:-raw-process-v1}
+      INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
+    command: php artisan ingestion:relay-outbox --interval=2
+    restart: unless-stopped
+    volumes:
+      - ./back:/var/www/back
+      - back_vendor:/var/www/back/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_healthy
+    profiles:
+      - workers
+    networks:
+      - iot-platform
+
+  raw-consumer:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    working_dir: /var/www/back
+    environment: *worker_env
+    command: php artisan raw:consume --block=5000
+    restart: unless-stopped
+    volumes:
+      - ./back:/var/www/back
+      - back_vendor:/var/www/back/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_healthy
+    profiles:
+      - workers
+    networks:
+      - iot-platform
+
 volumes:
   db_data:
   redis_data:

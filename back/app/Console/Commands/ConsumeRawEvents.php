@@ -36,10 +36,8 @@ class ConsumeRawEvents extends Command
         $once = (bool) $this->option('once');
         $maxIterations = (int) $this->option('max-iterations');
 
-        $client = Redis::connection('default')->client();
-
         $consumer = new RawStreamConsumer(
-            $client,
+            Redis::connection('default'),
             $normalizer,
             (string) config('app.ingestion_raw_events_stream'),
             (string) config('app.ingestion_raw_consumer_group'),

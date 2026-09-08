@@ -3,9 +3,10 @@
 namespace App\Services\Ingestion;
 
 use App\Models\RawSensorEvent;
+use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Predis\ClientInterface;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -20,9 +21,9 @@ use Throwable;
  * readings; `AlertService` (via the existing `SensorReadingObserver`) stays the sole alert-rule
  * evaluation owner — this class never touches alert logic.
  *
- * Uses `executeRaw()` for every stream command per the operating notes for this environment
- * (typed predis stream methods are unreliable here); reply shapes for XREADGROUP/XAUTOCLAIM are
- * handled explicitly since they nest differently.
+ * Uses a portable raw-command helper (`raw()`) for every stream command so it works with both
+ * phpredis (Docker/production default) and predis (local/tests); reply shapes for
+ * XREADGROUP/XAUTOCLAIM are handled explicitly since they nest differently.
  *
  * ponytail: bounded concurrency = single-process sequential processing of one batch at a time
  * (COUNT + BLOCK already bound work-in-flight and wait time — that is the backpressure). Ceiling:
@@ -35,7 +36,7 @@ class RawStreamConsumer
     public const MAX_ATTEMPTS = 5;
 
     public function __construct(
-        private ClientInterface $client,
+        private Connection $connection,
         private RawReadingNormalizer $normalizer,
         private string $stream,
         private string $group,
@@ -43,10 +44,36 @@ class RawStreamConsumer
     ) {
     }
 
+    /**
+     * Portable raw Redis command across both configured clients. Docker/production runs phpredis
+     * (`REDIS_CLIENT=phpredis`, pecl ext in the Dockerfile); local dev/tests may run predis. phpredis
+     * exposes `rawCommand(string, ...$args)`, predis exposes `executeRaw(array)`; both return the
+     * same nested-array reply shape, so the XREADGROUP/XAUTOCLAIM parsing below is client-agnostic.
+     */
+    private function raw(array $args): mixed
+    {
+        $client = $this->connection->client();
+
+        if ($client instanceof \Redis || (class_exists(\RedisCluster::class) && $client instanceof \RedisCluster)) {
+            return $client->rawCommand(...$args);
+        }
+
+        if (method_exists($client, 'executeRaw')) {
+            return $client->executeRaw($args);
+        }
+
+        throw new RuntimeException('Unsupported Redis client: '.get_debug_type($client));
+    }
+
     public function ensureGroup(): void
     {
         try {
-            $this->client->executeRaw(['XGROUP', 'CREATE', $this->stream, $this->group, '$', 'MKSTREAM']);
+            // Start at 0 (not $): the outbox relay can XADD a receipt before this consumer group
+            // has ever been created (first boot, or a fresh group after a stream reset). Creating
+            // the group at $ would silently skip that pre-existing backlog; 0 processes it. Already
+            // acked messages are not redelivered because the group's last-delivered-id advances past
+            // them, so 0 is safe for an existing group too (BUSYGROUP is ignored below).
+            $this->raw(['XGROUP', 'CREATE', $this->stream, $this->group, '0', 'MKSTREAM']);
         } catch (Throwable $e) {
             if (! str_contains($e->getMessage(), 'BUSYGROUP')) {
                 throw $e;
@@ -83,7 +110,7 @@ class RawStreamConsumer
      */
     public function reclaimPending(string $consumerName, int $count, int $idleMs): array
     {
-        $reply = $this->client->executeRaw([
+        $reply = $this->raw([
             'XAUTOCLAIM', $this->stream, $this->group, $consumerName,
             (string) $idleMs, '0-0', 'COUNT', (string) $count,
         ]);
@@ -99,7 +126,7 @@ class RawStreamConsumer
      */
     public function readBatch(string $consumerName, int $count, int $blockMs): array
     {
-        $reply = $this->client->executeRaw([
+        $reply = $this->raw([
             'XREADGROUP', 'GROUP', $this->group, $consumerName,
             'COUNT', (string) $count, 'BLOCK', (string) $blockMs,
             'STREAMS', $this->stream, '>',
@@ -171,22 +198,47 @@ class RawStreamConsumer
         }
 
         if ($event->status === 'processed') {
-            // Idempotent skip: this receipt was already turned into readings/alerts by an earlier
-            // (possibly crashed-before-ack) delivery. Safe to ack without reprocessing.
+            // Fast-path idempotent skip (no lock needed for a terminal state).
             $this->ack($id);
 
             return 'acked';
         }
 
         try {
-            DB::transaction(function () use ($event): void {
-                $this->normalizer->normalize($event);
+            // Both outcomes (this delivery processed it, or a concurrent one already did) mean the
+            // receipt is durably handled — ack either way.
+            DB::transaction(function () use ($eventId): string {
+                // Concurrent-safe idempotency: two physical stream entries for the same receipt
+                // (at-least-once relay) can be claimed by two consumers at once. Re-read the row
+                // FOR UPDATE inside the transaction so only one wins the "received -> processed"
+                // transition; the loser sees 'processed' and skips. The unique
+                // (source, source_event_id) constraint backstops duplicate receipts; this lock
+                // backstops duplicate *processing* of one receipt.
+                $locked = RawSensorEvent::query()->lockForUpdate()->find((int) $eventId);
 
-                $event->forceFill([
+                if (! $locked || $locked->status === 'processed') {
+                    return 'skip';
+                }
+
+                $result = $this->normalizer->normalize($locked);
+
+                // created==0 with a non-empty sensors payload = total normalization failure
+                // (every value invalid / no sensor mapped). Do not mask it as success — throw so
+                // it retries and eventually DLQs. An empty payload legitimately creates nothing.
+                $sensorsPayload = (array) data_get($locked->payload, 'sensors', []);
+                if ($result['created'] === 0 && $sensorsPayload !== []) {
+                    throw new RuntimeException(
+                        'normalization produced no readings; skipped keys: '.implode(',', $result['skipped'])
+                    );
+                }
+
+                $locked->forceFill([
                     'status' => 'processed',
                     'processed_at' => now(),
                     'error' => null,
                 ])->save();
+
+                return 'processed';
             });
 
             $this->ack($id);
@@ -219,7 +271,7 @@ class RawStreamConsumer
 
     private function ack(string $id): void
     {
-        $this->client->executeRaw(['XACK', $this->stream, $this->group, $id]);
+        $this->raw(['XACK', $this->stream, $this->group, $id]);
     }
 
     /**
@@ -227,7 +279,7 @@ class RawStreamConsumer
      */
     private function deadLetter(string $id, array $fields, string $reason, ?string $sourceEventId, int $attempts): void
     {
-        $this->client->executeRaw([
+        $this->raw([
             'XADD', $this->deadLetterStream, '*',
             'orig_id', $id,
             'reason', $reason,
@@ -240,7 +292,7 @@ class RawStreamConsumer
     private function deliveryCount(string $id): int
     {
         try {
-            $reply = $this->client->executeRaw(['XPENDING', $this->stream, $this->group, $id, $id, 1]);
+            $reply = $this->raw(['XPENDING', $this->stream, $this->group, $id, $id, 1]);
         } catch (Throwable) {
             return 1;
         }
