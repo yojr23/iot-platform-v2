@@ -8,25 +8,209 @@ info:
     Politica de rate limit actual:
     - Lecturas (api-read): 120 req/min por IP o usuario autenticado.
     - Escrituras (api-write): 60 req/min por IP/usuario + sensor objetivo.
+    - Login (auth-login): 5 req/min por email + IP.
 servers:
   - url: http://127.0.0.1:8000
     description: Local
 
 tags:
+  - name: Health
+  - name: Auth
+  - name: IoT
   - name: Sensors
   - name: Devices
   - name: Alerts
+  - name: AlertRules
+  - name: Config
+  - name: Dashboard
+  - name: Profile
+  - name: Admin
 
 paths:
-  /api/sensors:
+  /api/health:
     get:
-      tags: [Sensors]
-      summary: Listar sensores disponibles
+      tags: [Health]
+      summary: Healthcheck del sistema
+      responses:
+        '200':
+          description: Estado OK
+
+  /api/config/public:
+    get:
+      tags: [Config]
+      summary: Configuracion publica de la app
+      responses:
+        '200':
+          description: Configuracion publica
+
+  /api/dashboard/public:
+    get:
+      tags: [Dashboard]
+      summary: Datos publicos del dashboard sin sesion
+      responses:
+        '200':
+          description: Datos publicos del dashboard
+
+  # --- Auth ---
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Token de acceso
+        '401':
+          description: Credenciales invalidas
+        '429':
+          description: Rate limit excedido
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrar usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, password_confirmation]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                password_confirmation:
+                  type: string
+      responses:
+        '201':
+          description: Usuario registrado
+        '422':
+          description: Validacion fallida
+
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Solicitar recuperacion de contrasena
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        '200':
+          description: Email de recuperacion enviado
+
+  /api/auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Restablecer contrasena
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                password_confirmation:
+                  type: string
+      responses:
+        '200':
+          description: Contrasena actualizada
+        '422':
+          description: Token invalido o expirado
+
+  /api/auth/verify-email/{id}/{hash}:
+    get:
+      tags: [Auth]
+      summary: Verificar email de usuario
       parameters:
-        - in: query
-          name: page
+        - in: path
+          name: id
+          required: true
           schema:
             type: integer
+        - in: path
+          name: hash
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Email verificado
+        '403':
+          description: Hash invalido
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Obtener usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Datos del usuario
+        '401':
+          description: No autenticado
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cerrar sesion (revocar token)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sesion cerrada
+
+  /api/auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Reenviar email de verificacion
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Email reenviado
+
+  # --- IoT (API key) ---
+  /api/iot/sensors:
+    get:
+      tags: [IoT]
+      summary: Listar sensores para dispositivos IoT
+      description: Protegido con X-Device-Key header.
+      parameters:
+        - in: header
+          name: X-Device-Key
+          required: true
+          schema:
+            type: string
       responses:
         '200':
           description: Lista de sensores
@@ -36,50 +220,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/SensorSummary'
-
-  /api/sensors/{sensor}/latest-readings:
-    get:
-      tags: [Sensors]
-      summary: Obtener últimas lecturas de un sensor
-      parameters:
-        - in: path
-          name: sensor
-          required: true
-          schema:
-            type: integer
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-      responses:
-        '200':
-          description: Lecturas recientes
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/SensorReading'
+        '401':
+          description: API key invalida
 
   /api/sensors/{sensor}/readings:
-    get:
-      tags: [Sensors]
-      summary: Obtener lecturas paginadas de un sensor
-      parameters:
-        - in: path
-          name: sensor
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Lecturas paginadas
-
     post:
-      tags: [Sensors]
+      tags: [IoT]
       summary: Ingerir lectura de sensor
       description: Requiere `api_key` en el payload JSON.
       parameters:
@@ -111,18 +257,187 @@ paths:
         '403':
           description: Dispositivo inactivo
 
-  /api/alerts/active:
+  /api/ingestion/events:
+    post:
+      tags: [IoT]
+      summary: Ingestion de eventos crudos
+      description: Protegido con ingestion token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Evento registrado
+        '401':
+          description: Token invalido
+
+  # --- Sensors ---
+  /api/sensors:
     get:
-      tags: [Alerts]
-      summary: Obtener alertas activas para dashboard
+      tags: [Sensors]
+      summary: Listar sensores disponibles
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
       responses:
         '200':
-          description: Conteo y listado de alertas activas
+          description: Lista de sensores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorSummary'
+    post:
+      tags: [Sensors, Admin]
+      summary: Crear sensor (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Sensor creado
+        '403':
+          description: No es admin
 
+  /api/sensors/all/readings:
+    get:
+      tags: [Sensors]
+      summary: Obtener todas las lecturas de todos los sensores
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lecturas
+
+  /api/sensors/{sensor}:
+    get:
+      tags: [Sensors]
+      summary: Obtener detalle de un sensor
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detalle del sensor
+    put:
+      tags: [Sensors, Admin]
+      summary: Actualizar sensor (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Sensor actualizado
+    delete:
+      tags: [Sensors, Admin]
+      summary: Eliminar sensor (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Sensor eliminado
+
+  /api/sensors/{sensor}/readings:
+    get:
+      tags: [Sensors]
+      summary: Obtener lecturas paginadas de un sensor
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lecturas paginadas
+
+  /api/sensors/{sensor}/readings/export:
+    get:
+      tags: [Sensors]
+      summary: Exportar lecturas de un sensor
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Archivo de exportacion
+
+  /api/sensors/{sensor}/latest-readings:
+    get:
+      tags: [Sensors]
+      summary: Obtener ultimas lecturas de un sensor
+      parameters:
+        - in: path
+          name: sensor
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Lecturas recientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorReading'
+
+  # --- Devices ---
   /api/devices:
     get:
       tags: [Devices]
       summary: Listar dispositivos
+      security:
+        - bearerAuth: []
       parameters:
         - in: query
           name: per_page
@@ -134,11 +449,29 @@ paths:
       responses:
         '200':
           description: Lista paginada de dispositivos
+    post:
+      tags: [Devices, Admin]
+      summary: Crear dispositivo (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Dispositivo creado
+        '403':
+          description: No es admin
 
   /api/devices/{device}:
     get:
       tags: [Devices]
       summary: Obtener detalle de un dispositivo
+      security:
+        - bearerAuth: []
       parameters:
         - in: path
           name: device
@@ -148,12 +481,45 @@ paths:
       responses:
         '200':
           description: Detalle del dispositivo
+    put:
+      tags: [Devices, Admin]
+      summary: Actualizar dispositivo (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: device
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Dispositivo actualizado
+    delete:
+      tags: [Devices, Admin]
+      summary: Eliminar dispositivo (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: device
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Dispositivo eliminado
 
   /api/devices/{device}/status:
     post:
-      tags: [Devices]
-      summary: Actualizar estado de dispositivo
-      description: Requiere autenticacion con Sanctum y permisos adecuados.
+      tags: [Devices, Admin]
+      summary: Actualizar estado de dispositivo (admin)
       security:
         - bearerAuth: []
       parameters:
@@ -178,12 +544,594 @@ paths:
         '401':
           description: No autenticado
 
+  /api/devices/{device}/sensors:
+    get:
+      tags: [Devices]
+      summary: Listar sensores de un dispositivo
+      parameters:
+        - in: path
+          name: device
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lista de sensores del dispositivo
+
+  /api/devices/{device}/sensor-list:
+    get:
+      tags: [Devices]
+      summary: Lista de sensores de un dispositivo (autenticado)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: device
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Lista de sensores
+
+  # --- Alerts ---
+  /api/alerts/active:
+    get:
+      tags: [Alerts]
+      summary: Obtener alertas activas (publico)
+      responses:
+        '200':
+          description: Alertas activas
+
+  /api/alerts:
+    get:
+      tags: [Alerts]
+      summary: Listar todas las alertas
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de alertas
+
+  /api/alerts/unresolved:
+    get:
+      tags: [Alerts]
+      summary: Obtener alertas no resueltas
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Alertas no resueltas
+
+  /api/alerts/resolve-all:
+    post:
+      tags: [Alerts]
+      summary: Resolver todas las alertas pendientes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Alertas resueltas
+
+  /api/alerts/{alert}:
+    get:
+      tags: [Alerts]
+      summary: Obtener detalle de una alerta
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: alert
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detalle de la alerta
+
+  /api/alerts/{alert}/resolve:
+    patch:
+      tags: [Alerts]
+      summary: Resolver una alerta
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: alert
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Alerta resuelta
+
+  # --- Alert Rules ---
+  /api/alert-rules:
+    get:
+      tags: [AlertRules, Admin]
+      summary: Listar reglas de alerta (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de reglas
+    post:
+      tags: [AlertRules, Admin]
+      summary: Crear regla de alerta (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Regla creada
+
+  /api/alert-rules/create:
+    get:
+      tags: [AlertRules, Admin]
+      summary: Formulario de creacion de regla (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Datos para formulario
+
+  /api/alert-rules/{alertRule}:
+    get:
+      tags: [AlertRules, Admin]
+      summary: Obtener regla de alerta (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: alertRule
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detalle de la regla
+    put:
+      tags: [AlertRules, Admin]
+      summary: Actualizar regla de alerta (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: alertRule
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Regla actualizada
+    delete:
+      tags: [AlertRules, Admin]
+      summary: Eliminar regla de alerta (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: alertRule
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Regla eliminada
+
+  # --- Dashboard (auth) ---
+  /api/dashboard/metrics:
+    get:
+      tags: [Dashboard]
+      summary: Metricas del dashboard (autenticado)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Metricas
+
+  /api/dashboard/preferences:
+    get:
+      tags: [Dashboard]
+      summary: Obtener preferencias del dashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Preferencias
+    put:
+      tags: [Dashboard]
+      summary: Actualizar preferencias del dashboard
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Preferencias actualizadas
+
+  # --- Profile ---
+  /api/profile:
+    get:
+      tags: [Profile]
+      summary: Obtener perfil del usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Perfil
+
+  # --- User (auth:sanctum) ---
+  /api/user:
+    get:
+      tags: [Auth]
+      summary: Obtener usuario actual (sanctum)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usuario
+
+  # --- Admin ---
+  /api/metrics:
+    get:
+      tags: [Admin]
+      summary: Metricas internas (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Metricas
+
+  /api/users:
+    get:
+      tags: [Admin]
+      summary: Listar usuarios (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de usuarios
+
+  /api/users/{user}/role:
+    patch:
+      tags: [Admin]
+      summary: Actualizar rol de usuario (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: user
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Rol actualizado
+
+  /api/labs:
+    get:
+      tags: [Admin]
+      summary: Listar laboratorios (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de labs
+    post:
+      tags: [Admin]
+      summary: Crear laboratorio (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Lab creado
+
+  /api/labs/{lab}:
+    get:
+      tags: [Admin]
+      summary: Obtener laboratorio (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: lab
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detalle del lab
+    put:
+      tags: [Admin]
+      summary: Actualizar laboratorio (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: lab
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Lab actualizado
+    delete:
+      tags: [Admin]
+      summary: Eliminar laboratorio (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: lab
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Lab eliminado
+
+  /api/sensor-types:
+    get:
+      tags: [Admin]
+      summary: Listar tipos de sensor (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de tipos
+    post:
+      tags: [Admin]
+      summary: Crear tipo de sensor (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Tipo creado
+
+  /api/sensor-types/{sensorType}:
+    get:
+      tags: [Admin]
+      summary: Obtener tipo de sensor (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensorType
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detalle del tipo
+    put:
+      tags: [Admin]
+      summary: Actualizar tipo de sensor (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensorType
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Tipo actualizado
+    delete:
+      tags: [Admin]
+      summary: Eliminar tipo de sensor (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: sensorType
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Tipo eliminado
+
+  /api/device-types:
+    get:
+      tags: [Admin]
+      summary: Listar tipos de dispositivo (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de tipos
+    post:
+      tags: [Admin]
+      summary: Crear tipo de dispositivo (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Tipo creado
+
+  /api/device-types/{deviceType}:
+    get:
+      tags: [Admin]
+      summary: Obtener tipo de dispositivo (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: deviceType
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detalle del tipo
+    put:
+      tags: [Admin]
+      summary: Actualizar tipo de dispositivo (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: deviceType
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Tipo actualizado
+    delete:
+      tags: [Admin]
+      summary: Eliminar tipo de dispositivo (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: deviceType
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Tipo eliminado
+
+  # --- Config ---
+  /api/config/alerts:
+    get:
+      tags: [Config, Admin]
+      summary: Obtener configuracion de alertas (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Configuracion de alertas
+    put:
+      tags: [Config, Admin]
+      summary: Actualizar configuracion de alertas (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Configuracion actualizada
+
+  /api/config/email:
+    get:
+      tags: [Config, Admin]
+      summary: Obtener configuracion de email (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Configuracion de email
+    put:
+      tags: [Config, Admin]
+      summary: Actualizar configuracion de email (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Configuracion actualizada
+
+  /api/config/email/test:
+    post:
+      tags: [Config, Admin]
+      summary: Enviar email de prueba (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Email de prueba enviado
+
+  # --- Internal Metrics ---
+  /api/internal/metrics/api-performance:
+    get:
+      tags: [Admin]
+      summary: Metricas de rendimiento de API (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Metricas de rendimiento
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: Token
+    deviceKey:
+      type: apiKey
+      in: header
+      name: X-Device-Key
 
   schemas:
     SensorSummary:

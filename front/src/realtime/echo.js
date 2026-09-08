@@ -6,7 +6,8 @@ import { getStoredToken } from '@/api/client';
 let echoInstance = null;
 let connectionWired = false; // rebound per Echo instance (reset on disconnectEcho)
 let visibilityWired = false; // wired once for the page's lifetime, independent of Echo instance
-let wasConnected = false;
+let connectionState = 'disconnected';
+let hasConnectedOnce = false;
 
 // PLAN.md Stage 5 — connection manager built on top of the Echo singleton. Every composable
 // that used to bind `echo.connector.pusher.connection` itself (or skip it entirely) now
@@ -25,10 +26,10 @@ function notify(listeners, ...args) {
   });
 }
 
-// Fires 'reconnect' only on a transition back to connected (never on the very first
-// connect) — one of ADR-2's lean V1 recovery triggers. Rebound per Echo instance because
-// disconnectEcho() (manual reconnect / auth change) replaces the underlying connection
-// object.
+// Fires 'reconnect' only on a transition back to connected AFTER a prior disconnect
+// (never on the very first connect) — one of ADR-2's lean V1 recovery triggers.
+// Rebound per Echo instance because disconnectEcho() (manual reconnect / auth change)
+// replaces the underlying connection object.
 function wireConnection(echo) {
   if (connectionWired) {
     return;
@@ -42,22 +43,27 @@ function wireConnection(echo) {
   }
 
   connection.bind('connected', () => {
-    const isReconnect = wasConnected === false;
-    wasConnected = true;
+    // S5-01: fire 'reconnect' only when transitioning from a non-connected state back
+    // to connected. Duplicate 'connected' callbacks from Pusher (without an intervening
+    // disconnect) must NOT trigger recovery — they are transport-level noise.
+    const isReconnect = hasConnectedOnce && connectionState !== 'connected';
+    connectionState = 'connected';
+    hasConnectedOnce = true;
     notify(stateListeners, 'connected');
     if (isReconnect) {
       notify(resyncListeners, 'reconnect');
     }
   });
   connection.bind('disconnected', () => {
-    wasConnected = false;
+    connectionState = 'disconnected';
     notify(stateListeners, 'disconnected');
   });
   connection.bind('unavailable', () => {
-    wasConnected = false;
+    connectionState = 'unavailable';
     notify(stateListeners, 'unavailable');
   });
   connection.bind('error', (connectionError) => {
+    connectionState = 'error';
     notify(stateListeners, 'error', connectionError);
   });
 }
@@ -90,11 +96,11 @@ function handleAuthChange() {
 }
 
 if (typeof window !== 'undefined') {
-  // client.js dispatches these as plain DOM events (not a direct import) to avoid a
-  // client.js <-> echo.js import cycle — echo.js already imports getStoredToken from
-  // client.js.
+  // S5-05: single canonical auth lifecycle event. client.js dispatches auth:changed with
+  // detail.reason = 'login' | 'logout' | 'unauthorized' | 'token_refresh'. The old
+  // auth:unauthorized is no longer dispatched — one credential transition → one event →
+  // one teardown/rebuild path.
   window.addEventListener('auth:changed', handleAuthChange);
-  window.addEventListener('auth:unauthorized', handleAuthChange);
 }
 
 function booleanEnv(value, defaultValue = true) {
@@ -183,16 +189,37 @@ export function disconnectEcho() {
 
   echoInstance = null;
   connectionWired = false;
-  wasConnected = false;
+  connectionState = 'disconnected';
+  // NOTE: hasConnectedOnce is intentionally NOT reset here. It tracks lifetime state
+  // ("has this tab ever connected") so that after an auth-change teardown + rebuild,
+  // the next connected callback correctly fires 'reconnect' (not a phantom first-connect).
+  // It resets only on page reload (module re-evaluation).
 }
 
 /**
  * Subscribe to connection-state transitions ('connected' | 'disconnected' | 'unavailable' |
- * 'error'). Returns an unsubscribe function.
+ * 'error'). When { immediate: true } is passed, the callback fires immediately with the
+ * current state so late subscribers don't stay locally out-of-sync (S5-02).
+ * Returns an unsubscribe function.
  */
-export function onConnectionStateChange(callback) {
+export function onConnectionStateChange(callback, { immediate = false } = {}) {
   stateListeners.add(callback);
+  if (immediate) {
+    try {
+      callback(connectionState);
+    } catch {
+      // one bad listener must not stop delivery to the others
+    }
+  }
   return () => stateListeners.delete(callback);
+}
+
+/**
+ * Returns the current transport connection state without subscribing.
+ * S5-02: late subscribers can read this to initialise correctly.
+ */
+export function getConnectionState() {
+  return connectionState;
 }
 
 /**

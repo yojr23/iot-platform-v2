@@ -18,10 +18,25 @@ let stopConnectionWatch = null;
 let stopResync = null;
 let subscribed = false;
 
+// S5-03: recovery buffer — live events that arrive while a snapshot GET is in flight are
+// buffered here and replayed through the store's idempotency path after the snapshot applies.
+// Bounded: max MAX_RECOVERY_EVENTS events OR MAX_RECOVERY_DURATION_MS wall-clock, whichever
+// is hit first. Exceeding the bound marks projection stale and triggers a fresh recovery.
+const recoveryBuffer = [];
+let recovering = false;
+let recoveryStartTime = 0;
+const MAX_RECOVERY_EVENTS = 100;
+const MAX_RECOVERY_DURATION_MS = 15_000;
+
 function getEventPayload(event) {
   return event?.alert ?? event?.data ?? event;
 }
 
+// S5-06: transport state and projection freshness are separate concerns.
+// 'live' = transport connected AND snapshot applied (projection fresh).
+// 'recovering' = snapshot in flight, live events buffered.
+// 'stale' = transport connected but snapshot not yet applied or failed.
+// 'disconnected' = transport down.
 function setStatus(status) {
   const alertsStore = useAlertsStore();
   alertsStore.setRealtimeStatus(status);
@@ -30,20 +45,36 @@ function setStatus(status) {
   error.value = status.error || '';
 }
 
-// Honest connection vocabulary (audit.md §7 no-hybrid rule): this transport layer never
-// claims a "polling" fallback mode of its own. AppLayout's separate reconciliation timer
-// (kept until Stage 7 proves recovery) is a different layer's concern this module doesn't
-// need to know about or misrepresent.
 const CONNECTION_ERROR_MESSAGES = {
   disconnected: 'Conexion en tiempo real perdida; reintentando.',
   unavailable: 'Conexion en tiempo real no disponible; reintentando.',
   error: 'Error de conexion en tiempo real.'
 };
 
+function replayRecoveryBuffer(alertsStore) {
+  // S5-03: replay buffered live events through the store's idempotency path.
+  // addRealtimeAlert already deduplicates by id (wasKnown check), so replay is safe.
+  const buffered = recoveryBuffer.splice(0, recoveryBuffer.length);
+
+  buffered.forEach((payload) => {
+    const alert = alertsStore.addRealtimeAlert(payload);
+    if (alert) {
+      playAlertSound({
+        enabled: alertsStore.soundEnabled,
+        severity: alert?.alert_rule?.severity || payload?.severity
+      });
+    }
+  });
+}
+
 async function runSnapshot(alertsStore) {
-  // PLAN.md Stage 5.3 / ADR-2 lean V1: one bounded, lifecycle-triggered snapshot that reuses
-  // the existing GET /alerts/active endpoint (already wired for the notifyNew flow) —
-  // never a periodic GET loop. Dedup happens where it already lives: alertsStore.
+  // S5-03 / ADR-2 lean V1: one bounded, lifecycle-triggered snapshot. Buffer live events
+  // during the in-flight request, then replay them after the snapshot applies. This prevents
+  // the race where a live event is overwritten by an older HTTP snapshot.
+  recovering = true;
+  recoveryStartTime = Date.now();
+  recoveryBuffer.length = 0;
+
   setStatus({
     enabled: true,
     connected: isConnected.value,
@@ -52,24 +83,43 @@ async function runSnapshot(alertsStore) {
     error: null
   });
 
-  const newAlerts = await alertsStore
-    .fetchActiveAlerts({ silent: true, notifyNew: true })
-    .catch(() => []);
+  try {
+    // S5-06: no .catch(() => []) — let HTTP failures propagate to the catch block below
+    // so snapshot failure correctly marks the projection stale (not live/fresh).
+    const newAlerts = await alertsStore.fetchActiveAlerts({ silent: true, notifyNew: true });
 
-  newAlerts.forEach((alert) => {
-    playAlertSound({
-      enabled: alertsStore.soundEnabled,
-      severity: alert?.alert_rule?.severity || alert?.severity
+    newAlerts.forEach((alert) => {
+      playAlertSound({
+        enabled: alertsStore.soundEnabled,
+        severity: alert?.alert_rule?.severity || alert?.severity
+      });
     });
-  });
 
-  setStatus({
-    enabled: true,
-    connected: isConnected.value,
-    mode: isConnected.value ? 'live' : 'stale',
-    channel: ALERTS_CHANNEL,
-    error: null
-  });
+    // S5-03: replay buffered live events after snapshot applies
+    replayRecoveryBuffer(alertsStore);
+
+    // S5-06: mark projection fresh only if transport is also connected
+    setStatus({
+      enabled: true,
+      connected: isConnected.value,
+      mode: isConnected.value ? 'live' : 'stale',
+      channel: ALERTS_CHANNEL,
+      error: null
+    });
+  } catch {
+    // S5-06: snapshot failure — mark stale/recovery_failed, NOT live
+    recoveryBuffer.length = 0;
+    setStatus({
+      enabled: true,
+      connected: isConnected.value,
+      mode: 'stale',
+      channel: ALERTS_CHANNEL,
+      error: 'Error al recuperar alertas; estado posiblemente desactualizado.'
+    });
+  } finally {
+    recovering = false;
+    recoveryStartTime = 0;
+  }
 }
 
 export function subscribeAlerts() {
@@ -93,8 +143,30 @@ export function subscribeAlerts() {
 
   releaseChannel = listenOnChannel(ALERTS_CHANNEL, ALERTS_EVENT, (event) => {
     const payload = getEventPayload(event);
-    // Idempotency lives in the store now (single alert-projection owner per PLAN.md Stage 5
-    // / ownership F2) — the transport no longer keeps a parallel seenAlertIds dedup set.
+
+    // S5-03: if recovery is in flight, buffer the event and replay after snapshot applies.
+    // This prevents the race where a live event arrives during the snapshot GET and is
+    // overwritten when the older HTTP response arrives.
+    if (recovering) {
+      const age = Date.now() - recoveryStartTime;
+      if (recoveryBuffer.length >= MAX_RECOVERY_EVENTS || age >= MAX_RECOVERY_DURATION_MS) {
+        // Buffer bound exceeded — mark stale, clear buffer, let the snapshot finish
+        recoveryBuffer.length = 0;
+        recovering = false;
+        setStatus({
+          enabled: true,
+          connected: isConnected.value,
+          mode: 'stale',
+          channel: ALERTS_CHANNEL,
+          error: 'Buffer de recuperación excedido; estado posiblemente desactualizado.'
+        });
+        return;
+      }
+      recoveryBuffer.push(payload);
+      return;
+    }
+
+    // Normal live path: apply directly via the store's idempotency owner (F2)
     const alert = alertsStore.addRealtimeAlert(payload);
 
     if (alert) {
@@ -122,7 +194,7 @@ export function subscribeAlerts() {
         || CONNECTION_ERROR_MESSAGES[state]
         || 'Conexion en tiempo real interrumpida.'
     });
-  });
+  }, { immediate: true });
 
   stopResync = onResync((reason) => {
     if (reason === 'auth') {
@@ -158,6 +230,8 @@ export function unsubscribeAlerts() {
   stopConnectionWatch = null;
   stopResync = null;
   subscribed = false;
+  recovering = false;
+  recoveryBuffer.length = 0;
 
   setStatus({
     enabled: false,

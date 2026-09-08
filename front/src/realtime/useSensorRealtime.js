@@ -101,12 +101,14 @@ export function useSensorRealtime(sensorIdSource, onReading) {
       onReading?.(reading);
     });
 
-    // Connected state now derives from the shared transport ack (echo.js) instead of being
-    // declared true synchronously right after registering the listener (audit RC5).
+    // S5-02: connected state now derives from the shared transport ack (echo.js) and
+    // delivers the current state immediately to late subscribers via { immediate: true }.
+    // A consumer created after Echo is already connected now sees isConnected=true right away
+    // instead of waiting for the next transport transition.
     stopConnectionWatch = onConnectionStateChange((state) => {
       isConnected.value = state === 'connected';
       error.value = state === 'connected' ? '' : 'Conexion en tiempo real interrumpida; reintentando.';
-    });
+    }, { immediate: true });
 
     stopResync = onResync((reason) => {
       if (reason === 'auth') {

@@ -2,72 +2,631 @@
   "info": {
     "name": "IoT Platform API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Coleccion base para onboarding de integraciones API"
+    "description": "Coleccion API completa - IoT Platform v2"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://127.0.0.1:8000" },
     { "key": "apiKey", "value": "CHANGE_ME" },
     { "key": "sanctumToken", "value": "CHANGE_ME" },
     { "key": "sensorId", "value": "1" },
-    { "key": "deviceId", "value": "1" }
+    { "key": "deviceId", "value": "1" },
+    { "key": "alertId", "value": "1" },
+    { "key": "alertRuleId", "value": "1" },
+    { "key": "labId", "value": "1" },
+    { "key": "sensorTypeId", "value": "1" },
+    { "key": "deviceTypeId", "value": "1" },
+    { "key": "userId", "value": "1" }
   ],
   "item": [
     {
-      "name": "Sensors - List",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/api/sensors"
-      }
+      "name": "Health",
+      "item": [
+        {
+          "name": "Healthcheck",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/health"
+          }
+        }
+      ]
     },
     {
-      "name": "Sensors - Latest Readings",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/api/sensors/{{sensorId}}/latest-readings?limit=10"
-      }
-    },
-    {
-      "name": "Sensors - Ingest Reading",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"value\": 42.5,\n  \"reading_time\": \"2026-04-26 10:00:00\",\n  \"api_key\": \"{{apiKey}}\"\n}"
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
         },
-        "url": "{{baseUrl}}/api/sensors/{{sensorId}}/readings"
-      }
-    },
-    {
-      "name": "Devices - List",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/api/devices?per_page=50"
-      }
-    },
-    {
-      "name": "Devices - Update Status (Sanctum)",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"status\": true\n}"
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"password\",\n  \"password_confirmation\": \"password\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
+          }
         },
-        "url": "{{baseUrl}}/api/devices/{{deviceId}}/status"
-      }
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/auth/me"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/auth/logout"
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/forgot-password"
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"RESET_TOKEN\",\n  \"email\": \"admin@example.com\",\n  \"password\": \"newpassword\",\n  \"password_confirmation\": \"newpassword\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/reset-password"
+          }
+        }
+      ]
     },
     {
-      "name": "Alerts - Active",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/api/alerts/active"
-      }
+      "name": "IoT",
+      "item": [
+        {
+          "name": "List Sensors (IoT)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Device-Key", "value": "{{apiKey}}" }
+            ],
+            "url": "{{baseUrl}}/api/iot/sensors"
+          }
+        },
+        {
+          "name": "Ingest Reading",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": 42.5,\n  \"reading_time\": \"2026-04-26 10:00:00\",\n  \"api_key\": \"{{apiKey}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/sensors/{{sensorId}}/readings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sensors",
+      "item": [
+        {
+          "name": "List Sensors",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/sensors"
+          }
+        },
+        {
+          "name": "Get Sensor",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/sensors/{{sensorId}}"
+          }
+        },
+        {
+          "name": "Create Sensor (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Sensor\",\n  \"device_id\": 1,\n  \"sensor_type_id\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/sensors"
+          }
+        },
+        {
+          "name": "Update Sensor (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Sensor\"\n}"
+            },
+            "url": "{{baseUrl}}/api/sensors/{{sensorId}}"
+          }
+        },
+        {
+          "name": "Delete Sensor (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/sensors/{{sensorId}}"
+          }
+        },
+        {
+          "name": "All Readings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/sensors/all/readings"
+          }
+        },
+        {
+          "name": "Sensor Readings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/sensors/{{sensorId}}/readings"
+          }
+        },
+        {
+          "name": "Export Readings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/sensors/{{sensorId}}/readings/export"
+          }
+        },
+        {
+          "name": "Latest Readings (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/sensors/{{sensorId}}/latest-readings?limit=10"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Devices",
+      "item": [
+        {
+          "name": "List Devices",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/devices?per_page=50"
+          }
+        },
+        {
+          "name": "Get Device",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/devices/{{deviceId}}"
+          }
+        },
+        {
+          "name": "Create Device (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Device\",\n  \"serial_number\": \"DEV-001\",\n  \"lab_id\": 1,\n  \"device_type_id\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/devices"
+          }
+        },
+        {
+          "name": "Update Device (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Device\"\n}"
+            },
+            "url": "{{baseUrl}}/api/devices/{{deviceId}}"
+          }
+        },
+        {
+          "name": "Delete Device (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/devices/{{deviceId}}"
+          }
+        },
+        {
+          "name": "Update Status (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/devices/{{deviceId}}/status"
+          }
+        },
+        {
+          "name": "Device Sensors (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/devices/{{deviceId}}/sensors"
+          }
+        },
+        {
+          "name": "Device Sensor List (Auth)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/devices/{{deviceId}}/sensor-list"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "Active Alerts (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/alerts/active"
+          }
+        },
+        {
+          "name": "List Alerts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alerts"
+          }
+        },
+        {
+          "name": "Unresolved Alerts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alerts/unresolved"
+          }
+        },
+        {
+          "name": "Get Alert",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alerts/{{alertId}}"
+          }
+        },
+        {
+          "name": "Resolve Alert",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alerts/{{alertId}}/resolve"
+          }
+        },
+        {
+          "name": "Resolve All Alerts",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alerts/resolve-all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alert Rules (Admin)",
+      "item": [
+        {
+          "name": "List Alert Rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alert-rules"
+          }
+        },
+        {
+          "name": "Get Alert Rule",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alert-rules/{{alertRuleId}}"
+          }
+        },
+        {
+          "name": "Create Alert Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"High Temp Alert\",\n  \"sensor_type_id\": 1,\n  \"min_value\": 0,\n  \"max_value\": 100,\n  \"severity\": \"warning\"\n}"
+            },
+            "url": "{{baseUrl}}/api/alert-rules"
+          }
+        },
+        {
+          "name": "Update Alert Rule",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"max_value\": 95\n}"
+            },
+            "url": "{{baseUrl}}/api/alert-rules/{{alertRuleId}}"
+          }
+        },
+        {
+          "name": "Delete Alert Rule",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/alert-rules/{{alertRuleId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Config (Admin)",
+      "item": [
+        {
+          "name": "Get Alert Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/config/alerts"
+          }
+        },
+        {
+          "name": "Update Alert Config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alert_threshold\": 5\n}"
+            },
+            "url": "{{baseUrl}}/api/config/alerts"
+          }
+        },
+        {
+          "name": "Get Email Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/config/email"
+          }
+        },
+        {
+          "name": "Update Email Config",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mail_mailer\": \"smtp\",\n  \"mail_host\": \"smtp.example.com\"\n}"
+            },
+            "url": "{{baseUrl}}/api/config/email"
+          }
+        },
+        {
+          "name": "Test Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/config/email/test"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Public Data",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/dashboard/public"
+          }
+        },
+        {
+          "name": "Metrics (Auth)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/metrics"
+          }
+        },
+        {
+          "name": "Get Preferences",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/dashboard/preferences"
+          }
+        },
+        {
+          "name": "Update Preferences",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"layout\": \"default\"\n}"
+            },
+            "url": "{{baseUrl}}/api/dashboard/preferences"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/users"
+          }
+        },
+        {
+          "name": "Update User Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_admin\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/users/{{userId}}/role"
+          }
+        },
+        {
+          "name": "API Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/metrics"
+          }
+        },
+        {
+          "name": "API Performance",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sanctumToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/internal/metrics/api-performance"
+          }
+        }
+      ]
     }
   ]
 }

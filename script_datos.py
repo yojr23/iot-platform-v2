@@ -22,7 +22,7 @@ except Exception:  # noqa: BLE001
 # Endpoint para obtener sensores y publicar payloads MQTT
 BASE_URL = os.getenv("IOT_BASE_URL", "http://127.0.0.1:8000")
 API_SENSORS_URL = f"{BASE_URL}/api/iot/sensors"
-DEFAULT_API_KEY = "E7X1GAFf9xgkdoP69LcYSD4KoNuuYGn_ju01uIY2448"
+DEFAULT_API_KEY = ""
 LOG_LEVEL = os.getenv("IOT_LOG_LEVEL", "INFO").upper()
 CYCLE_INTERVAL_SECONDS = max(0.2, float(os.getenv("IOT_CYCLE_INTERVAL", "1.0")))
 SENSOR_BATCH_SIZE = max(1, int(os.getenv("IOT_SENSOR_BATCH_SIZE", "3")))

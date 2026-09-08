@@ -19,14 +19,14 @@ export function getStoredToken() {
 
 export function setStoredToken(token) {
   window.localStorage.setItem(AUTH_TOKEN_KEY, token);
-  // Lets echo.js rebuild its Pusher auth headers + resync realtime state on credential
-  // change (PLAN.md Stage 5.2/5.3) without client.js importing realtime/echo.js directly.
-  window.dispatchEvent(new CustomEvent('auth:changed'));
+  // S5-05: single canonical auth lifecycle event with reason metadata — echo.js
+  // listens to this and tears down/rebuilds the shared connection once, not twice.
+  window.dispatchEvent(new CustomEvent('auth:changed', { detail: { reason: 'login' } }));
 }
 
-export function clearStoredToken() {
+export function clearStoredToken(reason = 'logout') {
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
-  window.dispatchEvent(new CustomEvent('auth:changed'));
+  window.dispatchEvent(new CustomEvent('auth:changed', { detail: { reason } }));
 }
 
 export function unwrapData(response) {
@@ -48,8 +48,11 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      clearStoredToken();
-      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      // S5-05: one401 → one canonical auth lifecycle event via clearStoredToken('unauthorized').
+      // The old pattern dispatched both auth:changed + auth:unauthorized, causing double
+      // teardown/resubscribe in echo.js. Now echo.js handles exactly one event per credential
+      // transition.
+      clearStoredToken('unauthorized');
 
       if (!window.location.pathname.startsWith('/login')) {
         window.location.assign('/login');

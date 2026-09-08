@@ -9,7 +9,7 @@ Monorepo IoT con:
 
 El sistema opera dispositivos y sensores en tiempo real: ingesta de telemetria, evaluacion de reglas, generacion de alertas, visualizacion en dashboard y notificacion por correo.
 
-## Estado actual (verificado: 2026-05-13)
+## Estado actual (verificado: 2026-09-08)
 
 Implementado hoy en el repo:
 
@@ -214,11 +214,10 @@ npm run test:phase7
 - `front/.env`: solo variables publicas `VITE_*`.
 - `.env.example` en raiz: guia de orquestacion para Docker Compose.
 - No poner secretos backend en el frontend.
-- `IOT_API_KEY` o `API_KEY` para validacion IoT.
+- `IOT_API_KEY` o `API_KEY` (requerido para el simulador; sin fallback en codigo).
 - `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
 - `BROADCAST_DRIVER`, `PUSHER_APP_KEY`, `PUSHER_APP_CLUSTER`.
 - `IOT_BASE_URL` (opcional, default `http://127.0.0.1:8000`).
-- `IOT_API_KEY` (opcional; si existe, el simulador la prioriza sobre `API_KEY`).
 - `IOT_LOG_LEVEL` (opcional, default `INFO`).
 - No poner secretos en variables `VITE_*`.
 
@@ -242,6 +241,7 @@ Terminal 3:
 
 ```bash
 pip install requests
+export IOT_API_KEY="tu-api-key"
 python script_datos.py
 ```
 
@@ -559,24 +559,71 @@ flowchart TD
 
 ## API actual
 
-### Endpoints IoT (API key)
+### Endpoints publicos (sin autenticacion)
+
+- `GET /api/health`
+- `GET /api/config/public`
+- `GET /api/dashboard/public`
+- `GET /api/sensors/{sensor}/latest-readings`
+- `GET /api/devices/{device}/sensors`
+- `GET /api/alerts/active`
+
+### Endpoints IoT (API key via X-Device-Key o payload)
 
 - `GET /api/iot/sensors`
 - `POST /api/sensors/{sensor}/readings`
 
-### Endpoints protegidos por Sanctum
+### Endpoints autenticados (Sanctum)
 
 - `POST /api/auth/login`
+- `POST /api/auth/register`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `GET /api/auth/verify-email/{id}/{hash}`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
+- `POST /api/auth/resend-verification`
+- `GET /api/user`
+- `GET /api/profile`
+- `GET /api/dashboard/metrics`
+- `GET/PUT /api/dashboard/preferences`
 - `GET /api/devices`
 - `GET /api/devices/{device}`
-- `POST /api/devices/{device}/status` (`admin`)
 - `GET /api/sensors`
+- `GET /api/sensors/{sensor}`
+- `GET /api/sensors/all/readings`
 - `GET /api/sensors/{sensor}/readings`
-- `GET /api/sensors/{sensor}/latest-readings`
-- `GET /api/alerts/active`
-- `GET/POST/DELETE /api/alert-rules/*` (`admin`)
+- `GET /api/sensors/{sensor}/readings/export`
+- `GET /api/alerts`
+- `GET /api/alerts/unresolved`
+- `GET /api/alerts/{alert}`
+- `PATCH /api/alerts/{alert}/resolve`
+- `POST /api/alerts/resolve-all`
+
+### Endpoints admin (Sanctum + admin)
+
+- `POST /api/devices` (crear)
+- `PUT /api/devices/{device}` (actualizar)
+- `DELETE /api/devices/{device}` (eliminar)
+- `POST /api/devices/{device}/status`
+- `POST /api/sensors` (crear)
+- `PUT /api/sensors/{sensor}` (actualizar)
+- `DELETE /api/sensors/{sensor}` (eliminar)
+- `GET /api/metrics`
+- `GET /api/users`
+- `PATCH /api/users/{user}/role`
+- CRUD `/api/labs`
+- CRUD `/api/sensor-types`
+- CRUD `/api/device-types`
+- CRUD `/api/alert-rules`
+- `GET/PUT /api/config/alerts`
+- `GET/PUT /api/config/email`
+- `POST /api/config/email/test`
+- `GET /api/internal/metrics/api-performance`
+
+### Ingestion (token)
+
+- `POST /api/ingestion/events`
 
 ## Seguridad (estado real)
 
@@ -592,12 +639,6 @@ Controles implementados en codigo:
 - Rate limiting activo con limite `auth-login`: 5 req/min por email + IP.
 - Manejo global de excepciones API (`ValidationException`, `BadRequestHttpException`, `QueryException`, `PDOException`) con severidad de log.
 - Endurecimiento de privilegios en `User`: no permite elevar `is_admin` por mass assignment o updates no autorizados.
-
-Riesgos pendientes detectados:
-
-- `database/seeders/SystemSettingsSeeder.php` contiene credenciales SMTP reales. Deben rotarse y moverse a secretos de entorno.
-- `script_datos.py` conserva `DEFAULT_API_KEY` vacia como fallback; en despliegue productivo conviene exigir variable obligatoria sin fallback.
-- `docs/api/openapi.yaml` y Postman pueden quedar desfasados frente a rutas nuevas; conviene regenerarlos tras cada cambio de API.
 
 ## Observabilidad y logs
 
@@ -649,6 +690,7 @@ tail -f back/storage/logs/laravel.log
 En otra terminal, ejecutar el simulador para correlacionar eventos:
 
 ```bash
+export IOT_API_KEY="tu-api-key"
 python script_datos.py
 ```
 
@@ -670,7 +712,7 @@ php artisan cache:clear
 
 | Codigo | Causa probable | Como resolver |
 |---|---|---|
-| `401` | API key invalida o token Sanctum ausente/invalido | Validar `X-Device-Key` o `api_key`; renovar login en `/api/auth/login`; revisar expiracion o revocacion de token. |
+| `401` | API key invalida o token Sanctum ausente/invalido | Validar `X-Device-Key` o `api_key`; configurar `IOT_API_KEY` o `API_KEY` en el entorno; renovar login en `/api/auth/login`; revisar expiracion o revocacion de token. |
 | `403` | Dispositivo inactivo o usuario sin permisos `admin` | Confirmar `devices.status = true` y `is_active = true`; validar rol de usuario para endpoints administrativos. |
 | `422` | Payload invalido o formato inesperado | Revisar campos requeridos (`value`, `api_key`) y formato de `reading_time` (`Y-m-d H:i:s`). |
 | `429` | Rate limit excedido | Reducir frecuencia de envio, aplicar backoff exponencial, distribuir carga por lotes/sensores. |
