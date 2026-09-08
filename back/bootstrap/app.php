@@ -16,6 +16,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withCommands()
+    ->withBroadcasting(
+        __DIR__.'/../routes/channels.php',
+        [
+            // Matches front/src/realtime/echo.js authEndpoint (`${apiBaseUrl}/broadcasting/auth`)
+            // and its Bearer-token auth header — this app uses Sanctum PATs, not session cookies
+            // (config/cors.php has supports_credentials=false), so the auth route must live under
+            // /api and be guarded by auth:sanctum rather than Laravel's default 'web' group.
+            'prefix' => 'api',
+            'middleware' => ['auth:sanctum'],
+        ],
+    )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,

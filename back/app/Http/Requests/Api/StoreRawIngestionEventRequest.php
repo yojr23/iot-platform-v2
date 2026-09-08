@@ -19,6 +19,11 @@ class StoreRawIngestionEventRequest extends FormRequest
         return [
             'topic' => ['nullable', 'string', 'max:255'],
             'source' => ['nullable', 'string', 'max:255'],
+            // Producer-generated identity (PLAN.md Stage 2.4 / adr-g1.md): the upstream producer
+            // creates this once and must resend the same value on MQTT/HTTP retries so downstream
+            // consumers can dedupe. Optional for now (mixed-version producers), backstopped by the
+            // unique (source, source_event_id) index added in Stage 2.5.
+            'source_event_id' => ['nullable', 'string', 'max:255'],
             'received_at' => ['nullable', 'date'],
             'payload' => ['required', 'array'],
             'payload.device' => ['nullable', 'array'],

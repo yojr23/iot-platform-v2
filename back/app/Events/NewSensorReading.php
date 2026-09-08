@@ -2,6 +2,8 @@
 
 namespace App\Events;
 
+use App\Events\Concerns\HasEventEnvelope;
+use App\Events\Contracts\VersionedDomainEvent;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
@@ -11,25 +13,28 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use App\Models\SensorReading;
 
-class NewSensorReading implements ShouldBroadcastNow
+class NewSensorReading implements ShouldBroadcastNow, VersionedDomainEvent
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets, SerializesModels, HasEventEnvelope;
 
     public $reading;
 
-    public function __construct(SensorReading $reading)
+    public function __construct(SensorReading $reading, ?string $correlationId = null, ?string $causationId = null)
     {
         $this->reading = $reading;
+        $this->correlationId = $correlationId;
+        $this->causationId = $causationId;
     }
 
     public function broadcastOn()
     {
+        // Backward-compat channel name kept (PLAN.md 2.2/2.3) — public guest dashboard projection.
         return new Channel('sensor.'.$this->reading->sensor_id);
     }
 
     public function broadcastWith()
     {
-        return [
+        $legacy = [
             'reading_id' => $this->reading->id,
             'sensor_id' => $this->reading->sensor_id,
             'value' => $this->reading->value,
@@ -40,6 +45,25 @@ class NewSensorReading implements ShouldBroadcastNow
             'device_name' => $this->reading->sensor->device->name,
             'lab_name' => $this->reading->sensor->device->lab->name,
         ];
+
+        // Additive envelope metadata (Stage 2.2) — existing keys unchanged, old consumers
+        // tolerate/ignore the new ones (PLAN.md Stage 2 done-when: "additive fields tolerated").
+        return array_merge($legacy, $this->envelopeMetadata());
+    }
+
+    public function eventType(): string
+    {
+        return 'sensor.reading.created';
+    }
+
+    public function aggregateType(): string
+    {
+        return 'sensor_reading';
+    }
+
+    public function aggregateId(): int|string
+    {
+        return $this->reading->id;
     }
 
     public function handle()

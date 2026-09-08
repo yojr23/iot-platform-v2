@@ -23,6 +23,7 @@ class IngestionController extends Controller
         $event = RawSensorEvent::create([
             'topic' => $validated['topic'] ?? null,
             'source' => $validated['source'] ?? 'ingestion_service',
+            'source_event_id' => $validated['source_event_id'] ?? null,
             'node_id' => is_string($nodeId) && $nodeId !== '' ? $nodeId : null,
             'payload' => $validated['payload'],
             'received_at' => $validated['received_at'] ?? null,

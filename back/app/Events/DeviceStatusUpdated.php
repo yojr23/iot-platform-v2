@@ -3,6 +3,8 @@
 namespace App\Events;
 
 
+use App\Events\Concerns\HasEventEnvelope;
+use App\Events\Contracts\VersionedDomainEvent;
 use App\Models\Device;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
@@ -12,29 +14,50 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class DeviceStatusUpdated implements ShouldBroadcast
+class DeviceStatusUpdated implements ShouldBroadcast, VersionedDomainEvent
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets, SerializesModels, HasEventEnvelope;
 
     public $device;
 
-    public function __construct(Device $device)
+    public function __construct(Device $device, ?string $correlationId = null, ?string $causationId = null)
     {
         $this->device = $device;
+        $this->correlationId = $correlationId;
+        $this->causationId = $causationId;
     }
 
     public function broadcastOn()
     {
+        // Backward-compat channel name kept (PLAN.md 2.2/2.3) — public guest dashboard projection.
         return new Channel('device-status');
     }
 
     public function broadcastWith()
     {
-        return [
+        $legacy = [
             'device_id' => $this->device->id,
             'status' => $this->device->status,
             'name' => $this->device->name,
             'lab_name' => $this->device->lab->name,
         ];
+
+        // Additive envelope metadata (Stage 2.2) — existing keys unchanged.
+        return array_merge($legacy, $this->envelopeMetadata());
+    }
+
+    public function eventType(): string
+    {
+        return 'device.status.changed';
+    }
+
+    public function aggregateType(): string
+    {
+        return 'device';
+    }
+
+    public function aggregateId(): int|string
+    {
+        return $this->device->id;
     }
 }

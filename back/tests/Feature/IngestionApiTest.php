@@ -101,6 +101,43 @@ class IngestionApiTest extends TestCase
         $this->assertSame('lab_postgrado_nodo_01', $event->node_id);
     }
 
+    public function test_store_raw_event_accepts_and_persists_source_event_id(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $payload = $this->validPayload();
+        $payload['source_event_id'] = 'node-01-reading-147';
+
+        $response = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $response->assertCreated();
+
+        $this->assertDatabaseHas('raw_sensor_events', [
+            'id' => $response->json('event_id'),
+            'source_event_id' => 'node-01-reading-147',
+        ]);
+    }
+
+    public function test_store_raw_event_without_source_event_id_still_persists(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $response = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $this->validPayload());
+
+        $response->assertCreated();
+
+        $event = RawSensorEvent::query()->findOrFail($response->json('event_id'));
+        $this->assertNull($event->source_event_id);
+    }
+
     public function test_store_raw_event_attempts_to_publish_after_persisting(): void
     {
         config([

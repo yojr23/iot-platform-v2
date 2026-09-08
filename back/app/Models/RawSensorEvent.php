@@ -12,6 +12,7 @@ class RawSensorEvent extends Model
     protected $fillable = [
         'topic',
         'source',
+        'source_event_id',
         'node_id',
         'payload',
         'received_at',
