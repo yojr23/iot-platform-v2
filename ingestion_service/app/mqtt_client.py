@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import Any
@@ -57,7 +58,16 @@ class MQTTIngestionClient:
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
             payload = validate_payload(payload)
-            raw_event = build_raw_event(payload, topic=topic)
+            source_event_id = "mqtt:{}:{}:{}".format(
+                topic,
+                msg.mid,
+                hashlib.sha256(msg.payload).hexdigest(),
+            )
+            raw_event = build_raw_event(
+                payload,
+                topic=topic,
+                source_event_id=source_event_id,
+            )
             response = self._backend_client.send_raw_event(raw_event)
             logger.info(
                 "Raw event sent to backend successfully topic=%s event_id=%s status=%s",

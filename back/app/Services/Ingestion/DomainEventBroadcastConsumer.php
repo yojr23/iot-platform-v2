@@ -4,9 +4,11 @@ namespace App\Services\Ingestion;
 
 use App\Events\AlertResolved;
 use App\Events\DeviceStatusUpdated;
+use App\Events\NewSensorReading;
 use App\Models\Alert;
 use App\Models\Device;
 use App\Models\DomainEventOutbox;
+use App\Models\SensorReading;
 use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\DB;
@@ -231,6 +233,7 @@ class DomainEventBroadcastConsumer
         match ($outbox->event_type) {
             'alert.resolved' => $this->broadcastAlertResolved($outbox),
             'device.status.changed' => $this->broadcastDeviceStatusChanged($outbox),
+            'sensor.reading.created' => $this->broadcastSensorReadingCreated($outbox),
             default => throw new \RuntimeException("unknown domain event_type [{$outbox->event_type}]"),
         };
     }
@@ -271,6 +274,25 @@ class DomainEventBroadcastConsumer
         }
 
         event(new DeviceStatusUpdated($device));
+    }
+
+    private function broadcastSensorReadingCreated(DomainEventOutbox $outbox): void
+    {
+        $readingId = data_get($outbox->payload, 'reading_id');
+        $reading = SensorReading::query()
+            ->with(['sensor.sensorType', 'sensor.device.lab'])
+            ->find($readingId);
+
+        if (! $reading) {
+            Log::info('DomainEventBroadcastConsumer: sensor.reading.created target no longer exists', [
+                'outbox_id' => $outbox->id,
+                'reading_id' => $readingId,
+            ]);
+
+            return;
+        }
+
+        event(new NewSensorReading($reading));
     }
 
     private function ack(string $id): void

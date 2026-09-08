@@ -7,21 +7,20 @@ use App\Http\Resources\SensorResource;
 use App\Models\Device;
 use App\Models\Sensor;
 use App\Services\Ingestion\SensorReadingService;
+use App\Services\Ingestion\SensorReadingProjectionService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class SensorApiController extends Controller
 {
-    private const REDIS_SENSOR_READINGS_CACHE_LIMIT = 120;
-
     public function __construct(
         private SensorReadingService $readingService,
+        private SensorReadingProjectionService $readingProjection,
     ) {
     }
 
@@ -273,7 +272,7 @@ class SensorApiController extends Controller
             }
 
             $source = 'redis';
-            $readings = $this->getLatestReadingsFromRedis($sensor->id, $limit);
+            $readings = $this->readingProjection->latest($sensor->id, $limit);
 
             if ($readings === null || $readings->isEmpty()) {
                 $source = 'database';
@@ -283,11 +282,11 @@ class SensorApiController extends Controller
                     ->orderBy('id', 'desc')
                     ->limit($limit)
                     ->get()
-                    ->map(fn ($reading) => $this->formatReadingForResponse($reading))
-                    ->values();
+                      ->map(fn ($reading) => $this->readingProjection->format($reading))
+                      ->values();
 
-                if ($readings->isNotEmpty()) {
-                    $this->warmLatestReadingsInRedis($sensor->id, $readings);
+                  if ($readings->isNotEmpty()) {
+                    $this->readingProjection->warm($sensor->id, $readings);
                 }
             }
 
@@ -382,115 +381,6 @@ class SensorApiController extends Controller
         $colors = ['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#f44336', '#00BCD4', '#8BC34A'];
 
         return $colors[$id % count($colors)];
-    }
-
-    private function getSensorReadingsRedisKey(int $sensorId): string
-    {
-        return "sensor:latest_readings:{$sensorId}";
-    }
-
-    private function formatReadingForResponse($reading): array
-    {
-        return [
-            'id' => $reading->id,
-            'value' => (float) $reading->value,
-            'reading_time' => $reading->reading_time?->toIso8601String(),
-            'created_at' => $reading->created_at?->toIso8601String(),
-        ];
-    }
-
-    private function cacheLatestReadingInRedis(int $sensorId, $reading): void
-    {
-        try {
-            $key = $this->getSensorReadingsRedisKey($sensorId);
-            $payload = json_encode($this->formatReadingForResponse($reading), JSON_UNESCAPED_UNICODE);
-
-            if ($payload === false) {
-                return;
-            }
-
-            Redis::pipeline(function ($pipe) use ($key, $payload): void {
-                $pipe->lpush($key, $payload);
-                $pipe->ltrim($key, 0, self::REDIS_SENSOR_READINGS_CACHE_LIMIT - 1);
-            });
-        } catch (Throwable $e) {
-            Log::warning('Redis cache update skipped for latest readings', [
-                'sensor_id' => $sensorId,
-                'exception' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    private function warmLatestReadingsInRedis(int $sensorId, $readings): void
-    {
-        try {
-            $serialized = $readings
-                ->filter(fn ($item) => is_array($item))
-                ->map(fn ($item) => json_encode($item, JSON_UNESCAPED_UNICODE))
-                ->filter(fn ($item) => $item !== false)
-                ->values()
-                ->all();
-
-            if ($serialized === []) {
-                return;
-            }
-
-            $key = $this->getSensorReadingsRedisKey($sensorId);
-            Redis::pipeline(function ($pipe) use ($key, $serialized): void {
-                $pipe->del($key);
-
-                foreach (array_reverse($serialized) as $payload) {
-                    $pipe->lpush($key, $payload);
-                }
-
-                $pipe->ltrim($key, 0, self::REDIS_SENSOR_READINGS_CACHE_LIMIT - 1);
-            });
-        } catch (Throwable $e) {
-            Log::warning('Redis cache warm-up skipped for latest readings', [
-                'sensor_id' => $sensorId,
-                'exception' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    private function getLatestReadingsFromRedis(int $sensorId, int $limit)
-    {
-        try {
-            $key = $this->getSensorReadingsRedisKey($sensorId);
-            $rawEntries = Redis::lrange($key, 0, $limit - 1);
-
-            if (! is_array($rawEntries) || $rawEntries === []) {
-                return collect();
-            }
-
-            return collect($rawEntries)
-                ->map(function ($entry) {
-                    if (! is_string($entry)) {
-                        return null;
-                    }
-
-                    $decoded = json_decode($entry, true);
-                    if (! is_array($decoded)) {
-                        return null;
-                    }
-
-                    return [
-                        'id' => isset($decoded['id']) ? (int) $decoded['id'] : null,
-                        'value' => isset($decoded['value']) ? (float) $decoded['value'] : null,
-                        'reading_time' => $decoded['reading_time'] ?? null,
-                        'created_at' => $decoded['created_at'] ?? null,
-                    ];
-                })
-                ->filter(fn ($entry) => is_array($entry) && $entry['id'] !== null && $entry['value'] !== null)
-                ->values();
-        } catch (Throwable $e) {
-            Log::warning('Redis lookup failed for latest sensor readings', [
-                'sensor_id' => $sensorId,
-                'exception' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
     }
 
     public function iotIndex(Request $request)

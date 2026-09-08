@@ -23,8 +23,10 @@ let subscribed = false;
 // Bounded: max MAX_RECOVERY_EVENTS events OR MAX_RECOVERY_DURATION_MS wall-clock, whichever
 // is hit first. Exceeding the bound marks projection stale and triggers a fresh recovery.
 const recoveryBuffer = [];
-let recovering = false;
 let recoveryStartTime = 0;
+let activeRecovery = null;
+let recoveryRequested = false;
+let recoveryGeneration = 0;
 const MAX_RECOVERY_EVENTS = 100;
 const MAX_RECOVERY_DURATION_MS = 15_000;
 
@@ -67,11 +69,10 @@ function replayRecoveryBuffer(alertsStore) {
   });
 }
 
-async function runSnapshot(alertsStore) {
+async function runSnapshot(alertsStore, generation) {
   // S5-03 / ADR-2 lean V1: one bounded, lifecycle-triggered snapshot. Buffer live events
   // during the in-flight request, then replay them after the snapshot applies. This prevents
   // the race where a live event is overwritten by an older HTTP snapshot.
-  recovering = true;
   recoveryStartTime = Date.now();
   recoveryBuffer.length = 0;
 
@@ -86,7 +87,17 @@ async function runSnapshot(alertsStore) {
   try {
     // S5-06: no .catch(() => []) — let HTTP failures propagate to the catch block below
     // so snapshot failure correctly marks the projection stale (not live/fresh).
-    const newAlerts = await alertsStore.fetchActiveAlerts({ silent: true, notifyNew: true });
+    const snapshot = await alertsStore.fetchActiveAlerts({
+      silent: true,
+      throwOnError: true,
+      apply: false
+    });
+
+    if (generation !== recoveryGeneration) {
+      return;
+    }
+
+    const newAlerts = alertsStore.applyActiveSnapshot(snapshot, { notifyNew: true });
 
     newAlerts.forEach((alert) => {
       playAlertSound({
@@ -96,6 +107,10 @@ async function runSnapshot(alertsStore) {
     });
 
     // S5-03: replay buffered live events after snapshot applies
+    if (generation !== recoveryGeneration) {
+      return;
+    }
+
     replayRecoveryBuffer(alertsStore);
 
     // S5-06: mark projection fresh only if transport is also connected
@@ -116,10 +131,26 @@ async function runSnapshot(alertsStore) {
       channel: ALERTS_CHANNEL,
       error: 'Error al recuperar alertas; estado posiblemente desactualizado.'
     });
-  } finally {
-    recovering = false;
-    recoveryStartTime = 0;
   }
+}
+
+function requestRecovery(alertsStore) {
+  if (activeRecovery) {
+    recoveryRequested = true;
+    return activeRecovery;
+  }
+
+  const generation = ++recoveryGeneration;
+  activeRecovery = runSnapshot(alertsStore, generation).finally(() => {
+    activeRecovery = null;
+    recoveryStartTime = 0;
+    if (recoveryRequested) {
+      recoveryRequested = false;
+      requestRecovery(alertsStore);
+    }
+  });
+
+  return activeRecovery;
 }
 
 export function subscribeAlerts() {
@@ -147,12 +178,13 @@ export function subscribeAlerts() {
     // S5-03: if recovery is in flight, buffer the event and replay after snapshot applies.
     // This prevents the race where a live event arrives during the snapshot GET and is
     // overwritten when the older HTTP response arrives.
-    if (recovering) {
+    if (activeRecovery) {
       const age = Date.now() - recoveryStartTime;
       if (recoveryBuffer.length >= MAX_RECOVERY_EVENTS || age >= MAX_RECOVERY_DURATION_MS) {
         // Buffer bound exceeded — mark stale, clear buffer, let the snapshot finish
         recoveryBuffer.length = 0;
-        recovering = false;
+        recoveryGeneration++;
+        recoveryRequested = true;
         setStatus({
           enabled: true,
           connected: isConnected.value,
@@ -175,6 +207,15 @@ export function subscribeAlerts() {
         severity: alert?.alert_rule?.severity || payload?.severity
       });
     }
+  });
+
+  setStatus({
+    enabled: true,
+    connected: false,
+    mode: 'connecting',
+    channel: ALERTS_CHANNEL,
+    event: ALERTS_EVENT_CLASS,
+    error: null
   });
 
   stopConnectionWatch = onConnectionStateChange((state, connectionError) => {
@@ -205,19 +246,10 @@ export function subscribeAlerts() {
       return;
     }
 
-    runSnapshot(alertsStore);
+    requestRecovery(alertsStore);
   });
 
   subscribed = true;
-  setStatus({
-    enabled: true,
-    connected: false,
-    mode: 'connecting',
-    channel: ALERTS_CHANNEL,
-    event: ALERTS_EVENT_CLASS,
-    error: null
-  });
-
   return true;
 }
 
@@ -230,7 +262,9 @@ export function unsubscribeAlerts() {
   stopConnectionWatch = null;
   stopResync = null;
   subscribed = false;
-  recovering = false;
+  activeRecovery = null;
+  recoveryRequested = false;
+  recoveryGeneration++;
   recoveryBuffer.length = 0;
 
   setStatus({

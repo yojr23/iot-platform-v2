@@ -45,5 +45,6 @@ class RawIngestionEvent(BaseModel):
 
     topic: Optional[str] = Field(default=None, max_length=255)
     source: Optional[str] = Field(default="ingestion_service", max_length=255)
+    source_event_id: str = Field(min_length=1, max_length=255)
     received_at: Optional[str] = None
     payload: Dict[str, Any]

@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\RawSensorEvent;
 use App\Models\Sensor;
 use App\Services\Ingestion\RawReadingNormalizer;
+use App\Services\Ingestion\SensorReadingService;
 use App\Services\Ingestion\RawStreamConsumer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Redis\RedisManager;
@@ -54,7 +55,13 @@ class RawStreamConsumerTest extends TestCase
 
     private function consumer(): RawStreamConsumer
     {
-        return new RawStreamConsumer($this->conn, new RawReadingNormalizer(), $this->stream, $this->group, $this->dlq);
+        return new RawStreamConsumer(
+            $this->conn,
+            new RawReadingNormalizer(app(SensorReadingService::class)),
+            $this->stream,
+            $this->group,
+            $this->dlq,
+        );
     }
 
     private function seedDeviceSensor(string $serial = 'SN-TEST', string $sensorName = 'temp'): Sensor
@@ -95,6 +102,10 @@ class RawStreamConsumerTest extends TestCase
         $this->assertSame(1, $stats['acked']);
         $this->assertSame('processed', $event->fresh()->status);
         $this->assertSame(1, $sensor->readings()->count());
+        $this->assertDatabaseCount('domain_event_outboxes', 1);
+        $this->assertDatabaseHas('domain_event_outboxes', [
+            'event_type' => 'sensor.reading.created',
+        ]);
     }
 
     public function test_duplicate_delivery_yields_one_reading(): void
@@ -109,6 +120,7 @@ class RawStreamConsumerTest extends TestCase
 
         $this->assertSame(1, $sensor->readings()->count(), 'duplicate delivery must not double-create readings');
         $this->assertSame('processed', $event->fresh()->status);
+        $this->assertDatabaseCount('domain_event_outboxes', 1);
     }
 
     public function test_crash_after_apply_before_ack_is_recovered_without_duplicate(): void

@@ -4,21 +4,20 @@ namespace App\Services\Ingestion;
 
 use App\Models\Sensor;
 use App\Models\SensorReading;
-use Illuminate\Support\Facades\Log;
-use Throwable;
+use DateTimeInterface;
+use Illuminate\Support\Facades\DB;
 
 class SensorReadingService
 {
     public function __construct(
         private DomainEventRecorder $recorder,
-        private string $redisKeyPrefix = 'sensor:latest_readings:',
-        private int $redisCacheLimit = 120,
+        private SensorReadingProjectionService $projection,
     ) {
     }
 
-    public function createReading(Sensor $sensor, float $value, ?string $readingTime = null): SensorReading
+    public function createReading(Sensor $sensor, float $value, DateTimeInterface|string|null $readingTime = null): SensorReading
     {
-        return \DB::transaction(function () use ($sensor, $value, $readingTime): SensorReading {
+        return DB::transaction(function () use ($sensor, $value, $readingTime): SensorReading {
             $reading = $sensor->readings()->create([
                 'value' => $value,
                 'reading_time' => $readingTime ?? now(),
@@ -36,7 +35,11 @@ class SensorReadingService
                 ],
             );
 
-            return $reading->load('sensor.sensorType', 'sensor.device.lab');
+            $reading->load('sensor.sensorType', 'sensor.device.lab');
+
+            DB::afterCommit(fn () => $this->projection->append($reading));
+
+            return $reading;
         });
     }
 }

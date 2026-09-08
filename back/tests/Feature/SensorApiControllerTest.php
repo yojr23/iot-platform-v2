@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Device;
+use App\Models\DomainEventOutbox;
 use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 class SensorApiControllerTest extends TestCase
@@ -104,6 +106,82 @@ class SensorApiControllerTest extends TestCase
         $this->assertNotNull($reading);
         $this->assertEqualsWithDelta(42.75, (float) $reading->value, 0.0001);
         $this->assertSame('2026-01-15 12:30:00', $reading->reading_time->format('Y-m-d H:i:s'));
+    }
+
+    public function test_store_reading_replaces_a_stale_cached_latest_reading_and_records_one_domain_fact(): void
+    {
+        $device = Device::factory()->create(['status' => true, 'is_active' => true]);
+        $sensor = Sensor::factory()->create(['device_id' => $device->id]);
+        $oldReading = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 10.0,
+            'reading_time' => now()->subMinute(),
+        ]);
+        $redis = new class
+        {
+            public array $lists = [];
+
+            public function pipeline(callable $callback): void
+            {
+                $callback($this);
+            }
+
+            public function lpush(string $key, string $value): void
+            {
+                array_unshift($this->lists[$key], $value);
+            }
+
+            public function ltrim(string $key, int $start, int $stop): void
+            {
+                $this->lists[$key] = array_slice($this->lists[$key] ?? [], $start, $stop - $start + 1);
+            }
+
+            public function lrange(string $key, int $start, int $stop): array
+            {
+                return array_slice($this->lists[$key] ?? [], $start, $stop - $start + 1);
+            }
+
+            public function del(string $key): void
+            {
+                unset($this->lists[$key]);
+            }
+        };
+        $key = "sensor:latest_readings:{$sensor->id}";
+        $redis->lpush($key, json_encode([
+            'id' => $oldReading->id,
+            'value' => 10.0,
+            'reading_time' => $oldReading->reading_time->toIso8601String(),
+            'created_at' => $oldReading->created_at->toIso8601String(),
+        ], JSON_THROW_ON_ERROR));
+
+        $originalRedis = Redis::getFacadeRoot();
+        Redis::swap($redis);
+
+        try {
+            config(['app.api_key' => 'valid-key']);
+
+            $this->postJson("/api/sensors/{$sensor->id}/readings", [
+                'value' => 42.75,
+                'reading_time' => '2026-01-15 12:30:00',
+                'api_key' => 'valid-key',
+            ])->assertCreated();
+
+            $newReading = SensorReading::query()
+                ->where('sensor_id', $sensor->id)
+                ->where('value', 42.75)
+                ->sole();
+
+            $this->assertSame(1, DomainEventOutbox::query()
+                ->where('event_type', 'sensor.reading.created')
+                ->where('aggregate_id', (string) $newReading->id)
+                ->count());
+
+            $this->getJson("/api/sensors/{$sensor->id}/latest-readings?limit=1")
+                ->assertOk()
+                ->assertJsonPath('0.id', $newReading->id);
+        } finally {
+            Redis::swap($originalRedis);
+        }
     }
 
     public function test_store_reading_returns_unauthorized_when_configured_api_key_is_empty(): void

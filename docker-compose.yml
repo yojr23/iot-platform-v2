@@ -165,6 +165,8 @@ services:
       INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
       INGESTION_RAW_CONSUMER_GROUP: ${INGESTION_RAW_CONSUMER_GROUP:-raw-process-v1}
       INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
+      DOMAIN_EVENTS_STREAM: ${DOMAIN_EVENTS_STREAM:-iot.domain-events}
+      DOMAIN_EVENTS_CONSUMER_GROUP: ${DOMAIN_EVENTS_CONSUMER_GROUP:-browser-delivery-v1}
     command: php artisan ingestion:relay-outbox --interval=2
     restart: unless-stopped
     volumes:
@@ -189,6 +191,52 @@ services:
     working_dir: /var/www/back
     environment: *worker_env
     command: php artisan raw:consume --block=5000
+    restart: unless-stopped
+    volumes:
+      - ./back:/var/www/back
+      - back_vendor:/var/www/back/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_healthy
+    profiles:
+      - workers
+    networks:
+      - iot-platform
+
+  domain-outbox-relay:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    working_dir: /var/www/back
+    environment: *worker_env
+    command: php artisan domain:relay-outbox --interval=2
+    restart: unless-stopped
+    volumes:
+      - ./back:/var/www/back
+      - back_vendor:/var/www/back/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_healthy
+    profiles:
+      - workers
+    networks:
+      - iot-platform
+
+  domain-event-consumer:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    working_dir: /var/www/back
+    environment: *worker_env
+    command: php artisan domain:consume --block=5000
     restart: unless-stopped
     volumes:
       - ./back:/var/www/back

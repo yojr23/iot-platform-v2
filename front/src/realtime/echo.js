@@ -17,7 +17,7 @@ const stateListeners = new Set();
 const resyncListeners = new Set();
 
 function notify(listeners, ...args) {
-  listeners.forEach((callback) => {
+  [...listeners].forEach((callback) => {
     try {
       callback(...args);
     } catch {

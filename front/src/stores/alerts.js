@@ -103,43 +103,46 @@ export const useAlertsStore = defineStore('alerts', {
       }
     },
 
-    async fetchActiveAlerts({ silent = false, notifyNew = false } = {}) {
+    applyActiveSnapshot(alerts, { notifyNew = false } = {}) {
+      const nextActiveAlerts = Array.isArray(alerts) ? alerts : [];
+      let newAlerts = [];
+
+      if (notifyNew) {
+        const knownIds = new Set([...this.activeAlerts, ...this.items]
+          .map((alert) => Number(alert?.id)).filter(Number.isFinite));
+        newAlerts = [...nextActiveAlerts]
+          .sort((a, b) => Number(a?.id ?? 0) - Number(b?.id ?? 0))
+          .filter((alert) => Number.isFinite(Number(alert?.id)) && !knownIds.has(Number(alert.id)))
+          .map((alert) => this.addRealtimeAlert(alert))
+          .filter(Boolean);
+      }
+
+      this.activeAlerts = nextActiveAlerts;
+      this.unresolvedCount = this.activeAlerts.length;
+      return newAlerts;
+    },
+
+    async fetchActiveAlerts({ silent = false, notifyNew = false, throwOnError = false, apply = true } = {}) {
       if (!silent) {
         this.loading = true;
       }
       this.error = null;
-      let newAlerts = [];
-
       try {
         const response = await getActiveAlerts();
         const alerts = response.data?.alerts ?? [];
-        const nextActiveAlerts = Array.isArray(alerts) ? alerts : [];
-
-        if (notifyNew) {
-          const knownIds = new Set([
-            ...this.activeAlerts,
-            ...this.items
-          ].map((alert) => Number(alert?.id)).filter(Number.isFinite));
-
-          newAlerts = [...nextActiveAlerts]
-            .sort((a, b) => Number(a?.id ?? 0) - Number(b?.id ?? 0))
-            .filter((alert) => {
-              const alertId = Number(alert?.id);
-              return Number.isFinite(alertId) && !knownIds.has(alertId);
-            })
-            .map((alert) => this.addRealtimeAlert(alert))
-            .filter(Boolean);
+        if (!apply) {
+          return alerts;
         }
-
-        this.activeAlerts = nextActiveAlerts;
-        this.unresolvedCount = response.data?.count ?? this.activeAlerts.length;
+        return this.applyActiveSnapshot(alerts, { notifyNew });
       } catch (error) {
         this.error = getApiErrorMessage(error, 'No se pudieron cargar las alertas activas.');
+        if (throwOnError) {
+          throw error;
+        }
+        return [];
       } finally {
         this.loading = false;
       }
-
-      return newAlerts;
     },
 
     async fetchAlerts(params = {}) {

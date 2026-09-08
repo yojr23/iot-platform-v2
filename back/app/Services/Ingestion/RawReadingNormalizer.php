@@ -30,6 +30,11 @@ use RuntimeException;
  */
 class RawReadingNormalizer
 {
+    public function __construct(
+        private SensorReadingService $readingService,
+    ) {
+    }
+
     /**
      * @return array{created:int,skipped:list<string>}
      */
@@ -82,10 +87,7 @@ class RawReadingNormalizer
                 continue;
             }
 
-            $sensor->readings()->create([
-                'value' => (float) $value,
-                'reading_time' => $readingTime,
-            ]);
+            $this->readingService->createReading($sensor, (float) $value, $readingTime);
 
             $created++;
         }

@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Events\AlertResolved;
 use App\Events\DeviceStatusUpdated;
+use App\Events\NewSensorReading;
 use App\Models\Alert;
 use App\Models\Device;
 use App\Models\DomainEventOutbox;
+use App\Models\SensorReading;
 use App\Services\Ingestion\DomainEventBroadcastConsumer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Redis\RedisManager;
@@ -92,6 +94,19 @@ class DomainEventBroadcastConsumerTest extends TestCase
         ]);
     }
 
+    private function sensorReadingOutbox(): DomainEventOutbox
+    {
+        $reading = SensorReading::factory()->create();
+
+        return DomainEventOutbox::factory()->create([
+            'event_type' => 'sensor.reading.created',
+            'aggregate_type' => 'sensor_reading',
+            'aggregate_id' => (string) $reading->id,
+            'payload' => ['reading_id' => $reading->id],
+            'status' => 'published',
+        ]);
+    }
+
     public function test_alert_resolved_fact_is_broadcast_exactly_once(): void
     {
         Event::fake([AlertResolved::class]);
@@ -117,6 +132,33 @@ class DomainEventBroadcastConsumerTest extends TestCase
 
         $this->assertSame(1, $stats['acked']);
         Event::assertDispatchedTimes(DeviceStatusUpdated::class, 1);
+    }
+
+    public function test_sensor_reading_created_fact_is_broadcast_exactly_once(): void
+    {
+        Event::fake([NewSensorReading::class]);
+
+        $outbox = $this->sensorReadingOutbox();
+        $this->xadd($outbox->id, 'sensor.reading.created');
+
+        $stats = $this->consumer()->runOnce('worker-A', 10, 100);
+
+        $this->assertSame(1, $stats['acked']);
+        Event::assertDispatchedTimes(NewSensorReading::class, 1);
+        $this->assertNotNull($outbox->fresh()->delivered_at);
+    }
+
+    public function test_duplicate_sensor_reading_delivery_is_not_rebroadcast(): void
+    {
+        Event::fake([NewSensorReading::class]);
+
+        $outbox = $this->sensorReadingOutbox();
+        $this->xadd($outbox->id, 'sensor.reading.created');
+        $this->xadd($outbox->id, 'sensor.reading.created');
+
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        Event::assertDispatchedTimes(NewSensorReading::class, 1);
     }
 
     public function test_duplicate_delivery_of_the_same_fact_broadcasts_only_once(): void
