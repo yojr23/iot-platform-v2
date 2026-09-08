@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\DeviceResource;
 use App\Http\Resources\SensorResource;
 use App\Models\Device;
+use App\Services\DeviceService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,9 @@ use Throwable;
 
 class DeviceApiController extends Controller
 {
+    public function __construct(private DeviceService $deviceService)
+    {
+    }
     public function index(Request $request)
     {
         $requestedPerPage = $request->query('per_page', 50);
@@ -159,20 +163,19 @@ class DeviceApiController extends Controller
     {
         $validated = $this->validatedDevicePayload($request, $device);
 
-        if (array_key_exists('status', $validated)) {
-            $validated['status'] = (bool) $validated['status'];
-            $validated['is_active'] = $validated['status'];
-        }
+        // PLAN.md Stage 4.2/G0D row B5: status is a distinct transition, not a plain attribute —
+        // route it through DeviceService::changeStatus() (log + device.status.changed) exactly
+        // like updateStatus() does, instead of writing a status log here with no event.
+        $statusChange = array_key_exists('status', $validated) ? (bool) $validated['status'] : null;
+        unset($validated['status'], $validated['is_active']);
 
         try {
-            $previousStatus = (bool) $device->status;
-            $device->update($validated);
+            if ($validated !== []) {
+                $device->update($validated);
+            }
 
-            if (array_key_exists('status', $validated) && $previousStatus !== (bool) $device->status) {
-                $device->statusLogs()->create([
-                    'status' => (bool) $device->status,
-                    'changed_at' => now(),
-                ]);
+            if ($statusChange !== null) {
+                $this->deviceService->changeStatus($device, $statusChange);
             }
 
             $device->refresh()->load(['deviceType', 'lab', 'sensors.sensorType']);
@@ -279,11 +282,11 @@ class DeviceApiController extends Controller
 
         try {
             $newStatus = (bool) $validated['status'];
-            $device->update([
-                // Mantener consistencia entre ambos flags de estado.
-                'status' => $newStatus,
-                'is_active' => $newStatus,
-            ]);
+
+            // PLAN.md Stage 4.2 (audit RC2/RC3): single command path — updates status+is_active,
+            // writes the status log, and emits device.status.changed exactly once via the domain
+            // outbox. This previously mutated the row directly with no log and no event at all.
+            $this->deviceService->changeStatus($device, $newStatus);
 
             $device->refresh();
 

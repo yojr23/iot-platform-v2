@@ -134,6 +134,13 @@ return [
 
     'ingestion_dead_letter_stream' => env('INGESTION_DEAD_LETTER_STREAM', 'iot.dead-letter-events'),
 
+    // PLAN.md Stage 4.1 / docs/implementation/adr-g1.md ADR-1 & ADR-4: durable domain-event stream
+    // (alert.resolved, device.status.changed, ...) and its sole consumer group for this stage,
+    // `browser-delivery-v1` (direct stream consumer -> Pusher-compatible broadcaster, ADR-4). The
+    // dead-letter stream is reused (ADR-3 does not require a separate DLQ per source stream).
+    'domain_events_stream' => env('DOMAIN_EVENTS_STREAM', 'iot.domain-events'),
+    'domain_events_consumer_group' => env('DOMAIN_EVENTS_CONSUMER_GROUP', 'browser-delivery-v1'),
+
     'front_url' => env('FRONT_URL', 'http://localhost:5173'),
 
 ];

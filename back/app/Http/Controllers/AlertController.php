@@ -3,8 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Alert;
+use App\Services\Alerts\AlertLifecycleService;
+
 class AlertController extends Controller
 {
+    public function __construct(private AlertLifecycleService $alertLifecycleService)
+    {
+    }
+
     public function index()
     {
         $activeAlerts = Alert::withContext()
@@ -22,11 +28,8 @@ class AlertController extends Controller
 
     public function resolve(Alert $alert)
     {
-        $alert->update([
-            'resolved' => true,
-            'resolved_at' => now()
-        ]);
-        
+        $this->alertLifecycleService->resolve($alert);
+
         return back()->with('success', 'Alerta marcada como resuelta');
     }
 
@@ -51,11 +54,10 @@ class AlertController extends Controller
 
     public function markAllAsResolved()
     {
-        Alert::active()->update([
-            'resolved' => true,
-            'resolved_at' => now()
-        ]);
-        
+        // PLAN.md Stage 4.2 (audit RC2): same transition owner as the API's resolveAll() — this
+        // mass update() previously bypassed AlertObserver and emitted nothing.
+        $this->alertLifecycleService->resolveAll();
+
         return back()->with('success', 'Todas las alertas han sido marcadas como revisadas');
     }
 }

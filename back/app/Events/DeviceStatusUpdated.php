@@ -10,11 +10,24 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class DeviceStatusUpdated implements ShouldBroadcast, VersionedDomainEvent
+/**
+ * PLAN.md Stage 4.2/4.4 (audit RC2: this event previously existed but was never dispatched —
+ * `DeviceApiController::updateStatus` mutated the device with no `event(...)` call at all).
+ *
+ * Existing code reused: this class's shape (envelope trait, `device-status` channel, payload) is
+ * unchanged. Only the broadcast contract moved from `ShouldBroadcast` (queued) to
+ * `ShouldBroadcastNow` (direct) to match ADR-4 (`browser-delivery-v1` consumer -> Pusher-compatible
+ * broadcaster directly, no extra queue hop) — the async boundary is now the domain-event stream +
+ * `DomainEventBroadcastConsumer`, not a second Laravel queue dispatch on top of it.
+ * Existing owner retired/delegated: n/a — nothing dispatched this event before.
+ * Compatibility window: none. Dispatched only from `DomainEventBroadcastConsumer`, never from a
+ * controller/service directly.
+ */
+class DeviceStatusUpdated implements ShouldBroadcastNow, VersionedDomainEvent
 {
     use Dispatchable, InteractsWithSockets, SerializesModels, HasEventEnvelope;
 

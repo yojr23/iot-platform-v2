@@ -116,17 +116,11 @@ class DeviceController extends Controller
     {
         try {
             $newStatus = !$device->status;
-            $device->update([
-                'status' => $newStatus,
-                'is_active' => $newStatus
-            ]);
-            
-            // Registrar el cambio de estado
-            $device->statusLogs()->create([
-                'status' => $newStatus,
-                'changed_at' => now(),
-            ]);
-            
+
+            // PLAN.md Stage 4.2 (G0D row B5): same transition owner as the API's updateStatus() —
+            // update + status log + device.status.changed all happen once, from one place.
+            $this->service->changeStatus($device, $newStatus);
+
             $statusText = $newStatus ? 'activado' : 'desactivado';
             return back()->with('success', "Dispositivo {$statusText} correctamente");
         } catch (\Exception $e) {

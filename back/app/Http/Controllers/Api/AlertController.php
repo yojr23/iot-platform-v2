@@ -5,14 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AlertResource;
 use App\Models\Alert;
+use App\Services\Alerts\AlertLifecycleService;
 use App\Services\Alerts\AlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AlertController extends Controller
 {
-    public function __construct(private AlertService $alertService)
-    {
+    public function __construct(
+        private AlertService $alertService,
+        private AlertLifecycleService $alertLifecycleService,
+    ) {
     }
 
     public function index(Request $request)
@@ -59,10 +62,7 @@ class AlertController extends Controller
 
     public function resolve(Alert $alert)
     {
-        $alert->update([
-            'resolved' => true,
-            'resolved_at' => now(),
-        ]);
+        $this->alertLifecycleService->resolve($alert);
 
         $alert->loadMissing([
             'sensorReading.sensor.sensorType',
@@ -75,10 +75,10 @@ class AlertController extends Controller
 
     public function resolveAll(): JsonResponse
     {
-        $resolvedCount = Alert::active()->update([
-            'resolved' => true,
-            'resolved_at' => now(),
-        ]);
+        // PLAN.md Stage 4.2 (audit RC2): bounded per-alert chunks through the transition owner,
+        // never a mass query-builder update() — that bypassed AlertObserver and emitted zero
+        // alert.resolved facts.
+        $resolvedCount = $this->alertLifecycleService->resolveAll();
 
         return response()->json([
             'message' => 'Todas las alertas activas fueron marcadas como resueltas.',

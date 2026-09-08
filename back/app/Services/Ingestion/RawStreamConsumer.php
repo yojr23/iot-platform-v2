@@ -3,6 +3,7 @@
 namespace App\Services\Ingestion;
 
 use App\Models\RawSensorEvent;
+use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -33,6 +34,8 @@ use Throwable;
  */
 class RawStreamConsumer
 {
+    use UsesRawRedisCommands;
+
     public const MAX_ATTEMPTS = 5;
 
     public function __construct(
@@ -44,27 +47,6 @@ class RawStreamConsumer
     ) {
     }
 
-    /**
-     * Portable raw Redis command across both configured clients. Docker/production runs phpredis
-     * (`REDIS_CLIENT=phpredis`, pecl ext in the Dockerfile); local dev/tests may run predis. phpredis
-     * exposes `rawCommand(string, ...$args)`, predis exposes `executeRaw(array)`; both return the
-     * same nested-array reply shape, so the XREADGROUP/XAUTOCLAIM parsing below is client-agnostic.
-     */
-    private function raw(array $args): mixed
-    {
-        $client = $this->connection->client();
-
-        if ($client instanceof \Redis || (class_exists(\RedisCluster::class) && $client instanceof \RedisCluster)) {
-            return $client->rawCommand(...$args);
-        }
-
-        if (method_exists($client, 'executeRaw')) {
-            return $client->executeRaw($args);
-        }
-
-        throw new RuntimeException('Unsupported Redis client: '.get_debug_type($client));
-    }
-
     public function ensureGroup(): void
     {
         try {
@@ -73,7 +55,7 @@ class RawStreamConsumer
             // the group at $ would silently skip that pre-existing backlog; 0 processes it. Already
             // acked messages are not redelivered because the group's last-delivered-id advances past
             // them, so 0 is safe for an existing group too (BUSYGROUP is ignored below).
-            $this->raw(['XGROUP', 'CREATE', $this->stream, $this->group, '0', 'MKSTREAM']);
+            $this->raw($this->connection, ['XGROUP', 'CREATE', $this->stream, $this->group, '0', 'MKSTREAM']);
         } catch (Throwable $e) {
             if (! str_contains($e->getMessage(), 'BUSYGROUP')) {
                 throw $e;
@@ -110,7 +92,7 @@ class RawStreamConsumer
      */
     public function reclaimPending(string $consumerName, int $count, int $idleMs): array
     {
-        $reply = $this->raw([
+        $reply = $this->raw($this->connection, [
             'XAUTOCLAIM', $this->stream, $this->group, $consumerName,
             (string) $idleMs, '0-0', 'COUNT', (string) $count,
         ]);
@@ -126,7 +108,7 @@ class RawStreamConsumer
      */
     public function readBatch(string $consumerName, int $count, int $blockMs): array
     {
-        $reply = $this->raw([
+        $reply = $this->raw($this->connection, [
             'XREADGROUP', 'GROUP', $this->group, $consumerName,
             'COUNT', (string) $count, 'BLOCK', (string) $blockMs,
             'STREAMS', $this->stream, '>',
@@ -271,7 +253,7 @@ class RawStreamConsumer
 
     private function ack(string $id): void
     {
-        $this->raw(['XACK', $this->stream, $this->group, $id]);
+        $this->raw($this->connection, ['XACK', $this->stream, $this->group, $id]);
     }
 
     /**
@@ -279,7 +261,7 @@ class RawStreamConsumer
      */
     private function deadLetter(string $id, array $fields, string $reason, ?string $sourceEventId, int $attempts): void
     {
-        $this->raw([
+        $this->raw($this->connection, [
             'XADD', $this->deadLetterStream, '*',
             'orig_id', $id,
             'reason', $reason,
@@ -292,7 +274,7 @@ class RawStreamConsumer
     private function deliveryCount(string $id): int
     {
         try {
-            $reply = $this->raw(['XPENDING', $this->stream, $this->group, $id, $id, 1]);
+            $reply = $this->raw($this->connection, ['XPENDING', $this->stream, $this->group, $id, $id, 1]);
         } catch (Throwable) {
             return 1;
         }
