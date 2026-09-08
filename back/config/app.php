@@ -128,6 +128,12 @@ return [
 
     'ingestion_raw_events_stream' => env('INGESTION_RAW_EVENTS_STREAM', 'iot.raw-events'),
 
+    // Stage 3 (PLAN.md) / docs/implementation/adr-g1.md ADR-3: consumer group name for the raw
+    // stream and the dedicated dead-letter stream for terminal (poison) delivery failures.
+    'ingestion_raw_consumer_group' => env('INGESTION_RAW_CONSUMER_GROUP', 'raw-process-v1'),
+
+    'ingestion_dead_letter_stream' => env('INGESTION_DEAD_LETTER_STREAM', 'iot.dead-letter-events'),
+
     'front_url' => env('FRONT_URL', 'http://localhost:5173'),
 
 ];
