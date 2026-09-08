@@ -1,6 +1,9 @@
 import { ref, unref } from 'vue';
 
-import { getEcho } from './echo';
+import { getEcho, onConnectionStateChange, onResync } from './echo';
+import { listenOnChannel } from './channelRegistry';
+import { getSensorLatestReadings } from '@/api/sensors';
+import { unwrapData } from '@/api/client';
 
 export const SENSOR_EVENT = 'NewSensorReading';
 export const SENSOR_EVENT_CLASS = 'App\\Events\\NewSensorReading';
@@ -36,9 +39,38 @@ export function useSensorRealtime(sensorIdSource, onReading) {
   const isConnected = ref(false);
   const error = ref('');
 
-  let channelName = null;
+  let releaseChannel = null;
+  let stopConnectionWatch = null;
+  let stopResync = null;
   let subscribed = false;
-  let activeEcho = null;
+  let currentSensorId = null;
+
+  async function runSnapshot() {
+    // PLAN.md Stage 5.3 / ADR-2 lean V1: reuse the existing latest-readings REST endpoint
+    // (already used for the view's initial load) as a one-shot bounded snapshot on
+    // reconnect/visibility/auth change — never a periodic GET. The consumer's own
+    // onReading merge (id-based dedup, e.g. SensorDetailView#addRealtimeReading) absorbs
+    // overlap with buffered live events.
+    if (!currentSensorId) {
+      return;
+    }
+
+    try {
+      const response = await getSensorLatestReadings(currentSensorId, { limit: 20 });
+      const readings = unwrapData(response);
+
+      (Array.isArray(readings) ? readings : []).forEach((reading) => {
+        const normalized = normalizeReading(reading);
+
+        if (normalized) {
+          onReading?.(normalized);
+        }
+      });
+    } catch {
+      // ponytail: best-effort snapshot; the resubscribed live channel and the next
+      // lifecycle trigger will catch up — deliberately not retried in a loop.
+    }
+  }
 
   function subscribeSensor() {
     const sensorId = resolveSensorId(sensorIdSource);
@@ -56,11 +88,10 @@ export function useSensorRealtime(sensorIdSource, onReading) {
       return false;
     }
 
-    channelName = `sensor.${sensorId}`;
-    activeEcho = echo;
-    const channel = echo.channel(channelName);
+    currentSensorId = sensorId;
+    const channelName = `sensor.${sensorId}`;
 
-    channel.listen(SENSOR_EVENT, (event) => {
+    releaseChannel = listenOnChannel(channelName, SENSOR_EVENT, (event) => {
       const reading = normalizeReading(event);
 
       if (!reading || Number(reading.sensor_id) !== Number(sensorId)) {
@@ -70,21 +101,39 @@ export function useSensorRealtime(sensorIdSource, onReading) {
       onReading?.(reading);
     });
 
+    // Connected state now derives from the shared transport ack (echo.js) instead of being
+    // declared true synchronously right after registering the listener (audit RC5).
+    stopConnectionWatch = onConnectionStateChange((state) => {
+      isConnected.value = state === 'connected';
+      error.value = state === 'connected' ? '' : 'Conexion en tiempo real interrumpida; reintentando.';
+    });
+
+    stopResync = onResync((reason) => {
+      if (reason === 'auth') {
+        unsubscribeSensor();
+        subscribeSensor();
+        return;
+      }
+
+      runSnapshot();
+    });
+
     subscribed = true;
     isRealtimeEnabled.value = true;
-    isConnected.value = true;
     error.value = '';
     return true;
   }
 
   function unsubscribeSensor() {
-    if (activeEcho && channelName) {
-      activeEcho.leaveChannel(channelName);
-    }
+    releaseChannel?.();
+    stopConnectionWatch?.();
+    stopResync?.();
 
-    channelName = null;
+    releaseChannel = null;
+    stopConnectionWatch = null;
+    stopResync = null;
     subscribed = false;
-    activeEcho = null;
+    currentSensorId = null;
     isConnected.value = false;
   }
 

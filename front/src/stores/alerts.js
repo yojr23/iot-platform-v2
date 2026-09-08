@@ -73,10 +73,13 @@ export const useAlertsStore = defineStore('alerts', {
     activeAlerts: [],
     unresolvedCount: 0,
     latestAlert: null,
+    // Honest initial status: no transport engaged yet, not a "polling" fallback claim
+    // (audit.md §7 no-hybrid rule) — see useAlertsRealtime.js for the connecting/live/
+    // recovering/disconnected/stale vocabulary this gets overwritten with.
     realtimeStatus: {
       enabled: false,
       connected: false,
-      mode: 'polling',
+      mode: 'disconnected',
       channel: null,
       error: null
     },
@@ -194,6 +197,12 @@ export const useAlertsStore = defineStore('alerts', {
       this.addRealtimeAlert(alert);
     },
 
+    // PLAN.md Stage 5 / ownership F2: this store is now the SOLE realtime alert dedup owner.
+    // useAlertsRealtime.js no longer keeps its own seenAlertIds Set — the transport delivers,
+    // this projection dedups. ponytail: wasKnown only scans the bounded activeAlerts (20) /
+    // items (50) arrays, so an id evicted from both before a redelivery would double-count;
+    // acceptable for lean V1 (ADR-2) — upgrade to an unbounded/TTL id ledger here if repeat
+    // redelivery beyond those windows is ever observed.
     addRealtimeAlert(payload) {
       const alert = normalizeRealtimeAlert(payload);
 

@@ -19,10 +19,14 @@ export function getStoredToken() {
 
 export function setStoredToken(token) {
   window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+  // Lets echo.js rebuild its Pusher auth headers + resync realtime state on credential
+  // change (PLAN.md Stage 5.2/5.3) without client.js importing realtime/echo.js directly.
+  window.dispatchEvent(new CustomEvent('auth:changed'));
 }
 
 export function clearStoredToken() {
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  window.dispatchEvent(new CustomEvent('auth:changed'));
 }
 
 export function unwrapData(response) {

@@ -36,12 +36,24 @@ function record(name, pass, detail) {
 // plus __emit()/__reset() test hooks that are not part of the real Echo API.
 const FAKE_ECHO_SRC = `
 class FakeChannel {
+  // event -> Set<callback>, matching real pusher-js: multiple .listen() calls for the same
+  // event on the same channel all get invoked (needed to simulate Stage 5.1's ref-counted
+  // registry, where two consumers can share one channel/event).
   constructor(name) { this.name = name; this._listeners = new Map(); }
-  listen(event, cb) { this._listeners.set(event, cb); return this; }
-  stopListening() { return this; }
+  listen(event, cb) {
+    if (!this._listeners.has(event)) this._listeners.set(event, new Set());
+    this._listeners.get(event).add(cb);
+    return this;
+  }
+  stopListening(event, cb) {
+    if (!this._listeners.has(event)) return this;
+    if (cb) this._listeners.get(event).delete(cb);
+    else this._listeners.delete(event);
+    return this;
+  }
   emit(event, payload) {
-    const cb = this._listeners.get(event);
-    if (cb) cb(payload);
+    const callbacks = this._listeners.get(event);
+    if (callbacks) callbacks.forEach((cb) => cb(payload));
   }
 }
 
@@ -69,6 +81,14 @@ export function getEcho() { if (!instance) instance = new FakeEcho(); return ins
 export function createEcho() { return getEcho(); }
 export function disconnectEcho() { instance = null; }
 export function __reset() { instance = null; }
+
+// Stage 5 added a shared connection-state/resync listener API on top of the real echo.js
+// singleton (useAlertsRealtime.js / useSensorRealtime.js now import these). This sandbox has
+// no real Pusher connection to bind to, so these are inert stubs that only need to exist so
+// the destructured import doesn't throw — no test below asserts on connection-state/resync
+// behavior (that remains EVENT_HANDLER_SIMULATED / untested here, real transport only).
+export function onConnectionStateChange() { return () => {}; }
+export function onResync() { return () => {}; }
 `;
 
 function fakeEchoPlugin() {
@@ -77,11 +97,13 @@ function fakeEchoPlugin() {
     name: 'audit-fake-echo-substitute',
     enforce: 'pre',
     resolveId(source, importer) {
-      if (
-        source === './echo' &&
-        importer &&
-        (importer.endsWith('useAlertsRealtime.js') || importer.endsWith('useSensorRealtime.js'))
-      ) {
+      // Stage 5 added src/realtime/channelRegistry.js between the composables and echo.js;
+      // match any importer under src/realtime/ (not just the two composable filenames) so
+      // channelRegistry.js's `import { getEcho } from './echo'` resolves to the same fake
+      // singleton the composables get, instead of silently falling through to the real
+      // echo.js (which returns null here — no VITE_PUSHER_APP_KEY — and would desync the
+      // two module instances).
+      if (source === './echo' && importer && importer.includes('/realtime/')) {
         return virtualId;
       }
       if (source === virtualId) return virtualId;
@@ -138,7 +160,7 @@ async function main() {
     // Duplicate delivery of the same event/id (at-least-once transport) must not double count.
     alertsChannel.emit('NewAlertTriggered', { alert: { id: 501, message: 'Alerta 1 (dup)', severity: 'danger', sensor_name: 'S1' } });
     record(
-      'alerts: duplicate id is deduped (seenAlertIds), unresolvedCount unchanged',
+      'alerts: duplicate id is deduped (alertsStore.addRealtimeAlert wasKnown check — Stage 5 consolidated dedup into the store, no more transport-level seenAlertIds), unresolvedCount unchanged',
       alertsStore.unresolvedCount === countAfterFirst,
       { unresolvedCount: alertsStore.unresolvedCount }
     );
@@ -169,7 +191,7 @@ async function main() {
     const newAlertsChannel = echo.channel('alerts');
     newAlertsChannel.emit('NewAlertTriggered', { alert: { id: 501, message: 'Alerta 1 (again)' } });
     record(
-      'alerts: resubscribe keeps module-level seenAlertIds — same id from before teardown is still deduped (latestAlert stays at its pre-teardown value, not overwritten by the "again" payload)',
+      'alerts: resubscribe still dedups the same id from before teardown (store state survives channel teardown; latestAlert stays at its pre-teardown value, not overwritten by the "again" payload)',
       resubscribed === true && alertsStore.latestAlert?.id === 501 && alertsStore.latestAlert?.message !== 'Alerta 1 (again)',
       { latestAlertId: alertsStore.latestAlert?.id ?? null, latestAlertMessage: alertsStore.latestAlert?.message }
     );
@@ -200,6 +222,38 @@ async function main() {
     unsubscribeSensor();
     sensorChannel.emit('NewSensorReading', { reading: { id: 4, sensor_id: 42, value: 10, reading_time: '2026-09-07T10:00:03Z' } });
     record('sensor: after unsubscribeSensor(), further events on the old channel do not reach the callback', receivedReadings.length === 2);
+
+    // ---- PLAN.md Stage 5.1 acceptance test: "two monitors same sensor, remove one -> other
+    // keeps updating" — the ref-counted channel registry (channelRegistry.js) must not let one
+    // consumer's unsubscribe tear down the shared channel out from under a second consumer. ----
+    const readingsA = [];
+    const readingsB = [];
+    const consumerA = sensorRealtimeMod.useSensorRealtime(77, (reading) => readingsA.push(reading));
+    const consumerB = sensorRealtimeMod.useSensorRealtime(77, (reading) => readingsB.push(reading));
+    consumerA.subscribeSensor();
+    consumerB.subscribeSensor();
+
+    const sharedChannel = echo.channel('sensor.77');
+    sharedChannel.emit('NewSensorReading', { reading: { id: 10, sensor_id: 77, value: 1 } });
+    record(
+      'channel registry: two consumers subscribed to the same sensor channel both receive the same event',
+      readingsA.length === 1 && readingsB.length === 1
+    );
+
+    consumerA.unsubscribeSensor();
+    sharedChannel.emit('NewSensorReading', { reading: { id: 11, sensor_id: 77, value: 2 } });
+    record(
+      'channel registry: releasing ONE consumer keeps the channel alive for the other (ref-counted leave, not full teardown)',
+      readingsA.length === 1 && readingsB.length === 2,
+      { readingsA: readingsA.length, readingsB: readingsB.length }
+    );
+
+    consumerB.unsubscribeSensor();
+    sharedChannel.emit('NewSensorReading', { reading: { id: 12, sensor_id: 77, value: 3 } });
+    record(
+      'channel registry: the LAST consumer releasing does tear down the channel (no dangling listener)',
+      readingsA.length === 1 && readingsB.length === 2
+    );
 
     // ---- Device status: no frontend event-adapter exists yet ----
     record(
