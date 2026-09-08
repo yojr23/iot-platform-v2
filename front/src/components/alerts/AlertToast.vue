@@ -93,6 +93,11 @@ onBeforeUnmount(close);
 </script>
 
 <style scoped>
+.alert-toast-container .toast {
+  --bs-toast-max-width: 100%;
+  width: min(350px, calc(100vw - 2rem));
+}
+
 .alert-toast-fade-enter-active,
 .alert-toast-fade-leave-active {
   transition: opacity 450ms ease, transform 450ms ease;

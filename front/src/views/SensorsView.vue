@@ -1,6 +1,6 @@
 <template>
   <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
       <div>
         <h1 class="h3 mb-1">Sensores</h1>
         <p class="text-muted mb-0">Listado operativo con filtro local y acceso al detalle.</p>
@@ -25,16 +25,13 @@
       @export="exportSelectedSensor"
     />
 
-    <div v-if="showForm" class="phase-modal-backdrop">
-      <div class="phase-modal content-panel p-3">
-        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
-          <div>
-            <h2 class="h5 mb-1">{{ editingSensorId ? 'Editar sensor' : 'Crear sensor' }}</h2>
-            <p class="text-muted small mb-0">Dispositivo, tipo, estado y nombre operativo.</p>
-          </div>
-          <button class="btn-close" type="button" aria-label="Cerrar" @click="closeForm" />
-        </div>
-
+    <BaseModal
+      :show="showForm"
+      :title="editingSensorId ? 'Editar sensor' : 'Crear sensor'"
+      subtitle="Dispositivo, tipo, estado y nombre operativo."
+      content-class="content-panel"
+      @close="closeForm"
+    >
         <form @submit.prevent="saveSensor">
           <div class="row g-3">
             <div class="col-12">
@@ -69,8 +66,7 @@
             <BaseButton type="submit" :loading="saving">{{ editingSensorId ? 'Guardar' : 'Crear' }}</BaseButton>
           </div>
         </form>
-      </div>
-    </div>
+    </BaseModal>
   </section>
 </template>
 
@@ -84,6 +80,7 @@ import { getApiErrorMessage, getValidationErrors, unwrapData } from '@/api/clien
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import BaseButton from '@/components/base/BaseButton.vue';
 import BaseInput from '@/components/base/BaseInput.vue';
+import BaseModal from '@/components/base/BaseModal.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import SensorFilters from '@/components/sensors/SensorFilters.vue';
 import SensorList from '@/components/sensors/SensorList.vue';

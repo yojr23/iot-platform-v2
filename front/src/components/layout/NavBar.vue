@@ -45,7 +45,7 @@
             Alertas activas: {{ alertsStore.unresolvedCount }}
           </span>
 
-          <RouterLink v-if="authStore.isAuthenticated" class="small text-muted d-none d-md-inline" to="/profile">
+          <RouterLink v-if="authStore.isAuthenticated" class="small text-muted" to="/profile">
             {{ authStore.user?.name }}
           </RouterLink>
 

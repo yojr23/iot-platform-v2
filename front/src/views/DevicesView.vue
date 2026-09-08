@@ -1,6 +1,6 @@
 <template>
   <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
       <div>
         <h1 class="h3 mb-1">Dispositivos</h1>
         <p class="text-muted mb-0">Vista de lectura con estado y sensores asociados.</p>
@@ -25,16 +25,13 @@
       @delete="deleteSelectedDevice"
     />
 
-    <div v-if="showForm" class="phase-modal-backdrop">
-      <div class="phase-modal content-panel p-3">
-        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
-          <div>
-            <h2 class="h5 mb-1">{{ editingDeviceId ? 'Editar dispositivo' : 'Crear dispositivo' }}</h2>
-            <p class="text-muted small mb-0">Catalogos, laboratorio, red y estado operativo.</p>
-          </div>
-          <button class="btn-close" type="button" aria-label="Cerrar" @click="closeForm" />
-        </div>
-
+    <BaseModal
+      :show="showForm"
+      :title="editingDeviceId ? 'Editar dispositivo' : 'Crear dispositivo'"
+      subtitle="Catalogos, laboratorio, red y estado operativo."
+      content-class="content-panel"
+      @close="closeForm"
+    >
         <form @submit.prevent="saveDevice">
           <div class="row g-3">
             <div class="col-12 col-lg-6">
@@ -78,8 +75,7 @@
             <BaseButton type="submit" :loading="saving">{{ editingDeviceId ? 'Guardar' : 'Crear' }}</BaseButton>
           </div>
         </form>
-      </div>
-    </div>
+    </BaseModal>
   </section>
 </template>
 
@@ -92,6 +88,7 @@ import { getApiErrorMessage, getValidationErrors, unwrapData } from '@/api/clien
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import BaseButton from '@/components/base/BaseButton.vue';
 import BaseInput from '@/components/base/BaseInput.vue';
+import BaseModal from '@/components/base/BaseModal.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import DeviceList from '@/components/devices/DeviceList.vue';
 import { useAuthStore } from '@/stores/auth';
