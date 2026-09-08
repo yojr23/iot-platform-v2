@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Events\NewSensorReading;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SensorResource;
 use App\Models\Device;
 use App\Models\Sensor;
+use App\Services\Ingestion\SensorReadingService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -19,6 +19,11 @@ use Throwable;
 class SensorApiController extends Controller
 {
     private const REDIS_SENSOR_READINGS_CACHE_LIMIT = 120;
+
+    public function __construct(
+        private SensorReadingService $readingService,
+    ) {
+    }
 
     public function store(Request $request, Sensor $sensor)
     {
@@ -104,15 +109,11 @@ class SensorApiController extends Controller
 
         try {
             // Crear nueva lectura
-            $reading = $sensor->readings()->create([
-                'value' => $numericValue,
-                'reading_time' => $validated['reading_time'] ?? now(),
-            ]);
-
-            $this->cacheLatestReadingInRedis($sensor->id, $reading);
-
-            // Disparar evento para actualización en tiempo real
-            event(new NewSensorReading($reading));
+            $reading = $this->readingService->createReading(
+            $sensor,
+            $numericValue,
+            $validated['reading_time'] ?? null,
+        );
 
             Log::info('Sensor reading stored successfully', $context + [
                 'reading_id' => $reading->id,
