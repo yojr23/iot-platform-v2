@@ -1,22 +1,58 @@
-/dashboard|guest|390x844|dashboard-guest-390x844
-/dashboard|user|390x844|dashboard-user-390x844
-/dashboard|admin|390x844|dashboard-admin-390x844
-/login|guest|390x844|login-guest-390x844
-/devices|user|390x844|devices-user-390x844
-/devices|admin|390x844|devices-admin-390x844
-/devices/1|user|390x844|devices-1-user-390x844
-/devices/1|admin|390x844|devices-1-admin-390x844
-/sensors|user|390x844|sensors-user-390x844
-/sensors|admin|390x844|sensors-admin-390x844
-/sensors/1|user|390x844|sensors-1-user-390x844
-/sensors/1|admin|390x844|sensors-1-admin-390x844
-/dashboard|guest|320x700|dashboard-guest-320x700
-/dashboard|guest|360x800|dashboard-guest-360x800
-/dashboard|guest|430x932|dashboard-guest-430x932
-/dashboard|guest|768x1024|dashboard-guest-768x1024
-/dashboard|guest|1440x900|dashboard-guest-1440x900
-/devices|admin|320x700|devices-admin-320x700
-/devices|admin|360x800|devices-admin-360x800
-/devices|admin|430x932|devices-admin-430x932
-/devices|admin|768x1024|devices-admin-768x1024
-/devices|admin|1440x900|devices-admin-1440x900
+# Stage 0 (PLAN.md) reproducible run matrix. Format: route|role|viewport|mode|interact|name
+# mode: normal|long|dense|empty (front/.audit-e2e/fixtures.mjs)
+# interact: none|device-modal|alert-rule-modal|toast|measure-buttons|diagnose-overflow|add-monitors
+#
+# --- Original Gate 0 navigate+screenshot pass (audit.md §2a), re-run against current HEAD ---
+/dashboard|guest|390x844|normal|none|dashboard-guest-390x844
+/dashboard|user|390x844|normal|none|dashboard-user-390x844
+/dashboard|admin|390x844|normal|none|dashboard-admin-390x844
+/login|guest|390x844|normal|none|login-guest-390x844
+/devices|user|390x844|normal|none|devices-user-390x844
+/devices|admin|390x844|normal|none|devices-admin-390x844
+/devices/1|user|390x844|normal|none|devices-1-user-390x844
+/devices/1|admin|390x844|normal|none|devices-1-admin-390x844
+/sensors|user|390x844|normal|none|sensors-user-390x844
+/sensors|admin|390x844|normal|none|sensors-admin-390x844
+/sensors/1|user|390x844|normal|none|sensors-1-user-390x844
+/sensors/1|admin|390x844|normal|none|sensors-1-admin-390x844
+/dashboard|guest|320x700|normal|none|dashboard-guest-320x700
+/dashboard|guest|360x800|normal|none|dashboard-guest-360x800
+/dashboard|guest|430x932|normal|none|dashboard-guest-430x932
+/dashboard|guest|768x1024|normal|none|dashboard-guest-768x1024
+/dashboard|guest|1440x900|normal|none|dashboard-guest-1440x900
+/devices|admin|320x700|normal|none|devices-admin-320x700
+/devices|admin|360x800|normal|none|devices-admin-360x800
+/devices|admin|430x932|normal|none|devices-admin-430x932
+/devices|admin|768x1024|normal|none|devices-admin-768x1024
+/devices|admin|1440x900|normal|none|devices-admin-1440x900
+#
+# --- 0.3/G0C: dashboard now carries real device/sensor data (fixtures.mjs field-name fix) ---
+/dashboard|user|390x844|normal|none|g0c-dashboard-user-390-realdata
+/sensors/1|user|390x844|normal|none|g0c-sensors-1-user-390-realdata
+#
+# --- 0.4: interaction steps — modals (M05), toast injection (M04), touch targets (M06) ---
+/devices|admin|390x844|normal|device-modal|m05-device-modal-390
+/devices|admin|320x700|normal|device-modal|m05-device-modal-320
+/alert-rules|admin|390x844|normal|alert-rule-modal|m05-alertrule-modal-390
+/dashboard|user|320x700|normal|toast|m04-toast-320
+/dashboard|user|390x844|normal|toast|m04-toast-390
+/devices|admin|390x844|normal|measure-buttons|m06-buttons-devices-admin-390
+/devices|admin|320x700|normal|measure-buttons|m06-buttons-devices-admin-320
+#
+# --- 0.5: long/dense/empty fixture modes wired into tables + admin headers (M02) ---
+/devices|admin|320x700|long|none|m02-devices-admin-long-320
+/devices|admin|390x844|long|none|m02-devices-admin-long-390
+/devices|admin|320x700|dense|none|m02-devices-admin-dense-320
+/devices|admin|320x700|empty|none|m02-devices-admin-empty-320
+/alert-rules|admin|320x700|long|none|m02-alertrules-admin-long-320
+/alert-rules|admin|320x700|dense|none|m02-alertrules-admin-dense-320
+/sensors|admin|320x700|long|none|m02-sensors-admin-long-320
+#
+# --- 0.6: M09 root-cause diagnosis (do not assume, inspect live DOM) ---
+/devices|admin|320x700|normal|diagnose-overflow|m09-devices-admin-320-diagnose
+/devices|admin|320x700|dense|diagnose-overflow|m09-devices-admin-320-dense
+/devices|admin|320x700|long|diagnose-overflow|m09-devices-admin-320-long
+#
+# --- M03: long sensor titles beside monitor-card button group, multiple charts, 320px ---
+/dashboard|user|320x700|long|add-monitors|m03-dashboard-long-320
+/dashboard|user|390x844|long|add-monitors|m03-dashboard-long-390

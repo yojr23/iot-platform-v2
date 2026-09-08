@@ -10,23 +10,38 @@ const USERS = {
 
 const LONG = 'Laboratorio de Instrumentación y Control Ambiental de Procesos Industriales Distribuidos';
 
-function device(i, mode) {
+// Mirrors back/app/Http/Controllers/Api/DashboardController.php::publicDevices()
+// device.sensors[] is what SensorMonitorBoard.vue reads (availableSensors/firstSelectableSensor).
+function deviceSensor(deviceIndex, sensorIndex, mode) {
+  const id = deviceIndex * 100 + sensorIndex;
+  return {
+    id,
+    name: mode === 'long' ? `${LONG} - Sensor ${id}` : `Sensor ${id}`,
+    status: sensorIndex % 2 === 0,
+    unit: 'C',
+    sensor_type: { id: 1, name: 'Temperature', unit: 'C' },
+    device_id: deviceIndex
+  };
+}
+
+function sensorsPerDeviceFor(mode) {
+  if (mode === 'empty') return 0;
+  if (mode === 'dense') return 4;
+  return 2;
+}
+
+function device(i, mode, sensorsPerDevice = sensorsPerDeviceFor(mode)) {
+  const sensors = Array.from({ length: sensorsPerDevice }, (_, s) => deviceSensor(i, s + 1, mode));
+
   return {
     id: i,
     name: mode === 'long' ? `${LONG} - Device ${i}` : `Device ${i}`,
     status: i % 2 === 0,
     is_active: true,
+    last_communication: new Date().toISOString(),
     device_type: { id: 1, name: 'Gateway' },
-    lab: { id: 1, name: mode === 'long' ? LONG : 'Lab A' }
-  };
-}
-
-function sensor(i, mode) {
-  return {
-    id: i,
-    name: mode === 'long' ? `${LONG} - Sensor ${i}` : `Sensor ${i}`,
-    sensor_type: { id: 1, name: 'Temperature', unit: 'C' },
-    device_id: 1
+    lab: { id: 1, name: mode === 'long' ? LONG : 'Lab A', area: 'A', process_line: 'L1' },
+    sensors
   };
 }
 
@@ -77,11 +92,12 @@ export async function installAuth(page, role) {
 
 export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
   const deviceCount = countFor(mode, 5);
-  const sensorCount = countFor(mode, 6);
   const alertCount = countFor(mode, 4);
 
   const devices = Array.from({ length: deviceCount }, (_, i) => device(i + 1, mode));
-  const sensors = Array.from({ length: sensorCount }, (_, i) => sensor(i + 1, mode));
+  // Flat /sensors list mirrors the sensors embedded per-device above (device_id now correct,
+  // instead of the old generator that hardcoded every sensor to device_id: 1).
+  const sensors = devices.flatMap((d) => d.sensors);
   const alerts = Array.from({ length: alertCount }, (_, i) => alert(i + 1, mode));
 
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
@@ -97,24 +113,63 @@ export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
     if (p === '/auth/login' && method === 'POST') {
       return json(route, { data: { token: 'astra-user-token', user: USERS.user } });
     }
+    // Shape mirrors back/app/Http/Controllers/Api/DashboardController.php::dashboardPayload()
+    // (flat total_devices/active_devices/total_sensors/active_alerts/unresolved_alerts, not
+    // {devices,sensors,alerts} counts) — MetricsCards.vue/DashboardView.vue read these exact keys.
     if (p === '/dashboard/public') {
-      return json(route, { data: { devices: devices.length, sensors: sensors.length, alerts: alertCount } });
+      return json(route, {
+        total_devices: devices.length,
+        active_devices: devices.filter((d) => d.status && d.is_active).length,
+        total_sensors: sensors.length,
+        active_alerts: alertCount,
+        unresolved_alerts: alerts.filter((a) => !a.resolved_at).length,
+        latest_readings: [],
+        system_status: 'ok',
+        devices
+      });
     }
     if (p === '/dashboard/metrics') {
-      return json(route, { data: { devices: devices.length, sensors: sensors.length, active_alerts: alertCount } });
+      return json(route, {
+        total_devices: devices.length,
+        active_devices: devices.filter((d) => d.status && d.is_active).length,
+        total_sensors: sensors.length,
+        active_alerts: alertCount,
+        unresolved_alerts: alerts.filter((a) => !a.resolved_at).length,
+        latest_readings: [],
+        system_status: 'ok'
+      });
     }
     if (p === '/dashboard/preferences') {
       return json(route, { data: { monitors: sensors.slice(0, 3).map((s) => s.id), poll_interval: 2000 } });
     }
     if (p === '/devices') return json(route, { data: devices });
-    if (/^\/devices\/\d+\/sensors$/.test(p)) return json(route, { data: sensors.slice(0, 3) });
+    if (/^\/devices\/\d+\/sensors$/.test(p)) {
+      const deviceId = Number(p.split('/')[2]);
+      const match = devices.find((d) => d.id === deviceId);
+      return json(route, { data: match ? match.sensors : sensors.slice(0, 3) });
+    }
     if (/^\/devices\/\d+$/.test(p)) return json(route, { data: devices[0] || device(1, mode) });
     if (p === '/sensors') return json(route, { data: sensors });
-    if (/^\/sensors\/\d+\/latest-readings$/.test(p)) return json(route, { data: readings(1) });
+    // Real shape: SensorApiController::latestReadings() returns response()->json($readings) —
+    // a bare array, not {data:[...]}. SensorMonitorBoard.vue reads `response.data` directly and
+    // expects an array; the old {data:[...]} wrapper made every monitor look empty (0 puntos).
+    if (/^\/sensors\/\d+\/latest-readings$/.test(p)) {
+      const limit = Number(url.searchParams.get('limit')) || 10;
+      return json(route, readings(Math.max(1, Math.min(limit, 100))));
+    }
     if (/^\/sensors\/\d+\/readings$/.test(p)) return json(route, { data: readings(mode === 'dense' ? 60 : 20) });
-    if (/^\/sensors\/\d+$/.test(p)) return json(route, { data: sensors[0] || sensor(1, mode) });
-    if (p === '/alerts' || p === '/alerts/unresolved' || p === '/alerts/active') {
-      return json(route, { data: alerts });
+    if (/^\/sensors\/\d+$/.test(p)) {
+      const sensorId = Number(p.split('/')[2]);
+      return json(route, { data: sensors.find((s) => s.id === sensorId) || sensors[0] || null });
+    }
+    // Real shape: AlertController::active() returns {count, alerts} at the top level,
+    // not wrapped in {data: [...]} — alerts.js store's fetchActiveAlerts() reads
+    // response.data.alerts / response.data.count directly (see AlertController.php:52-58).
+    if (p === '/alerts/active') {
+      return json(route, { count: alerts.filter((a) => !a.resolved_at).length, alerts });
+    }
+    if (p === '/alerts' || p === '/alerts/unresolved') {
+      return json(route, { data: alerts, meta: { total: alerts.length }, links: {} });
     }
     if (/^\/alerts\/\d+$/.test(p)) return json(route, { data: alerts[0] || alert(1, mode) });
     if (p === '/alert-rules') return json(route, { data: [] });
