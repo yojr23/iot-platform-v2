@@ -2,7 +2,7 @@
 
 **Derives from:** `audit.md` (original audit SHA `880cffbcfc7aecb081fb378642d8693c1df64170`) plus a required application-code refresh against baseline `06d619c4c57c2cacae0c890e4dd7056097ddc79d`. Current planning-document base HEAD is `773ff7ae89bd8b88e12633e9f0e78fd7d26a5d50`; future documentation-only commits should not be mistaken for application drift. Freeze a new implementation-start SHA when coding begins. The audit is the source of truth for *why* and *what's broken*, but it is not yet fully current/reproducible. This document is the ordered, gated *how* to fix every finding and reach the Definition of Done in `audit.md §23`.
 
-**Architecture status:** candidate, not final. The preferred candidate is the full target from `audit.md §17–§19`: transactional outbox + binlog-driven CDC relay, Redis Streams as the durable event backbone, Redis Pub/Sub as ephemeral internal fan-out, a dedicated `iot.domain-events` stream, per-consumer-group DLQ, and the complete cursor/replay/snapshot recovery protocol. Because `audit.md §15a` explicitly flags CDC and full replay as complexity risks, Stage G1 below must close Architecture Decision Records before Stages 2–10 are implemented. A Laravel-queue relay may be selected only if it still has a durable discovery/wake-up mechanism for committed outbox rows; `afterCommit()` alone is not a durable relay.
+**Architecture status:** candidate, not final. The preferred candidate is the full target from `audit.md §17–§19`: transactional outbox + binlog-driven CDC relay, Redis Streams as the durable event backbone, a dedicated `iot.domain-events` stream, per-consumer-group DLQ, and the complete cursor/replay/snapshot recovery protocol. Redis Pub/Sub is a candidate internal fan-out layer, not mandatory before ADR approval. Because `audit.md §15a` explicitly flags CDC and full replay as complexity risks, Stage G1 below must close Architecture Decision Records before Stages 2–10 are implemented. A Laravel-queue relay may be selected only if it still has a durable discovery/wake-up mechanism for committed outbox rows; `afterCommit()` alone is not a durable relay.
 
 **Execution boundary:** build-and-verify in an isolated environment, stage by stage. No production rollout is authorized by this plan; the cutover stages (6/7/10) delete polling only after recovery and durable delivery are proven. Never run polling and events as a permanent hybrid.
 
@@ -59,9 +59,9 @@ Gate 0 is only *partially* closed (`audit.md §2a`): 38 navigate-and-screenshot 
 
 **Done when:** every M01–M09 row has a real confirmed/refuted verdict; the event-injection + network-assertion rigs exist and are checked into `front/.audit-e2e/`. Fully closes G0.
 
-## Stage G0D — Reuse & Ownership Freeze before backend/realtime code
+## Stage G0D — Reuse & Ownership Freeze before implementation code
 
-Before Stages 2–8 write code, produce/update an ownership matrix with `REUSE`, `EXTEND`, `MIGRATE`, or `RETIRE` for every critical class below. For every new class proposed in Stages 2–8, search the repository first and identify whether an existing class already owns all or part of the same responsibility.
+Before implementation code writes or moves ownership, produce/update an ownership matrix with `REUSE`, `EXTEND`, `MIGRATE`, or `RETIRE` for every critical class below. For every task in any stage that creates, replaces, generalizes, or moves ownership of an abstraction, search the repository first and identify whether an existing class already owns all or part of the same responsibility.
 
 | Existing piece | Required action | Implementation constraint |
 |---|---|---|
@@ -81,18 +81,19 @@ Before Stages 2–8 write code, produce/update an ownership matrix with `REUSE`,
 | `SensorChart.vue` + `SensorReadingsChart.vue` | DRY BEFORE REALTIME | Extract a shared chart component or chart-data/options helpers before event-driven responsive fixes diverge. |
 | Existing base components and `formatters.js` | REUSE FIRST | Search before creating new formatters, validation helpers, buttons, inputs, alerts, loading states, or pagination helpers. |
 
-**Done when:** every Stage 2–8 task states `Existing code reused`, `Existing owner retired/delegated`, and `Compatibility window`. No duplicated owner is allowed to survive beyond the stage that introduced the replacement.
+**Done when:** every task that creates, replaces, generalizes, or moves ownership of an abstraction states `Existing code reused`, `Existing owner retired/delegated`, and `Compatibility window`. No duplicated owner is allowed to survive beyond the stage that introduced the replacement.
 
 ---
 
 ## Stage G1 — Architecture Decision Records before implementation
 
-Close the contradictions between `audit.md §15` and `§15a` before building the backend migration. The ADRs must define the exact scope of "no polling", choose durable publication, choose client recovery, and choose DLQ strategy. Stages 2–10 implement those decisions, not every candidate architecture.
+Close the contradictions between `audit.md §15` and `§15a` before building the backend migration. The ADRs must define the exact scope of "no polling", choose durable publication, choose client recovery, choose DLQ strategy, and decide internal realtime fan-out. Stages 2–10 implement those decisions, not every candidate architecture.
 
 - **G1.1 ADR-1 durable publication:** prove transactional outbox → Debezium/binlog CDC → Redis Stream with durable offsets/checkpoints, restart survival, Redis outage recovery, and logical idempotency across duplicate/redelivered events. If CDC is too heavy for the deployment, prove same-transaction outbox + Laravel queue/worker with a durable outbox scanner or scheduler. `DB::afterCommit()` may be a low-latency wake-up hint, but it is not sufficient as the only mechanism because a process can die after commit and before job dispatch.
 - **G1.2 ADR-2 client recovery:** choose full cursor/replay/snapshot/watermark recovery or a smaller V1 recovery: reconnect/visibility/mobile-resume-triggered one-shot consistent snapshot + resubscribe. Both are compatible with zero polling if they are event/lifecycle-triggered commands and never periodic state discovery.
 - **G1.3 ADR-3 DLQ strategy:** choose consumer-specific Redis DLQ streams, Laravel `failed_jobs`, or another explicit quarantine mechanism per selected relay. The decision must define retry limits, poison-message handling, replay tooling, retention, ownership, and observability.
-- **G1.4 Decision record package:** record selected topology, Redis Pub/Sub responsibility, deployment requirements, crash matrix, operational owner, rollback path and observability minimum.
+- **G1.4 ADR-4 internal realtime fan-out:** choose either `Stream consumer → Pusher-compatible broadcaster directly` or `Stream consumer → Redis Pub/Sub → N broadcaster instances`. Use Redis Pub/Sub only when there is a real fan-out or horizontal-scaling requirement; it is never source of truth, replay storage, retry/DLQ mechanism, or browser-facing transport.
+- **G1.5 Decision record package:** record selected topology, deployment requirements, crash matrix, operational owner, rollback path and observability minimum.
 
 ---
 
@@ -134,10 +135,10 @@ The reliability core. Implement the topology selected in Stage G1, not a mixed C
 
 ## Stage 4 — Domain event model + centralized transitions (audit P4 / TASK-006)
 
-- **4.1** Stand up `iot.domain-events` (using the Stage G1 relay decision for the domain outbox) with independent consumer groups `browser-delivery-v1`, `email-delivery-v1`, `webhook-delivery-v1` — `audit.md §18`. Justified over raw-only because raw data can't reconstruct manual resolution/device mutations (`audit.md §8`).
+- **4.1** Stand up `iot.domain-events` (using the Stage G1 relay decision for the domain outbox) with independent consumer groups `browser-delivery-v1`, `email-delivery-v1`, and `webhook-delivery-v1` only if a real webhook destination is approved — `audit.md §18`. Justified over raw-only because raw data can't reconstruct manual resolution/device mutations (`audit.md §8`).
 - **4.2** Add the missing emissions through existing/evolved services, precisely: `AlertController.php:76–87` `resolveAll()` uses a query-builder mass `update()` that **bypasses `AlertObserver`** (fix: route API + Blade single/bulk resolution through one alert transition owner that emits per-alert `alert.resolved` in bounded transaction chunks); `DeviceStatusUpdated` **is never dispatched** — `DeviceApiController::updateStatus` mutates status without `event(...)` (fix: evolve `DeviceService` so API + Blade status changes update device, write status log, and emit `device.status.changed` once).
 - **4.3** Move transition ownership from observers to explicit services (`audit.md §9`, §15): preserve `AlertService` as the rule-evaluation owner, evolve or add an alert transition service only for lifecycle transitions, and thin `SensorReadingObserver` / `AlertObserver` so they do not compete with new listeners. Observers keep only well-defined compatibility/lifecycle behavior, never sole coverage for bulk writes; broadcasting becomes a durable async consumer, not `ShouldBroadcastNow` on the request path.
-- **4.4 Redis Pub/Sub internal fan-out:** include Redis Pub/Sub explicitly as the ephemeral low-latency internal fan-out layer after the durable `browser-delivery-v1` consumer and before WebSocket broadcaster instances: `iot.domain-events` → `browser-delivery-v1` durable ACK/retry → `realtime.sensor.*` / `realtime.alerts.*` / `realtime.devices.*` Pub/Sub topics → WebSocket broadcaster(s) → Pusher-compatible transport → Echo → Vue/Pinia. Pub/Sub is never source of truth, never replay storage, never retry/DLQ mechanism, and never browser-facing.
+- **4.4 Internal fan-out implementation:** implement ADR-4. If direct delivery is selected, `browser-delivery-v1` publishes to the Pusher-compatible broadcaster directly. If Pub/Sub fan-out is selected, put Redis Pub/Sub after the durable `browser-delivery-v1` consumer and before WebSocket broadcaster instances: `iot.domain-events` → `browser-delivery-v1` durable ACK/retry → `realtime.sensor.*` / `realtime.alerts.*` / `realtime.devices.*` Pub/Sub topics → WebSocket broadcaster(s) → Pusher-compatible transport → Echo → Vue/Pinia. Pub/Sub remains ephemeral internal fan-out only.
 
 **Done when:** every mutation entrypoint (single/bulk/API-device) emits exactly the intended durable fact under local transaction guarantees; external effects isolated.
 
@@ -157,7 +158,8 @@ Recovery precedes any timer deletion.
 
 ## Stage 6 — Sensor realtime cutover, delete sensor polling (audit P6 / TASK-008)
 
-- Wire all selected monitors to `sensor.reading.created` via the event adapter → shared sensor-readings Pinia projection → Chart.js append; dedup shared history load; bounded ordered samples (60-point cap). Build the projection by moving/reusing current `SensorMonitorBoard.vue` merge/history/MAX_POINTS behavior, not by reimplementing it from scratch.
+- **6.0 DRY chart foundation:** before the realtime cutover touches chart behavior, consolidate `SensorChart.vue` and `SensorReadingsChart.vue` into a shared `SensorLineChart.vue` or shared chart-data/options helpers. Preserve existing visual behavior first, then add realtime updates once.
+- Wire all selected monitors to `sensor.reading.created` via the event adapter → shared sensor-readings Pinia projection → shared chart implementation append; dedup shared history load; bounded ordered samples (60-point cap). Build the projection by moving/reusing current `SensorMonitorBoard.vue` merge/history/MAX_POINTS behavior, not by reimplementing it from scratch.
 - **Delete in the same cutover:** `SensorMonitorBoard.vue` `pollTimer`, `startPolling`/`stopPolling`, `refreshVisibleMonitors` (`:525–544`, `:536`), `refreshMonitor` (`:355–367`), and the polling-only prop. Removes 30×monitor_count req/min (`audit.md §7`).
 - **Keep in the same cutover:** monitor add/remove/move, current layout, preference persistence/restoration, chart composition, and user-action debounce.
 - Resolves **M03/M07** with real data now flowing (evaluate first via Stage 0 harness).
@@ -180,7 +182,7 @@ Recovery precedes any timer deletion.
 
 - **8.1** Finish device live projection (`device.status.changed` → dashboard/list/detail/status indicators), event-driven, no periodic status refresh.
 - **8.2 Email off the sync path:** `NotificationService.php:18` → `Alert.php:116` calls `Mail::send` in-process inside the reading→observer chain. Move behind the `email-delivery-v1` consumer/queued worker; fix the rate-limit-before-send gap that can suppress a legitimate retry (`audit.md §13`).
-- **8.3 Webhook capability (mandatory, disabled by default):** build `webhook-delivery-v1` even if there are no configured destinations yet. Add `WebhookSubscription` / `WebhookDelivery`, HMAC over exact body + timestamp/key-id, timeout + bounded backoff, `(event_id, destination)` delivery ledger, SSRF/redirect validation, selected DLQ strategy, manual replay/disable controls, and default `enabled=false` / `destinations=[]`. This satisfies the explicit webhook requirement without sending traffic until a real destination is configured.
+- **8.3 Webhook extension point (transport gated):** define the domain boundary now: durable domain event → `ExternalDeliveryPort`/contract → future `webhook-delivery-v1` consumer. Do not build `WebhookSubscription`, `WebhookDelivery`, HMAC signing, retry worker, DLQ/replay UI, SSRF policy implementation, or transport code until a real destination/consumer is approved. When a destination exists, implement HMAC over exact body + timestamp/key-id, timeout + bounded backoff, `(event_id, destination)` delivery ledger, SSRF/redirect validation, selected DLQ strategy, manual replay/disable controls, and default `enabled=false` until configured.
 
 **Done when:** an unavailable external destination never delays ingestion or browser broadcast; idle delayed retries actually wake; another session sees resolve/status without refresh.
 
@@ -188,7 +190,7 @@ Recovery precedes any timer deletion.
 
 ## Stage 9 — Mobile hardening (audit P9 / TASK-011)
 
-Fix only **reproduced** defects from the Stage 0/1 evidence — M02 residuals under long text, M03 monitor-card header, M06 measured touch targets that actually fail 44×44, M07 chart resize under dense data, M08 route-splitting **only if** a measured mobile-startup number justifies it. Preserve working layouts, `.table-responsive` scrollers, table semantics. If header fixes repeat across Devices/Sensors/Catalog, extract a small `PageHeader.vue` after Playwright confirms the responsive behavior. Consolidate `SensorChart.vue` / `SensorReadingsChart.vue` into a shared chart component or shared chart helpers before adding event-driven chart fixes.
+Fix only **reproduced** defects from the Stage 0/1 evidence — M02 residuals under long text, M03 monitor-card header, M06 measured touch targets that actually fail 44×44, M07 chart resize under dense data, M08 route-splitting **only if** a measured mobile-startup number justifies it. Preserve working layouts, `.table-responsive` scrollers, table semantics. If header fixes repeat across Devices/Sensors/Catalog, extract a small `PageHeader.vue` after Playwright confirms the responsive behavior. Stage 9 may refine the shared chart foundation from Stage 6, but must not duplicate chart configuration again.
 
 **Done when:** long/empty/dense states, touch controls, table scrollers, modals, auth, and desktop regression all pass the harness at 320/360/390/768/1440.
 
@@ -200,7 +202,7 @@ Fix only **reproduced** defects from the Stage 0/1 evidence — M02 residuals un
 - **10.2 Retire legacy polling client + obsolete config:** the legacy Blade routes in `back/routes/web.php` are outside the Vue timer count — gate their retirement/access explicitly before declaring the deployed platform polling-free (`audit.md §7`).
 - **10.3 Prove the no-polling gate deployment-wide:** source inspection + browser network traces + transport restriction + backend relay/worker inspection. A passing build or simulated handler is insufficient (`audit.md §23`).
 
-**Done when:** `audit.md §23` (Definition of Done) holds end to end: all polling + fallback removed, consumer pipeline complete with XACK-after-commit, pending recovery + bounded retry + selected DLQ strategy, versioned contracts, idempotent consumers, Redis Pub/Sub limited to internal fan-out, one Echo per tab, event-driven sensor/alert/device, selected event-driven recovery, async signed webhooks + async email, observability live, browser never touches Redis.
+**Done when:** `audit.md §23` (Definition of Done) holds end to end: all polling + fallback removed, consumer pipeline complete with XACK-after-commit, pending recovery + bounded retry + selected DLQ strategy, versioned contracts, idempotent consumers, ADR-4 internal fan-out implemented, one Echo per tab, event-driven sensor/alert/device, selected event-driven recovery, async email, webhook extension boundary verified and transport gated until a configured consumer exists, observability live, browser never touches Redis.
 
 ---
 
@@ -209,25 +211,29 @@ Fix only **reproduced** defects from the Stage 0/1 evidence — M02 residuals un
 ```
 SEC-1 (rotate creds) ── do immediately, blocks nothing
 
-Stage 0 (evidence baseline) ─┬─► Stage 1 (mobile blockers) ──────────────► ship independently (frontend-only)
-                             │
-                             └─► Stage G1 (architecture decision)
-                                    └─► Stage 2 (contracts + broadcasting scaffolding)
-                                           └─► Stage 3 (outbox + selected relay + raw consumer)
-                                                  └─► Stage 4 (domain events + transitions)
-                                                         └─► Stage 5 (Echo ownership + recovery)   ⟵ recovery MUST precede timer deletion
-                                                                ├─► Stage 6 (sensor cutover, delete sensor timer)
-                                                                ├─► Stage 7 (alert cutover, delete both alert timers)
-                                                                └─► Stage 8 (device + email + webhooks)
-                                                                       └─► Stage 9 (mobile hardening)
-                                                                              └─► Stage 10 (observability + retire legacy + prove no-polling)
+Stage 0 (evidence baseline)
+   └─► Stage G0D (reuse & ownership freeze)
+          ├─► Stage 1 (mobile blockers) ──────────────► ship independently (frontend-only)
+          │
+          └─► Stage G1 (architecture decisions)
+                 └─► Stage 2 (contracts + broadcasting scaffolding)
+                        └─► Stage 3 (outbox + selected relay + raw consumer)
+                               └─► Stage 4 (domain events + transitions)
+                                      └─► Stage 5 (Echo ownership + recovery)   ⟵ recovery MUST precede timer deletion
+                                             ├─► Stage 6 (sensor cutover, delete sensor timer)
+                                             ├─► Stage 7 (alert cutover, delete both alert timers)
+                                             └─► Stage 8 (device + email + webhooks)
+                                                    └─► Stage 9 (mobile hardening)
+                                                           └─► Stage 10 (observability + retire legacy + prove no-polling)
 ```
 
-Stages 1 and (G1→2→3→4→5) run in parallel after Stage 0 closes enough evidence for mobile work — no shared files. Stages 6/7/8 can parallelize once Stage 5 lands. Only 6/7/10 delete a timer/route, and only after recovery + durable delivery are proven.
+Stages 1 and (G1→2→3→4→5) run in parallel after Stage 0 evidence and G0D ownership freeze — no shared files. Stages 6/7/8 can parallelize once Stage 5 lands. Only 6/7/10 delete a timer/route, and only after recovery + durable delivery are proven.
 
 ## Risk gates that can change this plan (`audit.md §22, §24`)
 
 - **Relay decision (Stage G1 / Stage 3.2):** if a MySQL-binlog→Redis relay with durable checkpoints can't be operated (open Q #6/#9 in `audit.md §24`), drop to a durable Laravel queue + outbox relay. The lean path must still include committed-outbox discovery; `afterCommit()` alone is not accepted.
+- **Internal fan-out (Stage G1 / Stage 4.4):** Redis Pub/Sub is selected only if direct `browser-delivery-v1 → Pusher-compatible broadcaster` is insufficient for scale/topology. Streams remain the durable backbone either way.
+- **Webhook transport (Stage 8.3):** implement only the extension boundary until a real destination/consumer is approved; then add signed delivery, ledger, retry, SSRF validation, DLQ/replay and disabled-by-default configuration.
 - **Legacy Blade still deployed (open Q #2):** its mutation paths bypass the new transition service — inventory before Stage 10 retirement.
 - **Public data intentional? (open Q #3):** decides Stage 2.3 public-vs-private per channel.
 - **Rollback:** release without deleting durable data/outbox/ledgers; revert to a previous **event-capable** client, never re-enable the polling client as steady state (`audit.md §22`).
