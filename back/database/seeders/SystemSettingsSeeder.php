@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -14,10 +13,10 @@ class SystemSettingsSeeder extends Seeder
     public function run(): void
     {
         $settings = [
-            // Configuración de Email
+            // Bootstrap mail settings from Laravel config (supports cached env secrets).
             [
                 'key' => 'mail_mailer',
-                'value' => 'smtp',
+                'value' => config('mail.default', 'log'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Driver de envío de correos',
@@ -25,7 +24,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_host',
-                'value' => 'smtp.gmail.com',
+                'value' => config('mail.mailers.smtp.host'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Servidor SMTP',
@@ -33,7 +32,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_port',
-                'value' => '587',
+                'value' => (string) config('mail.mailers.smtp.port', 2525),
                 'type' => 'integer',
                 'group' => 'mail',
                 'description' => 'Puerto del servidor SMTP',
@@ -41,7 +40,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_username',
-                'value' => 'juniorrincon1992@gmail.com',
+                'value' => config('mail.mailers.smtp.username'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Usuario del correo electrónico',
@@ -49,7 +48,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_password',
-                'value' => 'wxnszzchlpqkogre',
+                'value' => config('mail.mailers.smtp.password'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Contraseña del correo electrónico',
@@ -57,7 +56,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_encryption',
-                'value' => 'tls',
+                'value' => config('mail.mailers.smtp.encryption'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Tipo de encriptación',
@@ -65,7 +64,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_from_address',
-                'value' => 'juniorrincon1992@gmail.com',
+                'value' => config('mail.from.address'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Dirección de correo remitente',
@@ -73,7 +72,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_from_name',
-                'value' => 'SINOA',
+                'value' => config('mail.from.name'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Nombre del remitente',
@@ -81,7 +80,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'mail_to',
-                'value' => 'juniorrincon1992@hotmail.com',
+                'value' => config('mail.recipient_email'),
                 'type' => 'string',
                 'group' => 'mail',
                 'description' => 'Dirección de correo para alertas',

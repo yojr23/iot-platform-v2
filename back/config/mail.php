@@ -111,6 +111,9 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    // Keep alert-recipient aliases available when configuration is cached.
+    'recipient_email' => env('MAIL_TO_ALERT', env('MAIL_TO', env('RECIPIENT_EMAIL', env('recipient_email')))),
+
     // Compatibilidad para componentes que leen estos valores desde mail.*.
     'host' => env('MAIL_HOST', env('SMTP_SERVER', 'smtp.mailtrap.io')),
     'port' => env('MAIL_PORT', env('SMTP_PORT', 2525)),

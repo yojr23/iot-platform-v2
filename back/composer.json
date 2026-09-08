@@ -11,6 +11,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
         "laravel/ui": "^4.6",
+        "predis/predis": "^3.6",
         "pusher/pusher-php-server": "^7.2",
         "vlucas/phpdotenv": "^5.6"
     },
