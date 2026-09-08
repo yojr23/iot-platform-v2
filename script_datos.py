@@ -601,3 +601,4 @@ if __name__ == "__main__":
 
         for worker in device_workers.values():
             worker.join(timeout=3.0)
+
