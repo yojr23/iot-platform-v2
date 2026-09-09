@@ -4,7 +4,19 @@ Version: 2.1 — repository-aligned public-realtime engineering edition, 9 Septe
 Prepared for: José Vicente Rincón Celis.  
 Source: `SINOA_Plan_Desarrollo_Diseno_Final.docx`, version 1.0, 8 September 2026.  
 Intended project: `yojr23/iot-platform-v2`, branch `refraccion`, subject to verification at execution time.  
-Status: implementation specification updated against the current `refraccion` repository baseline. The public dashboard route, public telemetry endpoints, public Echo/Pusher channels, current Vue/Bootstrap/Chart.js stack, authenticated preference endpoints, and existing realtime ownership have been verified. This document still does not claim that the Lab Blue Workspace rebuild itself has been implemented or that its future acceptance tests have passed.
+Status: implementation specification updated against the current `refraccion` repository baseline. The public dashboard route, public telemetry endpoints, public Echo/Pusher channels, current Vue/Bootstrap/Chart.js stack, authenticated preference endpoints, and existing realtime ownership have been verified. **On 9 September 2026, the approved guest scope was narrowed to the public realtime graph only; section 0.1 and `FRONT_REBUILD_PLAN_ADJUSTMENTS_v1.1.md` override prior broad-public-dashboard wording.** This document still does not claim that the Lab Blue Workspace rebuild itself has been implemented or that its future acceptance tests have passed.
+
+## 0.1 Approved guest mode and public graph boundary
+
+Guests use the same Lab Blue dashboard workspace as authenticated users: responsive shell, toolbar, device/sensor selection, reading/freshness display, time-range control, main chart, chart list, graph statistics/inspector, and an ephemeral workspace draft. Guests do not receive a legacy dashboard, a login wall before graph monitoring, or a separate realtime implementation.
+
+The public dashboard feature surface is deliberately narrow. Its server-owned graph bootstrap may return only approved graph-source identity and metadata (device/sensor labels and IDs, unit, precision, thresholds, cadence, quality policy, and default selection). Its bounded graph-series operation may return only samples and graph metadata for an approved sensor and exact UTC window. The sole public domain stream is the approved public sensor-reading stream, currently compatible with `sensor.{id}`. Public scope must be enforced by the same backend visibility policy in all three paths.
+
+Public dashboard feature APIs and channels must not disclose global metrics, generic inventory/history, alerts, events, device status, preferences, account data, administration data, or restricted sensors. `alerts` and `device-status` are authenticated/authorized capabilities, not guest subscriptions. Existing infrastructure health/configuration endpoints are outside this product decision and must not be expanded in this work.
+
+The mockup's layout remains authoritative for the guest graph experience, but not every illustrated control becomes public functionality. Alerts, recent events, account/admin areas, and other authorized-only modules render a clear access-required state or are omitted without making a public request. Search, laboratory/system selectors, chart gear/kebab actions, reports, rules, and configuration are outside P0 until backed by an API, authorization rule, and acceptance criterion. Guest navigation exposes only real public destinations. A guest header has a sign-in action, never an Admin identity.
+
+This section is the source of truth when it conflicts with sections 1, 2.4, 3, 8, 10, 13, 16, 17, 18, or 19. The detailed execution constraints are maintained in `front_rebuild_plan/FRONT_REBUILD_PLAN_ADJUSTMENTS_v1.1.md`.
 
 ## 1. Mission and source authority
 
@@ -22,12 +34,12 @@ The Word document contains the conceptual desktop and mobile image. That image i
 
 - The source brief identifies **Vue 3, Bootstrap 5, and Chart.js**. Verify installed versions and existing wrappers before implementation; do not migrate frameworks to realize this design.
 - Preserve `/dashboard` as a public monitoring route. Do not add a login requirement to basic public telemetry.
-- Preserve the existing public realtime transport for public-safe telemetry: Laravel Echo/Pusher-compatible channels such as `sensor.{id}`, `alerts`, and `device-status` remain public unless payload sensitivity changes.
-- **No frontend polling, no polling fallback, and no permanent hybrid realtime model.** One bounded REST hydration and lifecycle-triggered one-shot recovery are allowed; steady-state telemetry and alert updates use Echo/WebSocket.
+- Preserve the public graph transport only: an approved public sensor-reading channel compatible with `sensor.{id}`. `alerts` and `device-status` are not public dashboard channels under the approved guest boundary.
+- **No frontend polling, no polling fallback, and no permanent hybrid realtime model.** One bounded graph hydration and lifecycle-triggered one-shot recovery are allowed; steady-state graph updates use Echo/WebSocket.
 - Build one dashboard implementation for guests and authenticated users. Differences are capability differences, not separate business-logic trees.
 - Verify the starting branch, commit, actual dashboard route, API contracts, authorization, and available scripts. Paths and interfaces below are proposals, not a verified repository inventory.
 - Preserve existing supported behavior and navigation. Dashboard actions configure visualizations; removing a widget never deletes a sensor, device, measurement, or alert.
-- P0 requirements RF01–RF13 define the first release. P1 requirements RF14–RF15 stay in a visible backlog until the core is stable.
+- P0 requirements RF01–RF08 and RF11–RF13 define the shared public-graph release. RF09–RF10 remain P0 authenticated dashboard capabilities and must not initiate guest data requests. P1 requirements RF14–RF15 stay in a visible backlog until the core is stable.
 - Exclude a native application, firmware changes, a complete rule editor, and a new notification platform. Link existing modules when available.
 - Do not invent endpoints, historical measurements, sample completeness, backend capabilities, or claims that tests passed.
 - Follow applicable repository instructions and existing user authorization. A plan document does not itself authorize production deployment or destructive changes.
@@ -74,9 +86,9 @@ The following facts are confirmed in the current `refraccion` repository and are
 | Alert realtime adapter | `front/src/realtime/useAlertsRealtime.js`. |
 | Shared alert projection | `front/src/stores/alerts.js` using Pinia. |
 | Authentication projection | `front/src/stores/auth.js` using Pinia. |
-| Public REST hydration | `/api/dashboard/public`, `/api/sensors/{sensor}/latest-readings`, `/api/devices/{device}/sensors`, `/api/alerts/active`. |
+| Current public dashboard surface | `/api/dashboard/public`, `/api/sensors/{sensor}/latest-readings`, and `/api/devices/{device}/sensors` currently expose data too broadly for the approved target and must be reduced to a scoped graph bootstrap plus a bounded graph-series contract. `/api/alerts/active` is not a guest dependency. |
 | Authenticated preferences | `GET /api/dashboard/preferences`, `PUT /api/dashboard/preferences`. |
-| Public realtime channels | `sensor.{id}`, `alerts`, `device-status`; public by explicit backend decision for public-safe payloads. |
+| Public realtime channel | Only the reading channel for a server-approved graph sensor, currently compatible with `sensor.{id}`. `alerts` and `device-status` are authenticated/authorized capabilities, not guest subscriptions. |
 | Frontend stack | Vue 3, Bootstrap 5, Chart.js 4, vue-chartjs, Pinia, Laravel Echo, Pusher JS, Vite, Vitest, Playwright. |
 
 **Reuse rule:** migrate or extend these owners. Do not create a parallel dashboard data layer, second Echo connection manager, second alert projection, or another state-management framework merely to match proposed paths in this specification.
@@ -90,11 +102,12 @@ One dashboard supports both modes:
 | Capability | Guest | Authenticated |
 | --- | ---: | ---: |
 | Open `/dashboard` | Yes | Yes |
-| List public devices/sensors | Yes | Yes |
-| Receive public sensor updates through Echo/WebSocket | Yes | Yes |
-| Inspect public live charts and bounded history | Yes | Yes |
+| List public graph sources | Yes, only through the scoped graph bootstrap | Yes, plus authorized sources |
+| Receive public sensor updates through Echo/WebSocket | Yes, only for approved graph sensors | Yes, according to authorization |
+| Inspect public live charts and bounded history | Yes, only through the graph-series contract | Yes, according to authorization |
 | Add/remove/reorder charts in the current draft/session | Yes | Yes |
 | Save workspace to server / restore cross-session preferences | No; authentication CTA | Yes |
+| See alert/event/device-status data | No; access-required state without sensitive data | Only when authorized |
 | Access restricted sensors/resources | No | Only when authorized |
 | Administrative/edit actions | No | Capability/role dependent |
 
@@ -102,7 +115,7 @@ Guest workspace editing is ephemeral by default. Do not label it **Saved** unles
 
 #### Public-scope security invariant
 
-Public visibility is decided by the backend, not by hiding items in Vue. Public endpoints and public broadcast payloads must contain only public-safe devices, sensors, readings, alert fields, and metadata. Restricted resources must not be discoverable through public listing endpoints or public channel payloads.
+Public visibility is decided by the backend, not by hiding items in Vue. The public graph bootstrap, graph-series response, and reading broadcast payload must contain only approved graph data. Alerts, events, device status, preferences, and restricted resources are not public dashboard data and must not be discoverable through a guest endpoint or channel payload.
 
 
 ## 3. Product requirements and traceability
@@ -117,8 +130,8 @@ Public visibility is decided by the backend, not by hiding items in Vue. Public 
 | RF06 | P0 | Add and remove charts | Validate device/sensor; removal affects only the widget and offers Undo. |
 | RF07 | P0 | Reorder widgets | Desktop drag plus Move up/Move down alternatives for keyboard and mobile. |
 | RF08 | P0 | Save workspace | Guests may edit a session draft but server persistence requires authentication. Authenticated save restores order, selection, ranges, and configuration; Saved appears only after confirmed persistence/load. |
-| RF09 | P0 | Active alerts | Count and list agree within the current public/authenticated scope; public mode exposes only public-safe alert data and shows a prioritized active critical alert before the main chart. |
-| RF10 | P0 | Recent events | Include date/time, device, event, value, severity, and a working full-history destination. |
+| RF09 | P0 authenticated capability | Active alerts | Authorized count and list agree within the authenticated scope and may show a prioritized critical alert before the main chart. Guest mode shows an access-required/omitted state and makes no alert request or subscription. |
+| RF10 | P0 authenticated capability | Recent events | Authorized users see date/time, device, event, value, severity, and a working history destination. Guest mode shows an access-required/omitted state and makes no event request. |
 | RF11 | P0 | Scientific details | Show unit, range, frequency, quality, and sample information; show missing-data states honestly. |
 | RF12 | P0 | Operational states | Loading, empty, error, reconnecting, and stale states have clear messages and actions. |
 | RF13 | P0 | Permissions | Public-read scope is server-defined; restricted reading, persistence, editing, and administration reflect authenticated capabilities and are authorized on the server. |
@@ -451,15 +464,15 @@ If timestamps do not align perfectly to the expected schedule, agree a tolerance
 
 ### 8.0 Public guest mode and authenticated enhancement
 
-Public monitoring is not a degraded static preview. A guest receives the same public live-reading projection as an authenticated user.
+Public graph monitoring is not a degraded static preview. A guest receives the same Lab Blue graph workspace and graph projection as an authenticated user. Alert/event/device-status panels are authorized capabilities: guest mode renders their access-required or omitted state without a public request.
 
 Guest flow:
 
 ```text
 open /dashboard
-→ load public-safe device/sensor metadata
+→ load scoped public graph bootstrap metadata
 → subscribe through the existing Echo/Pusher transport
-→ bounded REST history hydration
+→ bounded public graph-series hydration
 → shared sensor-reading projection
 → continuous live chart updates
 ```
@@ -641,13 +654,13 @@ Extend these with actual errors and metadata after phase 0. A first-ever workspa
 
 ### 10.3 Required operations
 
-For guests, list server-approved public devices/sensors, hydrate bounded public history/latest readings, query public-safe alerts/events, and use the existing public Echo/Pusher transport. For authenticated users, reuse the same telemetry path and additionally load/save preferences and access restricted operations when authorized. Reuse the current API client, error mapping, and existing live transport. These operation names do not imply REST URLs.
+For guests, load the server-approved graph bootstrap, hydrate one bounded graph series for the active public sensor, and use the public sensor-reading transport. Guests do not query alerts, events, device status, preferences, or generic inventory/history APIs. For authenticated users, reuse the graph pipeline and additionally load/save preferences and access authorized alerts, events, restricted sources, and operations. Reuse the current API client, error mapping, and existing live transport. These operation names do not imply REST URLs.
 
 Document a real mapping table during implementation: feature operation → actual method/path or transport message → adapter → permission → response schema → failure behavior. If an operation is missing, record a backend task and implement it only within authorized project scope. Do not wire production UI to an invented URL that merely resembles the proposed model.
 
 ### 10.4 Authorization and privacy
 
-Public monitoring requires no account, but the server still defines the public scope. Save preferences per authenticated user and laboratory. Validate public/restricted scope, sensor access, and action permissions on every server operation, including export and preference updates. Hidden buttons are not an authorization boundary. Read-only users can inspect allowed data; edit controls match actual capabilities.
+Public graph monitoring requires no account, but the server still defines the public scope. Enforce the same visibility policy on graph bootstrap, graph-series, and reading broadcasts. Save preferences per authenticated user and laboratory. Validate public/restricted scope, sensor access, and action permissions on every server operation, including export and preference updates. Hidden buttons are not an authorization boundary. Read-only users can inspect allowed data; edit controls match actual capabilities.
 
 Workspace persistence contains IDs and view configuration, never session tokens, credentials, or raw sensitive telemetry. Optional local drafts must be explicitly supported, keyed by user/laboratory/workspace/schema, and cleared on logout. Do not show one user's cached content after another signs in. Avoid logging raw measurements or identifiers beyond the project's approved telemetry policy.
 
@@ -714,7 +727,7 @@ If no backend preference operation exists, build the authorized backend support 
 
 ### 13.1 Alert scope and priority
 
-Derive active count and active list from the same authorized scope and status definition. Use backend priority if available. Otherwise document a proposed stable sort by severity, then most recent raised time, then ID. Show one leading critical alert before the chart and provide access to the remaining active alerts.
+Derive active count and active list from the same authorized scope and status definition. These are authenticated dashboard capabilities; guests do not receive alert records, counts, banners, or an alert subscription. In the same visual location, guest mode may show a neutral access-required state without an alert identity or count. Use backend priority if available. Otherwise document a proposed stable sort by severity, then most recent raised time, then ID. Show one leading critical alert before the chart only when the viewer is authorized.
 
 The banner must name its device/sensor, condition, value/unit where available, and timestamp. A View action opens the existing alert detail or authorized relevant sensor. Do not add acknowledgement, dismissal, or resolution actions unless their domain permissions and endpoints exist. Hiding a banner is not the same as resolving an alert.
 
@@ -726,7 +739,7 @@ Show selected-sensor unit, configured range, sampling frequency, completeness, v
 
 Desktop supports three secondary sparkline cards. Their summaries and selected states must identify the corresponding widgets. On mobile, mount one main chart and use lightweight summary rows; avoid rendering hidden secondary canvases just to match desktop markup.
 
-Recent events include laboratory-local date/time, device, event description, value/unit when applicable, and severity. Use accessible rows on desktop and readable stacked records on small screens. Keep important event text discoverable without horizontal page overflow.
+Recent events are an authenticated capability. Authorized records include laboratory-local date/time, device, event description, value/unit when applicable, and severity. Guest mode uses the same layout slot only for an access-required/omitted state and makes no event request. Use accessible rows on desktop and readable stacked records on small screens. Keep important event text discoverable without horizontal page overflow.
 
 P1 export should carry sensor/device identity, unit, selected range, time zone/UTC semantics, aggregation, and quality fields where allowed. P1 duplication creates a new stable widget ID. P1 histogram uses the same valid source period and documents binning; neither feature may block core P0 completion.
 
@@ -825,7 +838,7 @@ Exit gate: no global horizontal overflow at 320, 390, 768, 1024, and 1440 px; ty
 
 ### Phase 2 — One sensor vertical slice
 
-Tasks: implement the first vertical slice as **public realtime monitoring**: connect a guest-visible public device/sensor to real metadata, latest reading, resolved range, chart, Echo/WebSocket live updates, threshold bands, statistics, completeness, and timestamp formatting. Add request cancellation/generation checks and state-specific error handling.
+Tasks: implement the first vertical slice as **public realtime graph monitoring**: connect a guest-visible public graph source to scoped graph metadata, a bounded UTC graph series, resolved range, chart, Echo/WebSocket reading updates, threshold bands, statistics, completeness, and timestamp formatting. Add request cancellation/generation checks and state-specific error handling. Do not use broad public inventory, latest-reading, alert, or event endpoints as a substitute for the graph contract.
 
 Deliverables: one functioning real-sensor workflow with consistent chart/reading/inspector identity and reusable domain functions.
 
@@ -841,7 +854,7 @@ Exit gate: saved order, configuration, and selection restore after reload; save 
 
 ### Phase 4 — Alerts and scientific operation
 
-Tasks: public-safe critical banner/active counts/events plus authenticated extensions where authorized; inspector, three desktop secondary signals, freshness, reconnect/refill, partial failures, and revoked-access handling.
+Tasks: authenticated critical banner/active counts/events plus authorized extensions; guest access-required/omitted states for those slots; inspector, three desktop secondary signals, freshness, reconnect/refill, partial failures, and revoked-access handling.
 
 Deliverables: operational multi-sensor dashboard with independent workspace and active-sensor status.
 
@@ -935,7 +948,7 @@ Close these in phase 0 using repository evidence and current product ownership. 
 | Workspace ownership | **Confirmed baseline:** guest draft is ephemeral; authenticated persistence is personal per user with the current preference owner. Laboratory/shared semantics still require explicit policy if added. | Do not create a second preference owner. |
 | Preferences | **Partially confirmed:** authenticated GET/PUT preference operations exist, but the richer revision/schema/conflict contract in this plan is not fully implemented. | Extend the existing preference controller/model if RF08 requires revision semantics. |
 | Widget cap | Maximum saved and simultaneously rendered widgets. | Agree a limit based on operation and measurement; do not hardcode an arbitrary restriction. |
-| Transport | **Confirmed:** Laravel Echo/Pusher-compatible public realtime channels for public-safe telemetry. | No frontend polling/fallback; use bounded hydration and lifecycle recovery. |
+| Transport | **Confirmed current baseline, target narrowed:** Laravel Echo/Pusher-compatible public channels exist, but the approved guest target permits only a server-approved sensor-reading graph channel. | Enforce one graph visibility policy; no frontend polling/fallback; use bounded graph hydration and lifecycle recovery. |
 | Sampling | Expected cadence, timestamp source, inclusion policy, slot tolerance. | Show unavailable completeness/freshness where undefined. |
 | Quality | Validity flags and exact completeness/aggregation definition. | Do not invent a percentage. |
 | Thresholds | Bound inclusivity, lower rules, revision and alert authority. | Display only known configured rules; record gaps. |
@@ -955,7 +968,7 @@ Copy this section into an implementation task together with access to the reposi
 >
 > Work through phases 0–7. Begin with tokens and a responsive shell, then one real sensor vertical slice, then workspace editing and confirmed persistence, then alerts, scientific detail, reconnect, and mobile/accessibility completion. Separate server data, transient UI state, preference draft/baseline, and lifecycle resources. Do not invent endpoints, percentages, or measurements.
 >
-> Public realtime monitoring is mandatory: guests must be able to select public sensors and watch charts update live without registration. Do not introduce frontend polling or a polling fallback. Protect against obsolete responses, invalid/out-of-order samples, misleading gap interpolation, unscoped caches, and lost updates. Keep global alert scope separate from the selected sensor. Preserve unsaved edits on failure and revision conflict. Never delete sensors when removing chart widgets.
+> Public realtime graph monitoring is mandatory: guests must be able to select server-approved graph sensors and watch their charts update live without registration. Public APIs/channels may expose only graph bootstrap metadata, bounded graph series, and approved sensor-reading events; they must never expose alerts, events, device status, preferences, generic inventory/history, or restricted sensors. Do not introduce frontend polling or a polling fallback. Protect against obsolete responses, invalid/out-of-order samples, misleading gap interpolation, unscoped caches, and lost updates. Render authorized alert/event slots as access-required or omitted for guests. Preserve unsaved edits on failure and revision conflict. Never delete sensors when removing chart widgets.
 >
 > Persist brand and UX guidance in existing repository design documentation, shared tokens/components, localization resources, meaningful state examples, and appropriate additive agent instructions. Keep a concise progress/decision log so another session can continue from verified state.
 >
