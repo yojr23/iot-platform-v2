@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\SensorController;
 use App\Http\Controllers\AlertController;
@@ -22,14 +21,17 @@ use App\Http\Controllers\MetricsController;
 |--------------------------------------------------------------------------
 */
 
+// Backend is API-only for the dashboard product surface; the Vue SPA
+// (front/) is the sole canonical dashboard. See PLAN.md Stage 6.0A / audit.md.
 Route::get('/', function () {
-    return redirect()->route('dashboard');
+    return redirect()->away(rtrim(config('app.front_url'), '/').'/dashboard');
 });
 
 Auth::routes(['verify' => true]);
 
-Route::get('/dashboard', [DashboardController::class, 'index'])
-    ->name('dashboard');
+Route::get('/dashboard', function () {
+    return redirect()->away(rtrim(config('app.front_url'), '/').'/dashboard');
+})->name('dashboard');
 
 Route::get('/profile', [App\Http\Controllers\HomeController::class, 'profile'])
     ->name('profile')
@@ -46,11 +48,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('devices/{device}/toggle-status', [DeviceController::class, 'toggleStatus'])->name('devices.toggle-status');
     Route::post('/devices/{device}/register-communication', [DeviceController::class, 'registerCommunication'])->name('devices.register-communication');
 
-    // Sensores
-    Route::resource('sensors', SensorController::class);
+    // Sensores: lectura (index/show) redirige a la SPA canónica (Vue ya sirve
+    // /sensors y /sensors/:id autenticados); administración/escritura sigue en Blade.
+    // Ver PLAN.md Stage 6.0A/6.0C y audit.md.
+    Route::get('sensors', function () {
+        return redirect()->away(rtrim(config('app.front_url'), '/').'/sensors');
+    })->name('sensors.index');
+    Route::get('sensors/create', [SensorController::class, 'create'])->name('sensors.create');
+    Route::post('sensors', [SensorController::class, 'store'])->name('sensors.store');
     Route::get('sensors/{sensor}/edit', [SensorController::class, 'edit'])->name('sensors.edit');
     Route::get('sensors/{sensor}/download', [SensorController::class, 'downloadReadings'])->name('sensors.download');
     Route::get('sensors/{sensor}/readings/filter', [SensorController::class, 'getReadingsByDateRange'])->name('sensors.readings.filter');
+    Route::get('sensors/{sensor}', function ($sensor) {
+        return redirect()->away(rtrim(config('app.front_url'), '/').'/sensors/'.$sensor);
+    })->name('sensors.show');
+    Route::match(['put', 'patch'], 'sensors/{sensor}', [SensorController::class, 'update'])->name('sensors.update');
+    Route::delete('sensors/{sensor}', [SensorController::class, 'destroy'])->name('sensors.destroy');
 
     // Alertas
     Route::post('alerts/mark-all-resolved', [AlertController::class, 'markAllAsResolved'])->name('alerts.mark-all-resolved');

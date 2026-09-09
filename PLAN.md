@@ -12,6 +12,21 @@
 
 ---
 
+## Pre-Stage-6 execution corrections v1.3 — authoritative
+
+These override any conflicting text below or in the `front_rebuild_plan/` companions. Evidence: `docs/implementation/pre-stage6-evidence.md` and `docs/implementation/reading-time-semantics.md`.
+
+1. **`/api/iot/sensors` is credentialed, not a guest API.** `SensorApiController::iotIndex()` enforces `X-Device-Key`/`api_key` vs `config('app.api_key')` (401 on missing/wrong). Classify as non-session ingestion support; do not add a second auth scheme because `route:list` shows no middleware.
+2. **`/api/health` stays anonymous** as an infrastructure liveness exception (used by `docker-compose` healthcheck). Payload is exactly `{status, app, timestamp}` — no product telemetry.
+3. **Single canonical public entry = the Vue SPA at `FRONT_URL/dashboard`.** The former anonymous Blade `/dashboard` is retired (backend now redirects `/` and `/dashboard` to the SPA; `DashboardController` + `dashboard.blade.php` deleted). Drop any "choose either entry point" language — the choice is made.
+4. **Transitional public APIs are removed atomically WITH the Stage 6 replacement, never before.** `/api/dashboard/public`, `/api/config/public`, `/api/sensors/{id}/latest-readings`, `/api/devices/{device}/sensors` stay until the graph bootstrap/series vertical slice works, to avoid a guest outage. `/api/alerts/active` is Stage 7 — the "public API = graph-only" claim is false until then.
+5. **No invented graph limits.** Any fixed `raw|1m` / 2,000 / 50,000 sample bounds are illustrative only; Stage 6 selects them from measured EXPLAIN cost. Pre-Stage-6 freezes only: timestamp grammar (after the timezone probe), half-open `[from,to)` semantics, DB as source of truth, bounded-query requirement, no silent truncation.
+6. **Ownership split (prevents a wrong store architecture).** Live sensor projection store keyed by `sensorId` owns normalize/validate/dedup/order/latest/bounded-tail/last-observed. Historical graph query layer keyed by `authorizationScope + sensorId + from + to + aggregation` owns request identity/cancellation/source-set/statistics. `echo.js → channelRegistry.js → useSensorRealtime.js` owns channel selection/ref-count/subscribe/release/recovery. **Pinia must not own Echo channels or subscription release.**
+7. **Authenticated restricted-sensor realtime** flows over an authorization-enforced private `sensor.{id}` channel (Pusher `private-sensor.{id}`), added in preflight; the public channel is gated by `PublicGraphVisibility` in Stage 6. `NewSensorReading` performs no visibility/DB lookup — the consumer decides audience.
+8. **Legacy Blade sensor read surfaces are retired/redirected before any event-payload contraction** (done: `sensors/{index,show}.blade.php` deleted, routes redirect to SPA).
+9. **Time semantics gate.** Current storage classifies as **C (mixed/ambiguous)** — see the reading-time doc. Stage 6 is BLOCKED until a historical migration/normalization decision resolves it. Never append `Z` to offsetless timestamps to fake UTC.
+10. **Stage 6 begins only after `PRE-STAGE-6 GATE: PASS`** in the evidence ledger.
+
 ## Traceability — every audit finding maps to a stage
 
 | Finding (audit.md) | Root cause | Fixed in |

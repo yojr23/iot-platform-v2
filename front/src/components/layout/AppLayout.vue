@@ -24,10 +24,12 @@ import { onBeforeUnmount, onMounted } from 'vue';
 import AlertToast from '@/components/alerts/AlertToast.vue';
 import { useAlertsRealtime } from '@/realtime/useAlertsRealtime';
 import { useAlertsStore } from '@/stores/alerts';
+import { useAuthStore } from '@/stores/auth';
 import { playAlertSound, unlockAlertSound } from '@/utils/sound';
 
 import NavBar from './NavBar.vue';
 
+const authStore = useAuthStore();
 const alertsStore = useAlertsStore();
 const { subscribeAlerts, unsubscribeAlerts } = useAlertsRealtime();
 let globalAlertsPollingId = null;
@@ -43,7 +45,10 @@ async function refreshActiveAlerts({ notifyNew = false } = {}) {
   });
 }
 
-onMounted(async () => {
+// Guest graph mode (unauthenticated visitors) must not touch the alert/config
+// subsystem: no public alert-sound config fetch, no active-alerts fetch, no
+// realtime subscribe, no polling loop. Only authenticated sessions get it.
+async function startGlobalAlerts() {
   await alertsStore.loadPublicConfig();
   unlockAlertSound();
   await refreshActiveAlerts();
@@ -51,6 +56,12 @@ onMounted(async () => {
   globalAlertsPollingId = window.setInterval(() => {
     refreshActiveAlerts({ notifyNew: true });
   }, 10000);
+}
+
+onMounted(() => {
+  if (authStore.isAuthenticated) {
+    startGlobalAlerts();
+  }
 });
 
 onBeforeUnmount(() => {

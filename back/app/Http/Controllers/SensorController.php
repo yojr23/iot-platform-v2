@@ -22,15 +22,6 @@ class SensorController extends Controller
         ]);
     }
 
-    public function index()
-    {
-        $sensors = Sensor::with(['device.lab', 'sensorType', 'readings'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
-            
-        return view('sensors.index', compact('sensors'));
-    }
-
     public function create()
     {
         // Obtener dispositivos activos con sus laboratorios
@@ -89,26 +80,6 @@ class SensorController extends Controller
             return back()->withInput()
                 ->with('error', 'Error al crear el sensor: ' . $e->getMessage());
         }
-    }
-
-    public function show(Sensor $sensor)
-    {
-        $readings = $sensor->readings()
-            ->where('reading_time', '<=', now())
-            ->orderBy('reading_time', 'desc')
-            ->paginate(10);
-
-        $chartReadings = $sensor->readings()
-            ->where('reading_time', '<=', now())
-            ->orderBy('reading_time', 'asc')
-            ->limit(100)
-            ->get();
-
-        return view('sensors.show', [
-            'sensor' => $sensor,
-            'readings' => $readings,
-            'chartReadings' => $chartReadings,
-        ]);
     }
 
     public function edit(Sensor $sensor)

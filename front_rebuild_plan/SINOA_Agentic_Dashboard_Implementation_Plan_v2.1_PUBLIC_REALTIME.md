@@ -12,6 +12,16 @@ Guests use the same Lab Blue dashboard workspace as authenticated users: respons
 
 The public dashboard feature surface is deliberately narrow. Its server-owned graph bootstrap may return only approved graph-source identity and metadata, and its bounded graph-series operation may return only samples and graph metadata for an approved sensor and exact UTC window. The current repository can truthfully project device/sensor labels and IDs plus `sensorType.unit`; it has no persisted precision, thresholds, cadence, or quality policy, so those fields must not be fabricated. The sole public domain stream is the approved public sensor-reading stream, currently compatible with `sensor.{id}`. Public scope must be enforced by the same backend visibility policy in all three paths.
 
+## v1.3 pre-Stage-6 corrections — authoritative over v1.2 and the mockup
+
+Evidence: `docs/implementation/pre-stage6-evidence.md`, `docs/implementation/reading-time-semantics.md`.
+
+- Canonical public entry is the **Vue SPA at `FRONT_URL/dashboard`** (Blade dashboard retired). `/api/iot/sensors` = credentialed ingestion, `/api/health` = anonymous liveness only; neither is guest product data. Transitional public APIs are cut atomically with the Stage 6 replacement, not before.
+- **No invented scientific semantics or graph limits.** Threshold/precision/quality/cadence/stale/coverage have no owner and are not V1. Any raw/1m/2,000/50,000 bounds are illustrative until measured.
+- **Ownership:** live projection store key = `sensorId`; historical graph query layer key = `authorizationScope + sensorId + from + to + aggregation`; **Pinia does not own Echo channels or subscription release** — `echo.js`/`channelRegistry.js`/`useSensorRealtime.js` do.
+- **Authenticated restricted sensors** keep realtime via the private `sensor.{id}` channel; guests never subscribe to alert/event/device-status channels.
+- **Time semantics = classification C (mixed/ambiguous); Stage 6 BLOCKED** until resolved. Implementation begins only on `PRE-STAGE-6 GATE: PASS`.
+
 ## v1.2 repository-audit corrections — authoritative for implementation
 
 This addendum reconciles the visual brief with the checked Laravel/Vue code. It supersedes conflicting examples, RF wording, component proposals, and Stage 6–10 text below.

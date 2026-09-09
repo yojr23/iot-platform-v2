@@ -4,6 +4,18 @@ Repository: `yojr23/iot-platform-v2`
 Branch: `refraccion`  
 Purpose: align the SINOA Lab Blue Workspace plans with the existing repository, the approved public graph scope, and the current realtime architecture.
 
+## v1.3 pre-Stage-6 corrections — authoritative over v1.2 and below
+
+Evidence: `docs/implementation/pre-stage6-evidence.md`, `docs/implementation/reading-time-semantics.md`.
+
+- **Canonical public entry is decided: the Vue SPA at `FRONT_URL/dashboard`.** Remove "choose either / route anonymous `/dashboard` to SPA *or* reduce Blade" language — the Blade dashboard is retired (backend redirects `/` and `/dashboard` to the SPA; controller + view deleted).
+- **`/api/iot/sensors` = credentialed non-session ingestion endpoint** (X-Device-Key/api_key, 401 on missing/wrong), not a guest inventory API. **`/api/health` = anonymous liveness exception** only.
+- **Transitional public APIs are removed atomically with the Stage 6 replacement, not before** (no guest outage). `/api/config/public` stays until `DashboardView` stops using its polling interval.
+- **Graph limits are not facts.** Any `raw|1m` / 2,000 / 50,000 bounds are illustrative until Stage 6 measures EXPLAIN cost. Freeze only timestamp grammar (post-probe), half-open windows, DB-as-truth, bounded query, no silent truncation.
+- **Ownership:** live projection store key = `sensorId`; historical query layer key = `authorizationScope + sensorId + from + to + aggregation`; **Pinia does not own subscription release** — `channelRegistry`/`useSensorRealtime` do.
+- **Authenticated restricted sensors** use the authorization-enforced private `sensor.{id}` channel; legacy Blade sensor read pages are retired before payload contraction (done).
+- **Time semantics = classification C (mixed/ambiguous); Stage 6 BLOCKED** until resolved. Stage 6 begins only on `PRE-STAGE-6 GATE: PASS`.
+
 ## v1.2 implementation audit — authoritative corrections
 
 This addendum is based on the checked repository, not on the mockup. It overrides any conflicting Stage 6–10 instruction below or in the companion SINOA plan.

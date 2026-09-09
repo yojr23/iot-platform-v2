@@ -20,6 +20,17 @@
 - Public REST is hydration/lifecycle recovery only. There is no frontend polling or fallback polling.
 - /api/alerts/active is an explicit Stage 7 route migration. Do not claim the final graph-only public surface until that route and the alert channel are authorized.
 
+## v1.3 pre-Stage-6 corrections — authoritative
+
+Evidence: `docs/implementation/pre-stage6-evidence.md`, `docs/implementation/reading-time-semantics.md`. Overrides conflicting text below.
+
+- The **Contract Freeze** table's `raw|1m`, 2,000-sample, 50,000-row bounds are **illustrative, not frozen facts** — Stage 6 selects them from a measured EXPLAIN on the new `sensor_readings(sensor_id, reading_time, id)` index (migration added). Pre-Stage-6 freezes only timestamp grammar (post timezone probe), half-open `[from,to)`, DB-as-truth, bounded query, no silent truncation.
+- **`ValidationException::withMessages(...)`** is the 422 mechanism (already reflected). **`/api/iot/sensors`** is credentialed ingestion (401 on missing/wrong key), **`/api/health`** an anonymous liveness exception — neither is a guest product API.
+- **Canonical entry = Vue SPA at `FRONT_URL/dashboard`** (Blade dashboard retired). Transitional public APIs are cut atomically with the Stage 6 replacement, not before.
+- **Ownership:** live projection key = `sensorId`; historical query key = `authorizationScope + sensorId + from + to + aggregation`; Pinia does not own subscription release.
+- **Authenticated restricted-sensor realtime** uses the private `sensor.{id}` channel added in preflight; the consumer (not `NewSensorReading`) decides audience.
+- **Time semantics = C (mixed/ambiguous) → Task 1 and Stage 6 remain BLOCKED** until a historical migration/normalization decision lands. Never append `Z` to offsetless timestamps.
+
 ## v1.2 blocking preflight — perform before Task 1
 
 This plan is a design/implementation plan, not authority to commit or deploy. A worker records `git diff` and test evidence; it commits only when the operator explicitly authorizes it.

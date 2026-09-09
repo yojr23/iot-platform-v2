@@ -19,17 +19,48 @@ class NewSensorReading implements ShouldBroadcastNow, VersionedDomainEvent
 
     public $reading;
 
-    public function __construct(SensorReading $reading, ?string $correlationId = null, ?string $causationId = null)
-    {
+    /**
+     * Pre-Stage-6 preflight (delivery-audience flags): both default to the exact pre-existing
+     * behavior of this event — public-only, single `Channel`, so `broadcastOn()` keeps returning
+     * a lone Channel object (not an array) for any caller that doesn't opt in, preserving
+     * `tests/Unit/EventEnvelopeTest.php`'s `->name` access on the un-flagged construction path.
+     * `DomainEventBroadcastConsumer` (the only real dispatch site) explicitly passes both flags
+     * true today; Stage 6 will instead compute `includePublicChannel` from
+     * `PublicGraphVisibility::isPublic()` at that same call site — no change needed here.
+     */
+    private bool $includePublicChannel;
+    private bool $includePrivateChannel;
+
+    public function __construct(
+        SensorReading $reading,
+        ?string $correlationId = null,
+        ?string $causationId = null,
+        bool $includePublicChannel = true,
+        bool $includePrivateChannel = false,
+    ) {
         $this->reading = $reading;
         $this->correlationId = $correlationId;
         $this->causationId = $causationId;
+        $this->includePublicChannel = $includePublicChannel;
+        $this->includePrivateChannel = $includePrivateChannel;
     }
 
     public function broadcastOn()
     {
-        // Backward-compat channel name kept (PLAN.md 2.2/2.3) — public guest dashboard projection.
-        return new Channel('sensor.'.$this->reading->sensor_id);
+        $channels = [];
+
+        if ($this->includePublicChannel) {
+            // Backward-compat channel name kept (PLAN.md 2.2/2.3) — public guest dashboard projection.
+            $channels[] = new Channel('sensor.'.$this->reading->sensor_id);
+        }
+
+        if ($this->includePrivateChannel) {
+            // Pre-Stage-6 preflight — authenticated delivery path for restricted sensors, authorized
+            // in routes/channels.php. Same channel "identity" (sensor.{id}), private transport.
+            $channels[] = new PrivateChannel('sensor.'.$this->reading->sensor_id);
+        }
+
+        return count($channels) === 1 ? $channels[0] : $channels;
     }
 
     public function broadcastWith()

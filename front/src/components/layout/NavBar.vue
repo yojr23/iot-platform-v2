@@ -137,13 +137,13 @@ const realtimeStatusClass = computed(() => {
   return 'text-bg-secondary';
 });
 
+// Guest graph mode: no alert API calls at all (mirrors AppLayout.vue's guard).
 async function refreshAlertBadge() {
-  if (authStore.isAuthenticated) {
-    await alertsStore.fetchUnresolved();
+  if (!authStore.isAuthenticated) {
     return;
   }
 
-  await alertsStore.fetchActiveAlerts({ silent: true });
+  await alertsStore.fetchUnresolved();
 }
 
 onMounted(refreshAlertBadge);

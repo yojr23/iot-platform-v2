@@ -21,8 +21,23 @@ use Illuminate\Support\Facades\Broadcast;
 | kept for any future authenticated-only broadcast (e.g. Stage 8 webhook
 | delivery status to the owning user). It is not wired to any event yet.
 |
+| Pre-Stage-6 preflight (private `sensor.{sensorId}` channel): Stage 6 will
+| suppress the PUBLIC `sensor.{id}` channel for non-public sensors via
+| `PublicGraphVisibility` (PLAN.md 6.0), so authenticated views need a
+| private delivery path that already exists before that flip happens. This
+| entry authorizes it. Matching the rest of the app (no per-sensor ACL /
+| ownership model exists — see `AuthApiController` token abilities: `*` for
+| admin, `read` for everyone else), any authenticated user (auth:sanctum,
+| enforced by `bootstrap/app.php`'s broadcasting middleware) may subscribe
+| to any *existing* sensor's private channel. Do not invent a finer
+| per-sensor ACL here.
+|
 */
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
+});
+
+Broadcast::channel('sensor.{sensorId}', function ($user, $sensorId) {
+    return \App\Models\Sensor::query()->whereKey($sensorId)->exists();
 });

@@ -292,7 +292,17 @@ class DomainEventBroadcastConsumer
             return;
         }
 
-        event(new NewSensorReading($reading));
+        // Pre-Stage-6 preflight: this is the real dispatch site, so the audience decision lives
+        // here (not inside the event). Both true today = current public behavior unchanged, plus
+        // the new authenticated private channel already delivering. Stage 6 plugs in here: replace
+        // the public flag literal with `PublicGraphVisibility::isPublic($reading->sensor)` once that
+        // service exists (PLAN.md 6.0) — restricted sensors then stop getting the public broadcast
+        // while this private channel keeps working unchanged.
+        event(new NewSensorReading(
+            $reading,
+            includePublicChannel: true,
+            includePrivateChannel: true,
+        ));
     }
 
     private function ack(string $id): void
