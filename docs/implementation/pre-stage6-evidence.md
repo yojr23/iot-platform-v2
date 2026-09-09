@@ -61,7 +61,7 @@
 - `DomainEventBroadcastConsumer`: dispatch passes both channels + comment marking where Stage 6 `PublicGraphVisibility::isPublic()` plugs in. Transaction/idempotency/XACK/retry/DLQ untouched.
 - Delivery matrix (mechanism ready; flag wired in Stage 6): public → guest public YES + auth private YES; restricted → guest public NO + auth private YES.
 - **Open defects:** frontend sensor realtime still uses the public `echo.channel()` path; the authenticated Vue graph does not yet consume `private-sensor.{id}`. Any private-channel assertion must expect Laravel's `private-sensor.{id}` channel name, not `sensor.{id}`. Add a bearer-token `POST /api/broadcasting/auth` test for the real SPA/Sanctum flow.
-- Tests: `BroadcastChannelAuthorizationTest.php` (new), `DomainEventBroadcastConsumerTest.php` (extended). **GAP: not executed.** Known expectation audit required before counting these tests as green.
+- Tests: `BroadcastChannelAuthorizationTest.php` (new), `DomainEventBroadcastConsumerTest.php` (extended). **GAP: not executed.** FIX-PRE6-01 closed: private-channel assertions corrected to `private-sensor.{id}` (lines 239, 274); public-`Channel` assertion left as `sensor.{id}`.
 
 ## Task 6 — Retire legacy Blade sensor read surfaces  ✅ code-complete
 - `web.php`: `sensors.index`/`sensors.show` now authenticated redirects to SPA; write/download/filter/edit routes preserved.
@@ -72,7 +72,7 @@
 ## Task 7 — Isolate guest graph mode from alerts/config  ⛔ broken on auth transitions
 - `AppLayout.vue`: alert config load / active-alert fetch / subscribe / 10s poll is guarded only on initial mount. Add an auth-state watcher with idempotent `startGlobalAlerts()` and `stopGlobalAlerts()` so login starts authorized alerts and logout clears interval/subscription/projection while the layout remains mounted.
 - `useAlertsRealtime`: must not resubscribe after `auth:changed` when the new state is guest.
-- `NavBar.vue`: guest alert-badge fetch is guarded, but the guest DOM still renders `Alertas activas: 0` or can render stale authenticated `unresolvedCount` after logout. Remove the guest count entirely or render a neutral access-required/omitted slot; add guest and auth-to-guest DOM assertions.
+- `NavBar.vue`: FIX-PRE6-05 (partial) closed — the guest `Alertas activas: {{ unresolvedCount }}` span was removed, so the shell nav renders no alert count/banner identity for guests (nor a stale post-logout count). Still open: auth-to-guest DOM assertions, and the same identity leak in `ActiveAlertsCard.vue`/`MetricsCards.vue`/`AlertToast` (Stage 6/7 composition + FIX-PRE6-03/04).
 - `AlertToast`: must be hidden/unmounted or cleared when scope becomes guest so an authenticated toast cannot remain visible after logout.
 - No protected replacement config path exists; `/api/config/public` cannot be removed until authenticated alert UI reads a scoped runtime config endpoint.
 - Tests `AppLayout.test.js`, `NavBar.test.js`. `npm run build` **PASS** (vite present). `vitest` **GAP** (not installed, no registry).
@@ -98,6 +98,6 @@ Applied as an authoritative **v1.3 pre-Stage-6 corrections** addendum block (ove
 | Authenticated realtime | ⚠ partial / ⏳ runtime | backend private channel exists; frontend private consumer + PAT auth test pending |
 | Guest isolation | ⛔ broken / ⏳ vitest | mount-only guard misses login/logout teardown and still renders/stores alert identity |
 | Runtime config | ⛔ blocked | `/config/public` still feeds authenticated alert UI; protected replacement pending |
-| Ownership/docs | ⚠ partial | v1.3 addendum applied; contradictory executable instructions must be physically removed |
+| Ownership/docs | ✅ done | v1.3 addendum + physical rewrites: FRONT_REBUILD adj#7 now two owners + realtime lifecycle (Pinia owns no subscription release); PUBLIC_GRAPH Point-semantics no longer freezes 1m; completed preflight (entry-point choice, deleted-file change-map rows) turned into VERIFY/RESOLVED |
 
 **Overall: BLOCKED.** Stage 6 may not begin until, in a real runtime: (1) Task 3 classification C is resolved with a historical migration/normalization decision that includes `RawReadingNormalizer`, (2) every written suite runs green after correcting the private-channel expectation, (3) EXPLAIN confirms the index path, (4) guest/auth alert transitions clear polling, subscriptions, counts, and toasts, (5) authenticated sensor realtime consumes private channels, and (6) `/config/public` has a protected replacement/removal path. The graph-only route and visibility boundary are Stage-6 work, not completed by this preflight range.

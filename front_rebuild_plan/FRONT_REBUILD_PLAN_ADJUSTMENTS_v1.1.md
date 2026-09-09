@@ -22,7 +22,7 @@ Evidence: `docs/implementation/pre-stage6-evidence.md`, `docs/implementation/rea
 
 This addendum is based on the checked repository, not on the mockup. It overrides any conflicting Stage 6–10 instruction below or in the companion SINOA plan.
 
-- **One public product entry point, before route deletion.** `back/routes/web.php` currently makes the Blade `DashboardController@index` anonymous and renders global metrics, active alerts, devices, and sensors; `front/src/views/DashboardView.vue` is a separate SPA dashboard that currently calls the same broad public API. Select the deployed Lab Blue entry point and make anonymous `/dashboard` reach only it before deleting `/api/dashboard/public`. The other route must be retired, redirected, or made authenticated in the same release. A broad Blade dashboard cannot wait for Stage 10 because it already violates the guest scope.
+- **One public product entry point, before route deletion — HISTORICAL FINDING AT PREFLIGHT BASELINE, RESOLVED in `00b560c`.** At the preflight baseline `back/routes/web.php` made the Blade `DashboardController@index` anonymous and rendered global metrics, active alerts, devices, and sensors, alongside the SPA `front/src/views/DashboardView.vue`. This is now resolved: `/` and `/dashboard` redirect to `config('app.front_url').'/dashboard'`, and `DashboardController.php` + `dashboard.blade.php` are deleted. `/api/dashboard/public` deletion remains sequenced with the Stage 6 graph replacement (do not delete before the replacement works).
 - **Anonymous product APIs are graph-only, not merely Vue callers.** Remove/protect `/api/config/public` with the polling interval and alert settings when Stage 6 removes its guest use. Give `/api/iot/sensors` an explicit ingestion credential/internal boundary review. `/api/health` is allowed only as an explicitly owned infrastructure liveness endpoint, not as a dashboard data API; protect or relocate it if the deployment policy has no liveness exception. The end-state guest product surface is exactly graph bootstrap, bounded graph series, and approved reading delivery; `/api/alerts/active` and the `alerts` channel complete their move in Stage 7.
 - **UTC is blocked until proved.** The app defaults to `America/Bogota`; `sensor_readings.reading_time` is a Laravel `timestamp` without a documented UTC write/read invariant, and the legacy sensor-ingestion endpoint accepts `Y-m-d H:i:s`. Stage 6 must first run a DB/application probe, establish migration/normalization rules for historical values, and reject/normalize ambiguous new input. Only then use the frozen second-precision UTC format `YYYY-MM-DDTHH:mm:ssZ` and half-open `[from,to)` graph windows.
 - **The graph query needs a source-of-truth and index.** Add and benchmark `sensor_readings(sensor_id, reading_time, id)` before public range queries. The database is authoritative for every series/statistic; `SensorReadingProjectionService` is a 120-entry internal latest-reading cache and may not silently supply incomplete graph history.
@@ -103,9 +103,10 @@ SensorReadingService -> sensor.reading.created -> outbox -> Redis Stream
    - existing API adapters.
    - `front/src/realtime/useAlertsRealtime.js` and `front/src/stores/alerts.js` remain owners for authenticated alert capabilities; guest graph rendering must not depend on them.
 
-7. **Gate 6 supplies the sensor projection foundation.**
-   - The rebuild must consume one shared Pinia sensor-reading projection keyed by authorization scope, sensor ID, and resolved graph window.
-   - The projection owns request generation/cancellation, bounded ordered merge, de-duplication, last-observed presentation, recovery, and subscription release.
+7. **Gate 6 supplies two cooperating graph-state owners plus a realtime lifecycle owner.**
+   - **Live sensor projection** — Pinia, keyed only by `sensorId`: normalize / validate / dedup / deterministic order, latest value, bounded live tail, last-observed data state.
+   - **Historical graph query layer** — keyed by `authorization scope + sensorId + from + to + aggregation`: request identity / cancellation, immutable historical source set, range statistics.
+   - **Realtime lifecycle** — `echo.js → channelRegistry → useSensorRealtime`: public/private channel selection, ref-count, subscribe/release, lifecycle recovery trigger. **Pinia does NOT own channel selection, ref-count, or subscription release.**
    - The current `SensorMonitorBoard` 2-second polling loop is transitional and must be removed during the realtime cutover.
 
 8. **Clarify Pinia guidance.**

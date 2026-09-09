@@ -40,10 +40,7 @@
               {{ alertsStore.unresolvedCount }}
             </span>
           </RouterLink>
-
-          <span v-else class="badge text-bg-light border">
-            Alertas activas: {{ alertsStore.unresolvedCount }}
-          </span>
+          <!-- Guests get no alert count/banner identity (pre-Stage-6 guest isolation). -->
 
           <RouterLink v-if="authStore.isAuthenticated" class="small text-muted" to="/profile">
             {{ authStore.user?.name }}

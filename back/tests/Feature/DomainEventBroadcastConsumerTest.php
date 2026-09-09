@@ -235,7 +235,8 @@ class DomainEventBroadcastConsumerTest extends TestCase
             $this->assertCount(1, $public);
             $this->assertCount(1, $private);
             $this->assertSame('sensor.'.$event->reading->sensor_id, $public[0]->name);
-            $this->assertSame('sensor.'.$event->reading->sensor_id, $private[0]->name);
+            // Laravel's PrivateChannel prefixes the wire name with `private-`.
+            $this->assertSame('private-sensor.'.$event->reading->sensor_id, $private[0]->name);
 
             return true;
         });
@@ -270,7 +271,7 @@ class DomainEventBroadcastConsumerTest extends TestCase
         $privateOnly = new NewSensorReading($reading, includePublicChannel: false, includePrivateChannel: true);
         $channel = $privateOnly->broadcastOn();
         $this->assertInstanceOf(PrivateChannel::class, $channel);
-        $this->assertSame('sensor.'.$sensor->id, $channel->name);
+        $this->assertSame('private-sensor.'.$sensor->id, $channel->name);
 
         // Both.
         $both = new NewSensorReading($reading, includePublicChannel: true, includePrivateChannel: true);

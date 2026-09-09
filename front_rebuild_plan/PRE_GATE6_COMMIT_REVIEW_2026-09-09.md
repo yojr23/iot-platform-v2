@@ -45,6 +45,15 @@ The range correctly prepares the SPA redirect, composite graph index, timestamp 
 9. `FIX-PRE6-09`: Retire remaining Blade sensor CRUD or prove the web-session to SPA-auth transition.
 10. `FIX-PRE6-10`: Remove contradictory executable instructions and update runtime evidence after the full test matrix runs.
 
+## Quick low-impact fixes closed — 9 September 2026
+
+Two named findings closed with source evidence (static; runtime execution still GAP per finding 12). No behavior beyond the fix was touched.
+
+- **FIX-PRE6-01 — CLOSED.** `back/tests/Feature/DomainEventBroadcastConsumerTest.php` asserted a `PrivateChannel` wire name as `sensor.{id}`. Laravel's `PrivateChannel` prefixes `private-`, so the assertions were objectively wrong (would fail once run) and could not count as green evidence. Corrected: line 239 `assertSame('private-sensor.'.$event->reading->sensor_id, $private[0]->name)` and line 274 `assertSame('private-sensor.'.$sensor->id, $channel->name)`. Public-`Channel` assertion (`sensor.{id}`) left intact. `BroadcastChannelAuthorizationTest.php` already used `private-sensor.{id}` correctly — no change needed. Re-run: `php artisan test --filter=DomainEventBroadcastConsumerTest` (still requires Redis + PHP).
+- **FIX-PRE6-05 (partial) — guest NavBar count CLOSED.** `front/src/components/layout/NavBar.vue` rendered `Alertas activas: {{ alertsStore.unresolvedCount }}` in the guest `v-else` branch, leaking an alert identity (and a stale post-logout count). Removed that guest span; the alert control now only renders inside the authenticated `RouterLink`. Guests receive no count/banner identity in the shell nav. **Still open (not low-impact, Stage 6/7):** `ActiveAlertsCard.vue`/`MetricsCards.vue` guest dashboard composition, `AlertToast` guest scope, and auth-to-guest store teardown (FIX-PRE6-03/04) — these need the login/logout lifecycle work, not a DOM one-liner.
+
+The remaining findings (FIX-PRE6-02/03/04/06/07/08/09/10) are not low-impact and stay open blockers; the gate remains BLOCKED.
+
 ## Verification performed
 
 - `git status --short`: clean before the first documentation update in this review session.
