@@ -1,16 +1,18 @@
 # SINOA Lab Blue Workspace implementation plan for coding agents
 
-Version: 2.0 — expanded English engineering edition, 8 September 2026.  
+Version: 2.1 — repository-aligned public-realtime engineering edition, 9 September 2026.  
 Prepared for: José Vicente Rincón Celis.  
 Source: `SINOA_Plan_Desarrollo_Diseno_Final.docx`, version 1.0, 8 September 2026.  
 Intended project: `yojr23/iot-platform-v2`, branch `refraccion`, subject to verification at execution time.  
-Status: implementation specification and execution instructions; application code and repository tests have not been executed as part of this document conversion.
+Status: implementation specification updated against the current `refraccion` repository baseline. The public dashboard route, public telemetry endpoints, public Echo/Pusher channels, current Vue/Bootstrap/Chart.js stack, authenticated preference endpoints, and existing realtime ownership have been verified. This document still does not claim that the Lab Blue Workspace rebuild itself has been implemented or that its future acceptance tests have passed.
 
 ## 1. Mission and source authority
 
 Implement the SINOA **Lab Blue Workspace** dashboard as one responsive web experience for desktop, tablet, and mobile. Combine the dominant chart of **Adaptive Laboratory, alternative 1**, with the chart selection and scientific detail of **Research Workspace, alternative 3**. These alternatives evolved from the 10C scientific and 10E adaptive dashboard directions. Preserve one auxiliary column so the primary signal retains enough space.
 
 The operator must be able to select a sensor, interpret its latest measurement and trend, identify alerts, and organize a personal workspace without losing laboratory context. This is an operational monitoring interface. Data identity, freshness, units, and uncertainty must be apparent before secondary details.
+
+**Public realtime monitoring is a P0 product invariant.** Registration is not required to inspect public sensor charts or receive their live updates. The existing `/dashboard` experience remains publicly reachable for telemetry that the backend classifies as public-safe. Authentication adds persistence, personalization, restricted resources, and privileged actions; it does not unlock the basic ability to monitor public laboratory telemetry.
 
 This Markdown preserves the requirements, numerical specifications, priorities, acceptance criteria, phases, open decisions, and sources of the Word document. Sections on agent execution, implementation algorithms, brand voice governance, component APIs, and design maintenance expand that source. Newly proposed defaults are identified as such and must be reconciled with actual repository contracts.
 
@@ -19,6 +21,10 @@ The Word document contains the conceptual desktop and mobile image. That image i
 ### 1.1 Execution boundaries
 
 - The source brief identifies **Vue 3, Bootstrap 5, and Chart.js**. Verify installed versions and existing wrappers before implementation; do not migrate frameworks to realize this design.
+- Preserve `/dashboard` as a public monitoring route. Do not add a login requirement to basic public telemetry.
+- Preserve the existing public realtime transport for public-safe telemetry: Laravel Echo/Pusher-compatible channels such as `sensor.{id}`, `alerts`, and `device-status` remain public unless payload sensitivity changes.
+- **No frontend polling, no polling fallback, and no permanent hybrid realtime model.** One bounded REST hydration and lifecycle-triggered one-shot recovery are allowed; steady-state telemetry and alert updates use Echo/WebSocket.
+- Build one dashboard implementation for guests and authenticated users. Differences are capability differences, not separate business-logic trees.
 - Verify the starting branch, commit, actual dashboard route, API contracts, authorization, and available scripts. Paths and interfaces below are proposals, not a verified repository inventory.
 - Preserve existing supported behavior and navigation. Dashboard actions configure visualizations; removing a widget never deletes a sensor, device, measurement, or alert.
 - P0 requirements RF01–RF13 define the first release. P1 requirements RF14–RF15 stay in a visible backlog until the core is stable.
@@ -52,25 +58,74 @@ Keep a small decision log for tradeoffs involving ownership, time semantics, per
 
 Report the implemented behavior, affected entry points, requirement coverage, screenshots and test evidence, known limitations, and remaining backend dependencies. Separate tests executed from tests planned or blocked. Do not describe a static mockup as an integrated dashboard, or local storage as cross-device persistence. Prepare a reviewable change/PR when supported and authorized; preserve the project's deployment gate.
 
+
+### 2.4 Verified repository baseline and public-realtime ownership
+
+The following facts are confirmed in the current `refraccion` repository and are execution constraints for this rebuild:
+
+| Concern | Verified owner / contract |
+| --- | --- |
+| Public route | `/dashboard` → `front/src/views/DashboardView.vue`; no authentication requirement on the route. |
+| Current dashboard composition | `front/src/components/dashboard/*`, especially `SensorMonitorBoard.vue`. |
+| Dashboard API adapter | `front/src/api/dashboard.js`. |
+| Realtime singleton | `front/src/realtime/echo.js`. |
+| Channel ownership | `front/src/realtime/channelRegistry.js` with reference-counted listeners. |
+| Sensor realtime adapter | `front/src/realtime/useSensorRealtime.js`. |
+| Alert realtime adapter | `front/src/realtime/useAlertsRealtime.js`. |
+| Shared alert projection | `front/src/stores/alerts.js` using Pinia. |
+| Authentication projection | `front/src/stores/auth.js` using Pinia. |
+| Public REST hydration | `/api/dashboard/public`, `/api/sensors/{sensor}/latest-readings`, `/api/devices/{device}/sensors`, `/api/alerts/active`. |
+| Authenticated preferences | `GET /api/dashboard/preferences`, `PUT /api/dashboard/preferences`. |
+| Public realtime channels | `sensor.{id}`, `alerts`, `device-status`; public by explicit backend decision for public-safe payloads. |
+| Frontend stack | Vue 3, Bootstrap 5, Chart.js 4, vue-chartjs, Pinia, Laravel Echo, Pusher JS, Vite, Vitest, Playwright. |
+
+**Reuse rule:** migrate or extend these owners. Do not create a parallel dashboard data layer, second Echo connection manager, second alert projection, or another state-management framework merely to match proposed paths in this specification.
+
+**Gate 6 integration:** the Lab Blue Workspace rebuild must consume the shared sensor-reading projection introduced by the realtime cutover. The current `SensorMonitorBoard.vue` polling loop is transitional debt and must not become part of the new dashboard architecture.
+
+#### Guest versus authenticated capability model
+
+One dashboard supports both modes:
+
+| Capability | Guest | Authenticated |
+| --- | ---: | ---: |
+| Open `/dashboard` | Yes | Yes |
+| List public devices/sensors | Yes | Yes |
+| Receive public sensor updates through Echo/WebSocket | Yes | Yes |
+| Inspect public live charts and bounded history | Yes | Yes |
+| Add/remove/reorder charts in the current draft/session | Yes | Yes |
+| Save workspace to server / restore cross-session preferences | No; authentication CTA | Yes |
+| Access restricted sensors/resources | No | Only when authorized |
+| Administrative/edit actions | No | Capability/role dependent |
+
+Guest workspace editing is ephemeral by default. Do not label it **Saved** unless persistence is actually confirmed. If the guest chooses Save, begin the existing authentication flow while preserving the current draft where practical.
+
+#### Public-scope security invariant
+
+Public visibility is decided by the backend, not by hiding items in Vue. Public endpoints and public broadcast payloads must contain only public-safe devices, sensors, readings, alert fields, and metadata. Restricted resources must not be discoverable through public listing endpoints or public channel payloads.
+
+
 ## 3. Product requirements and traceability
 
 | ID | Priority | Requirement | Acceptance condition |
 | --- | --- | --- | --- |
-| RF01 | P0 | Select device and sensor | Only sensors belonging to the selected device and authorized scope are available. |
-| RF02 | P0 | Latest reading and live status | Value, unit, timestamp, and freshness all belong to the active sensor. |
+| RF01 | P0 | Select device and sensor | Guests see only server-approved public sensors for the selected device; authenticated users may additionally see authorized restricted sensors. |
+| RF02 | P0 | Latest reading and live status | Public sensors update in real time without registration; value, unit, timestamp, freshness, and connection state all belong to the active sensor. |
 | RF03 | P0 | Time-series chart | Offer `1m`, `5m`, `1h`, `6h`, `24h`; default `5m`; render missing-data gaps. |
 | RF04 | P0 | Thresholds and statistics | Min, max, and mean use the selected period; display units and configured limits. |
-| RF05 | P0 | My charts | Selection synchronizes chart, reading, and inspector; one active main chart on mobile. |
+| RF05 | P0 | My charts | Selection synchronizes chart, reading, and inspector; guests can organize an ephemeral draft; one active main chart is mounted on mobile. |
 | RF06 | P0 | Add and remove charts | Validate device/sensor; removal affects only the widget and offers Undo. |
 | RF07 | P0 | Reorder widgets | Desktop drag plus Move up/Move down alternatives for keyboard and mobile. |
-| RF08 | P0 | Save workspace | Restore order, selection, and configuration; Saved appears only after confirmed persistence or confirmed load. |
-| RF09 | P0 | Active alerts | Count and list agree; show a prioritized active critical alert before the main chart. |
+| RF08 | P0 | Save workspace | Guests may edit a session draft but server persistence requires authentication. Authenticated save restores order, selection, ranges, and configuration; Saved appears only after confirmed persistence/load. |
+| RF09 | P0 | Active alerts | Count and list agree within the current public/authenticated scope; public mode exposes only public-safe alert data and shows a prioritized active critical alert before the main chart. |
 | RF10 | P0 | Recent events | Include date/time, device, event, value, severity, and a working full-history destination. |
 | RF11 | P0 | Scientific details | Show unit, range, frequency, quality, and sample information; show missing-data states honestly. |
 | RF12 | P0 | Operational states | Loading, empty, error, reconnecting, and stale states have clear messages and actions. |
-| RF13 | P0 | Permissions | Reading/editing reflect capabilities and are authorized on the server. |
+| RF13 | P0 | Permissions | Public-read scope is server-defined; restricted reading, persistence, editing, and administration reflect authenticated capabilities and are authorized on the server. |
 | RF14 | P1 | Duplicate and export | Explicit duplication creates a new stable ID; export uses the selected sensor and period. |
 | RF15 | P1 | Reading distribution | Optional histogram in Details uses the same period as the signal. |
+
+**Cross-cutting P0 invariant — Public realtime access:** a guest can open `/dashboard`, select a public sensor, hydrate its bounded history, and continue receiving live chart updates over Echo/WebSocket without registering or logging in. Authentication must not create a second telemetry implementation.
 
 Every visible action must work. If a P1 feature is absent, omit its control or expose a deliberate explained unavailable state only when useful; avoid decorative buttons that do nothing. An unavailable full-history route is an RF10 dependency to resolve, not a reason to ship a dead link.
 
@@ -86,7 +141,7 @@ Preserve these invariants across later pages and future agent sessions:
 
 1. Context precedes measurement: device, sensor, unit, and timestamp remain identifiable.
 2. Critical information is visible without opening a customization panel.
-3. A single clear primary action per action region; **Add chart** is the workspace primary action, **Save** is secondary.
+3. A single clear primary action per action region; **Add chart** is the workspace primary action, **Save** is secondary. For guests, Save is an authentication/persistence CTA rather than a requirement to monitor public telemetry.
 4. Details progressively disclose below or beside the main signal; they never squeeze it into an unreadable thumbnail.
 5. Color reinforces a label; no status is communicated by color alone.
 6. Missing, stale, invalid, and disconnected are distinct states, not a generic zero.
@@ -393,6 +448,36 @@ If timestamps do not align perfectly to the expected schedule, agree a tolerance
 
 ## 8. Interaction flows and state machines
 
+
+### 8.0 Public guest mode and authenticated enhancement
+
+Public monitoring is not a degraded static preview. A guest receives the same public live-reading projection as an authenticated user.
+
+Guest flow:
+
+```text
+open /dashboard
+→ load public-safe device/sensor metadata
+→ subscribe through the existing Echo/Pusher transport
+→ bounded REST history hydration
+→ shared sensor-reading projection
+→ continuous live chart updates
+```
+
+Authentication changes capabilities, not the fundamental telemetry pipeline:
+
+```text
+same dashboard + same public projection
+→ authentication
+→ preserve current draft/selection when practical
+→ enable server-backed workspace persistence
+→ expose additional restricted capabilities only when authorized
+```
+
+Do not fork the page into `PublicDashboard` and `AuthenticatedDashboard` implementations with duplicated selection, chart, recovery, or store logic.
+
+
+
 ### 8.1 Selection and editing
 
 `selectedWidgetId` is the single authority for the active chart. Derive active device, sensor, range, inspector, and reading from that widget. Avoid separately writable selected sensor values that can drift out of sync.
@@ -416,6 +501,8 @@ Selecting a chart changes the active widget immediately. Display cached data onl
 | Save error | Keep draft, explain failure, and offer Retry. |
 | Revision conflict | Preserve local draft and remote state; offer reload/review, never silent overwrite. |
 | Leave with changes | Offer Save, Discard, or Keep editing. Clean navigation has no confirmation. |
+
+For an unauthenticated guest, workspace changes remain an ephemeral draft. A Save action may open login/register while preserving the draft, but it must not show Saved before authenticated server persistence succeeds.
 
 Do not implement these as unrelated booleans permitting contradictory states. A discriminated state plus draft/baseline comparison, or the existing equivalent, is easier to reason about. Loading, connection, and save states are independent: a save error does not replace a healthy chart with a full-page failure.
 
@@ -485,7 +572,7 @@ Names are proposals; retain equivalent existing components.
 | Workspace preferences | Widgets, order, chosen ranges, selected widget | Draft plus confirmed baseline; persist by user and laboratory. |
 | Ephemeral resources | Chart instances, timers, abort controllers, sockets | Owner-managed resources; never serialize into workspace JSON. |
 
-Do not introduce a new global store just for this dashboard. Reuse the existing state pattern. Scope all caches by authorization context. A viewport change is a composition change, not a new workspace or second independent request pipeline.
+Do not introduce another state-management framework or a monolithic dashboard-global store. Reuse Pinia only where shared cross-component ownership is required (for example sensor-reading and alert projections); keep transient UI state in components/composables. Scope all caches by authorization context. A viewport change is a composition change, not a new workspace or second independent request pipeline.
 
 ## 10. Data contracts and backend integration
 
@@ -554,13 +641,13 @@ Extend these with actual errors and metadata after phase 0. A first-ever workspa
 
 ### 10.3 Required operations
 
-List authorized devices and sensors; fetch a sensor's series by time range; retrieve latest readings; query alerts and recent events; load and save preferences with concurrency control. Reuse the current authenticated API client, error mapping, and live transport. These operation names do not imply REST URLs.
+For guests, list server-approved public devices/sensors, hydrate bounded public history/latest readings, query public-safe alerts/events, and use the existing public Echo/Pusher transport. For authenticated users, reuse the same telemetry path and additionally load/save preferences and access restricted operations when authorized. Reuse the current API client, error mapping, and existing live transport. These operation names do not imply REST URLs.
 
 Document a real mapping table during implementation: feature operation → actual method/path or transport message → adapter → permission → response schema → failure behavior. If an operation is missing, record a backend task and implement it only within authorized project scope. Do not wire production UI to an invented URL that merely resembles the proposed model.
 
 ### 10.4 Authorization and privacy
 
-Save preferences per user and laboratory. Validate scope, sensor access, and action permissions on every server operation, including export and preference updates. Hidden buttons are not an authorization boundary. Read-only users can inspect allowed data; edit controls match actual capabilities.
+Public monitoring requires no account, but the server still defines the public scope. Save preferences per authenticated user and laboratory. Validate public/restricted scope, sensor access, and action permissions on every server operation, including export and preference updates. Hidden buttons are not an authorization boundary. Read-only users can inspect allowed data; edit controls match actual capabilities.
 
 Workspace persistence contains IDs and view configuration, never session tokens, credentials, or raw sensitive telemetry. Optional local drafts must be explicitly supported, keyed by user/laboratory/workspace/schema, and cleared on logout. Do not show one user's cached content after another signs in. Avoid logging raw measurements or identifiers beyond the project's approved telemetry policy.
 
@@ -583,13 +670,13 @@ A matching `sensorId` alone is insufficient: the operator may have switched away
 
 ### 11.2 Stream normalization and merge
 
-Use the existing WebSocket, SSE, subscription, or polling model. Do not start a new transport per small component if the application already multiplexes data. Filter incoming samples by authorized scope and sensor identity.
+Use the existing Laravel Echo/Pusher-compatible WebSocket transport. Public telemetry channels are first-class for guests. Do not start a new transport per component and do not add a polling fallback. Filter incoming samples by authorized scope and sensor identity.
 
 Normalize UTC timestamps, reject non-finite numeric values, preserve quality flags, and deduplicate according to the actual timestamp/sequence contract. A late sample may fill historical data without replacing the latest measurement. If multiple legitimate samples share a timestamp, preserve sequence identity instead of dropping them arbitrarily. Resolve duplicate conflicts deterministically using the backend contract.
 
 Retain a bounded buffer for the selected window plus the minimum overlap required for reconnection. Prune by time/count; avoid unbounded arrays. Share one freshness clock at suitable granularity rather than adding a timer to every row. Clean up subscriptions and listeners when their owning scope disappears.
 
-Polling must not overlap: schedule the next request after the current one settles, with agreed cadence and failure backoff. On reconnection, refill from the last confirmed event/sample cursor or timestamp with safe overlap, then deduplicate. Distinguish replayed history from a genuinely current live sample.
+There is no steady-state frontend polling. On initial load and lifecycle recovery, perform one bounded REST hydration/recovery request while the live subscription remains authoritative; on reconnection, refill the missing interval with safe overlap and deduplicate. Distinguish replayed history from a genuinely current live sample.
 
 ## 12. Workspace persistence in detail
 
@@ -722,7 +809,7 @@ Execute in order while maintaining a usable route. Estimate calendar time after 
 
 ### Phase 0 — Repository and contract diagnosis
 
-Tasks: confirm branch/commit; map route, shell, chart implementation, versions, auth, transport, preferences, UI assets, tests, and current failures. Resolve time zone, quality, ownership, maximum widgets, and threshold semantics. Map RF01–RF15 to code and API dependencies.
+Tasks: confirm branch/commit; verify the existing public `/dashboard`; map route, shell, chart implementation, versions, public/authenticated scope, Echo/Pusher transport, preferences, UI assets, tests, and current failures. Resolve time zone, quality, ownership, maximum widgets, and threshold semantics. Map RF01–RF15 to code and API dependencies.
 
 Deliverables: evidence-based code-to-design map, actual contract inventory, decision log, baseline screenshots, implementation sequence adapted to repository structure.
 
@@ -738,7 +825,7 @@ Exit gate: no global horizontal overflow at 320, 390, 768, 1024, and 1440 px; ty
 
 ### Phase 2 — One sensor vertical slice
 
-Tasks: connect authorized device/sensor selection to real metadata, latest reading, resolved range, chart, threshold bands, statistics, completeness, and timestamp formatting. Add request cancellation/generation checks and state-specific error handling.
+Tasks: implement the first vertical slice as **public realtime monitoring**: connect a guest-visible public device/sensor to real metadata, latest reading, resolved range, chart, Echo/WebSocket live updates, threshold bands, statistics, completeness, and timestamp formatting. Add request cancellation/generation checks and state-specific error handling.
 
 Deliverables: one functioning real-sensor workflow with consistent chart/reading/inspector identity and reusable domain functions.
 
@@ -746,7 +833,7 @@ Exit gate: rapid selection cannot show stale responses; nulls and gaps render ho
 
 ### Phase 3 — Workspace editing and persistence
 
-Tasks: add/select/remove/undo/reorder widgets; preserve selected range and ID; separate baseline/draft; implement confirmed save/reload, permissions, conflict resolution, navigation guard, and optional supported local recovery.
+Tasks: add/select/remove/undo/reorder widgets for both guests and authenticated users; preserve selected range and ID; keep guest changes as an ephemeral draft; for authenticated users implement confirmed save/reload, permissions, conflict resolution, navigation guard, and supported recovery.
 
 Deliverables: actual preference adapter and any authorized necessary backend work, schema/revision documentation, save-state UI.
 
@@ -754,7 +841,7 @@ Exit gate: saved order, configuration, and selection restore after reload; save 
 
 ### Phase 4 — Alerts and scientific operation
 
-Tasks: critical banner, active counts/list, recent events/history destination, inspector, three desktop secondary signals, freshness, reconnect/refill, partial failures, and revoked-access handling.
+Tasks: public-safe critical banner/active counts/events plus authenticated extensions where authorized; inspector, three desktop secondary signals, freshness, reconnect/refill, partial failures, and revoked-access handling.
 
 Deliverables: operational multi-sensor dashboard with independent workspace and active-sensor status.
 
@@ -792,6 +879,9 @@ Tests below are required implementation evidence, not tests already executed aga
 
 | Area | Scenario | Required result |
 | --- | --- | --- |
+| Public guest realtime | Open `/dashboard` with no token/session, select a public sensor, and keep the page open while readings arrive. | Chart updates through the shared Echo/WebSocket projection; no login and no recurring REST polling are required. |
+| Guest/auth transition | Configure a guest draft, authenticate, and return to the dashboard. | Public telemetry continues through the same projection; draft/selection is preserved where practical and server Save becomes available without duplicate subscriptions. |
+| Public scope security | Request or subscribe to a restricted sensor as a guest. | Restricted resource is not discoverable/exposed; public payloads contain no private credentials/user fields. |
 | Sensor selection | Rapidly switch across three sensors; old success and failure arrive last. | Only the current request updates reading/chart/error/loading state. |
 | Device dependency | Change device while previous sensor request is pending. | Incompatible sensor clears; no mixed device label and old sensor value. |
 | Time range | Switch 5m → 24h → 5m during concurrent requests. | Selected period, series, statistics, and inspector agree. |
@@ -825,8 +915,8 @@ Fix time, locale, viewport, and data for visual comparisons. Use manual checks f
 
 ### 17.2 Definition of done
 
-- One responsive web dashboard implements the selected hierarchy for desktop and mobile using shared business logic.
-- RF01–RF13 are implemented and verified. RF14–RF15 are clearly tracked separately without misleading controls.
+- One responsive web dashboard implements the selected hierarchy for desktop and mobile using shared business logic for both guests and authenticated users.
+- RF01–RF13 are implemented and verified, including guest realtime monitoring without registration and authenticated persistence as a capability extension. RF14–RF15 are clearly tracked separately without misleading controls.
 - Actual API contracts, authorization, errors, timestamp/quality rules, and persistence semantics are documented.
 - Preferences save and restore reliably; revision conflicts and schema compatibility have explicit behavior.
 - Visual evidence covers target widths and significant states. Keyboard and mobile flows are manually checked; critical transitions have meaningful automated coverage.
@@ -840,12 +930,12 @@ Close these in phase 0 using repository evidence and current product ownership. 
 
 | Decision | What to establish | If missing |
 | --- | --- | --- |
-| Entry point | Actual dashboard route and starting commit. | Inspect routing and branch; do not assume an old path. |
-| Authentication | Existing client/session pattern and server enforcement. | Preserve existing integration and resolve scoped access before real data selectors. |
-| Workspace ownership | Personal per user/laboratory or shared workspace with explicit roles. | Default design is personal; shared editing needs deliberate policy. |
-| Preferences | Load/create/save paths, revision semantics, schema policy. | Implement authorized support or report the RF08 dependency; local drafts are not server sync. |
+| Entry point | **Confirmed:** `/dashboard` is the current public route. Record the exact execution SHA before coding. | Preserve public access while rebuilding; do not redirect guests to login for basic telemetry. |
+| Authentication | **Confirmed split:** public telemetry requires no login; authentication adds persistence/restricted capabilities. | Preserve one dashboard and capability-based enhancement. |
+| Workspace ownership | **Confirmed baseline:** guest draft is ephemeral; authenticated persistence is personal per user with the current preference owner. Laboratory/shared semantics still require explicit policy if added. | Do not create a second preference owner. |
+| Preferences | **Partially confirmed:** authenticated GET/PUT preference operations exist, but the richer revision/schema/conflict contract in this plan is not fully implemented. | Extend the existing preference controller/model if RF08 requires revision semantics. |
 | Widget cap | Maximum saved and simultaneously rendered widgets. | Agree a limit based on operation and measurement; do not hardcode an arbitrary restriction. |
-| Transport | Existing live stream or polling, reconnect and replay contract. | Formalize polling and freshness; never leave LIVE permanently visible. |
+| Transport | **Confirmed:** Laravel Echo/Pusher-compatible public realtime channels for public-safe telemetry. | No frontend polling/fallback; use bounded hydration and lifecycle recovery. |
 | Sampling | Expected cadence, timestamp source, inclusion policy, slot tolerance. | Show unavailable completeness/freshness where undefined. |
 | Quality | Validity flags and exact completeness/aggregation definition. | Do not invent a percentage. |
 | Thresholds | Bound inclusivity, lower rules, revision and alert authority. | Display only known configured rules; record gaps. |
@@ -859,13 +949,13 @@ Do useful independent work while a dependency is unresolved. Backend gaps should
 
 Copy this section into an implementation task together with access to the repository and this complete Markdown file.
 
-> Implement SINOA Lab Blue Workspace using this specification. Start by reading applicable repository instructions and verifying the branch, commit, dashboard route, actual dependencies, authentication, sensor APIs, live transport, and preference persistence. The expected stack is Vue 3, Bootstrap 5, and Chart.js from the source brief; verify it and reuse the existing architecture.
+> Implement SINOA Lab Blue Workspace using this specification. Start by reading applicable repository instructions and verifying the current `refraccion` SHA. Preserve the already-confirmed public `/dashboard`, public-safe telemetry APIs, Echo/Pusher realtime ownership, Pinia projections, and authenticated preference owner. The expected stack is Vue 3, Bootstrap 5, and Chart.js from the source brief; verify it and reuse the existing architecture.
 >
 > Preserve the main chart from alternative 1 and chart selection/scientific details from alternative 3. Build one responsive web dashboard with shared business logic, the specified tokens and typography, a single desktop auxiliary column, and a chart-first mobile hierarchy. Preserve the configured product locale and SINOA's calm, precise operational voice.
 >
 > Work through phases 0–7. Begin with tokens and a responsive shell, then one real sensor vertical slice, then workspace editing and confirmed persistence, then alerts, scientific detail, reconnect, and mobile/accessibility completion. Separate server data, transient UI state, preference draft/baseline, and lifecycle resources. Do not invent endpoints, percentages, or measurements.
 >
-> Protect against obsolete responses, invalid/out-of-order samples, misleading gap interpolation, unscoped caches, and lost updates. Keep global alert scope separate from the selected sensor. Preserve unsaved edits on failure and revision conflict. Never delete sensors when removing chart widgets.
+> Public realtime monitoring is mandatory: guests must be able to select public sensors and watch charts update live without registration. Do not introduce frontend polling or a polling fallback. Protect against obsolete responses, invalid/out-of-order samples, misleading gap interpolation, unscoped caches, and lost updates. Keep global alert scope separate from the selected sensor. Preserve unsaved edits on failure and revision conflict. Never delete sensors when removing chart widgets.
 >
 > Persist brand and UX guidance in existing repository design documentation, shared tokens/components, localization resources, meaningful state examples, and appropriate additive agent instructions. Keep a concise progress/decision log so another session can continue from verified state.
 >
