@@ -32,7 +32,6 @@ import NavBar from './NavBar.vue';
 const authStore = useAuthStore();
 const alertsStore = useAlertsStore();
 const { subscribeAlerts, unsubscribeAlerts } = useAlertsRealtime();
-let globalAlertsPollingId = null;
 let startingGlobalAlerts = false;
 let globalAlertsSubscribed = false;
 let globalAlertsStartupGeneration = 0;
@@ -52,7 +51,7 @@ async function refreshActiveAlerts({ notifyNew = false } = {}) {
 // subsystem: no public alert-sound config fetch, no active-alerts fetch, no
 // realtime subscribe, no polling loop. Only authenticated sessions get it.
 async function startGlobalAlerts() {
-  if (globalAlertsPollingId || startingGlobalAlerts) {
+  if (startingGlobalAlerts) {
     return;
   }
 
@@ -80,13 +79,6 @@ async function startGlobalAlerts() {
     }
 
     globalAlertsSubscribed = subscribed;
-    if (!subscribed) {
-      return;
-    }
-
-    globalAlertsPollingId = window.setInterval(() => {
-      refreshActiveAlerts({ notifyNew: true });
-    }, 10000);
   } finally {
     if (startupGeneration === globalAlertsStartupGeneration) {
       startingGlobalAlerts = false;
@@ -96,11 +88,6 @@ async function startGlobalAlerts() {
 
 function stopGlobalAlerts() {
   globalAlertsStartupGeneration += 1;
-  if (globalAlertsPollingId) {
-    window.clearInterval(globalAlertsPollingId);
-    globalAlertsPollingId = null;
-  }
-
   startingGlobalAlerts = false;
   if (globalAlertsSubscribed) {
     unsubscribeAlerts();

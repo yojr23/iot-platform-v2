@@ -5,7 +5,7 @@ import { getSensorLatestReadings } from '@/api/sensors';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 
 // PLAN.md Stage 6.2 / pre-Stage-6 correction #6 — historical graph query layer, keyed by
-// (authorizationScope, sensorId). Owns request identity/cancellation (aborts a superseded
+// (authorizationScope, sensorId, from, to). Owns request identity/cancellation (aborts a superseded
 // in-flight request instead of racing it), the returned source-set statistics, and immutable
 // range hydration (each result records exactly the window it answers).
 //
@@ -22,8 +22,10 @@ import { getApiErrorMessage, unwrapData } from '@/api/client';
 // module-scope refCounts convention.
 const activeControllers = new Map();
 
-function queryKey(scope, sensorId) {
-  return `${scope}:${sensorId}`;
+function queryKey(scope, sensorId, from, to) {
+  const fromKey = from ? new Date(from).getTime() : 'none';
+  const toKey = to ? new Date(to).getTime() : 'none';
+  return `${scope}:${sensorId}:${fromKey}:${toKey}`;
 }
 
 function computeStats(values) {
@@ -56,11 +58,14 @@ function isCanceled(error) {
 
 export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
   state: () => ({
-    bySensor: {} // sensorId -> { points, stats, window, scope, loading, error }
+    byQuery: {} // fullKey -> { points, stats, window, scope, sensorId, loading, error }
   }),
 
   getters: {
-    resultFor: (state) => (sensorId) => state.bySensor[sensorId] || null
+    resultFor: (state) => (sensorId) => {
+      const entries = Object.values(state.byQuery).filter(r => r.sensorId === sensorId);
+      return entries.length > 0 ? entries[entries.length - 1] : null;
+    }
   },
 
   actions: {
@@ -75,14 +80,14 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
         return null;
       }
 
-      const key = queryKey(scope, sensorId);
+      const key = queryKey(scope, sensorId, from, to);
       activeControllers.get(key)?.abort();
       const controller = new AbortController();
       activeControllers.set(key, controller);
 
-      this.bySensor = {
-        ...this.bySensor,
-        [sensorId]: { ...(this.bySensor[sensorId] || {}), loading: true, error: '' }
+      this.byQuery = {
+        ...this.byQuery,
+        [key]: { ...(this.byQuery[key] || {}), loading: true, error: '', sensorId }
       };
 
       try {
@@ -96,28 +101,30 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
           const payload = unwrapData(response) || {};
           result = {
             points: Array.isArray(payload.points) ? payload.points : [],
-            stats: payload.stats || computeStats([])
+            stats: payload.stats || computeStats([]),
+            truncated: Boolean(payload.truncated)
           };
         }
 
-        this.bySensor = {
-          ...this.bySensor,
-          [sensorId]: { points: result.points, stats: result.stats, window: { from, to }, scope, loading: false, error: '' }
+        this.byQuery = {
+          ...this.byQuery,
+          [key]: { points: result.points, stats: result.stats, truncated: result.truncated, window: { from, to }, scope, sensorId, loading: false, error: '' }
         };
 
         return result;
       } catch (error) {
         if (isCanceled(error)) {
-          // Superseded by a newer call for the same key — that call already owns bySensor's
+          // Superseded by a newer call for the same key — that call already owns byQuery's
           // next write. Leave this store's state alone rather than racing it with an error.
           return null;
         }
 
-        this.bySensor = {
-          ...this.bySensor,
-          [sensorId]: {
-            ...(this.bySensor[sensorId] || {}),
+        this.byQuery = {
+          ...this.byQuery,
+          [key]: {
+            ...(this.byQuery[key] || {}),
             loading: false,
+            sensorId,
             error: getApiErrorMessage(error, 'No se pudo cargar el historico del sensor.')
           }
         };
@@ -130,15 +137,19 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
     },
 
     clearSensor(sensorId) {
-      const next = { ...this.bySensor };
-      delete next[sensorId];
-      this.bySensor = next;
+      const next = {};
+      for (const [key, value] of Object.entries(this.byQuery)) {
+        if (value.sensorId !== sensorId) {
+          next[key] = value;
+        }
+      }
+      this.byQuery = next;
     },
 
     clearAll() {
       activeControllers.forEach((controller) => controller.abort());
       activeControllers.clear();
-      this.bySensor = {};
+      this.byQuery = {};
     }
   }
 });

@@ -59,6 +59,12 @@
                 <label class="form-check-label" for="sensor_status">Activo</label>
               </div>
             </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input id="sensor_public" v-model="sensorForm.public_monitoring_enabled" class="form-check-input" type="checkbox" />
+                <label class="form-check-label" for="sensor_public">Permitir monitoreo publico en graficas</label>
+              </div>
+            </div>
           </div>
 
           <div class="d-flex justify-content-end gap-2 mt-3">
@@ -107,7 +113,8 @@ function defaultSensorForm() {
     name: '',
     device_id: '',
     sensor_type_id: '',
-    status: true
+    status: true,
+    public_monitoring_enabled: false
   };
 }
 
@@ -165,7 +172,8 @@ function openEdit(sensor) {
     name: sensor.name || '',
     device_id: sensor.device_id || sensor.device?.id || '',
     sensor_type_id: sensor.sensor_type_id || sensor.sensor_type?.id || '',
-    status: Boolean(sensor.status)
+    status: Boolean(sensor.status),
+    public_monitoring_enabled: Boolean(sensor.public_monitoring_enabled)
   };
   showForm.value = true;
 }
@@ -181,7 +189,8 @@ function sensorPayload() {
     ...sensorForm.value,
     device_id: Number(sensorForm.value.device_id),
     sensor_type_id: Number(sensorForm.value.sensor_type_id),
-    status: Boolean(sensorForm.value.status)
+    status: Boolean(sensorForm.value.status),
+    public_monitoring_enabled: Boolean(sensorForm.value.public_monitoring_enabled)
   };
 }
 

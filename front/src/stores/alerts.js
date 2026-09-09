@@ -8,7 +8,7 @@ import {
   resolveAllAlerts
 } from '@/api/alerts';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
-import { getPublicConfig, getRuntimeConfig } from '@/api/config';
+import { getRuntimeConfig } from '@/api/config';
 
 function normalizeRealtimeAlert(payload) {
   const alert = payload?.alert ?? payload?.data ?? payload;
@@ -91,18 +91,6 @@ export const useAlertsStore = defineStore('alerts', {
   }),
 
   actions: {
-    async loadPublicConfig() {
-      try {
-        const response = await getPublicConfig();
-        const config = unwrapData(response) || {};
-        this.soundEnabled = Boolean(config.alert_sound_enabled ?? config.alertSoundEnabled ?? false);
-        return config;
-      } catch {
-        this.soundEnabled = false;
-        return {};
-      }
-    },
-
     async loadRuntimeConfig() {
       try {
         const response = await getRuntimeConfig();
@@ -221,6 +209,16 @@ export const useAlertsStore = defineStore('alerts', {
       this.activeAlerts = this.activeAlerts.filter((alert) => Number(alert.id) !== Number(alertId));
       this.unresolvedCount = Math.max(0, this.unresolvedCount - 1);
       return response;
+    },
+
+    markAlertResolved(alertId) {
+      if (!alertId) return;
+      const id = Number(alertId);
+      this.activeAlerts = this.activeAlerts.filter((alert) => Number(alert.id) !== id);
+      this.items = this.items.map((alert) => (
+        Number(alert.id) === id ? { ...alert, resolved: true, resolved_at: new Date().toISOString() } : alert
+      ));
+      this.unresolvedCount = Math.max(0, this.unresolvedCount - 1);
     },
 
     async resolveAll() {

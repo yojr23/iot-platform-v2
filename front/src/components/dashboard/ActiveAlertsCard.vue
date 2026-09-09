@@ -34,7 +34,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
@@ -48,10 +48,9 @@ const count = computed(() => alertsStore.unresolvedCount);
 const alerts = computed(() => alertsStore.activeAlerts);
 const updateMode = computed(() => (
   alertsStore.realtimeStatus.connected
-    ? 'Tiempo real activo con polling de reconciliacion cada 5 segundos.'
-    : 'Fallback por polling cada 5 segundos.'
+    ? 'Tiempo real activo.'
+    : 'Cargando...'
 ));
-let intervalId = null;
 
 function severityClass(severity) {
   return severity === 'danger' ? 'text-bg-danger' : severity === 'warning' ? 'text-bg-warning' : 'text-bg-secondary';
@@ -63,12 +62,5 @@ async function load({ silent = false } = {}) {
 
 onMounted(() => {
   load();
-  intervalId = window.setInterval(() => load({ silent: true }), 5000);
-});
-
-onBeforeUnmount(() => {
-  if (intervalId) {
-    window.clearInterval(intervalId);
-  }
 });
 </script>

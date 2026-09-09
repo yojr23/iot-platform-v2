@@ -9,12 +9,15 @@ import { playAlertSound } from '@/utils/sound';
 export const ALERTS_CHANNEL = 'alerts';
 export const ALERTS_EVENT = 'NewAlertTriggered';
 export const ALERTS_EVENT_CLASS = 'App\\Events\\NewAlertTriggered';
+export const ALERTS_RESOLVED_EVENT = 'AlertResolved';
+export const ALERTS_RESOLVED_EVENT_CLASS = 'App\\Events\\AlertResolved';
 
 const isRealtimeEnabled = ref(false);
 const isConnected = ref(false);
 const error = ref('');
 
 let releaseChannel = null;
+let releaseResolvedChannel = null;
 let stopConnectionWatch = null;
 let stopResync = null;
 let subscribed = false;
@@ -236,7 +239,15 @@ export function subscribeAlerts() {
         severity: alert?.alert_rule?.severity || payload?.severity
       });
     }
-  });
+  }, { privateChannel: true });
+
+  releaseResolvedChannel = listenOnChannel(ALERTS_CHANNEL, ALERTS_RESOLVED_EVENT, (event) => {
+    const payload = getEventPayload(event);
+    const alertId = payload?.alert?.id ?? payload?.id ?? payload?.alert_id;
+    if (alertId) {
+      alertsStore.markAlertResolved(alertId);
+    }
+  }, { privateChannel: true });
 
   setStatus({
     enabled: true,
@@ -297,10 +308,12 @@ export function subscribeAlerts() {
 
 export function unsubscribeAlerts() {
   releaseChannel?.();
+  releaseResolvedChannel?.();
   stopConnectionWatch?.();
   stopResync?.();
 
   releaseChannel = null;
+  releaseResolvedChannel = null;
   stopConnectionWatch = null;
   stopResync = null;
   subscribed = false;

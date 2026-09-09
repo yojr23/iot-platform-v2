@@ -142,7 +142,7 @@ describe('alert recovery ownership', () => {
     authStore.token = 'test-token';
     authStore.user = { id: 1, name: 'Test User' };
     subscribeAlerts();
-    expect(listenOnChannel).toHaveBeenCalledTimes(1);
+    expect(listenOnChannel).toHaveBeenCalledTimes(2);
 
     alertsStore.items = [{ id: 20 }];
     alertsStore.activeAlerts = [{ id: 20 }];
@@ -152,7 +152,7 @@ describe('alert recovery ownership', () => {
 
     for (const callback of [...resyncWatchers]) callback('auth');
 
-    expect(listenOnChannel).toHaveBeenCalledTimes(1);
+    expect(listenOnChannel).toHaveBeenCalledTimes(2);
     expect(alertsStore.items).toEqual([]);
     expect(alertsStore.activeAlerts).toEqual([]);
     expect(alertsStore.unresolvedCount).toBe(0);

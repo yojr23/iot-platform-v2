@@ -21,26 +21,24 @@
     <LoadingSpinner v-if="loading" label="Cargando metricas..." />
 
     <template v-if="!loading">
-      <MetricsCards :summary="summary" :include-alerts="authStore.isAuthenticated" />
+      <SensorMonitorBoard class="mt-3" :devices="graphDevices" />
 
-      <SensorMonitorBoard
-        class="mt-3"
-        :devices="graphDevices"
-      />
+      <template v-if="authStore.isAuthenticated">
+        <MetricsCards :summary="summary" :include-alerts="true" />
+        <div class="row g-3 mt-1">
+          <div class="col-12 col-xl-4">
+            <ActiveAlertsCard />
+          </div>
 
-      <div class="row g-3 mt-1">
-        <div v-if="authStore.isAuthenticated" class="col-12 col-xl-4">
-          <ActiveAlertsCard />
+          <div class="col-12 col-xl-4">
+            <DeviceStatusList :devices="devices.slice(0, 5)" />
+          </div>
+
+          <div class="col-12 col-xl-4">
+            <RecentReadingsTable :readings="latestReadings" />
+          </div>
         </div>
-
-        <div class="col-12 col-xl-4">
-          <DeviceStatusList :devices="devices.slice(0, 5)" />
-        </div>
-
-        <div class="col-12 col-xl-4">
-          <RecentReadingsTable :readings="latestReadings" />
-        </div>
-      </div>
+      </template>
     </template>
   </section>
 </template>
@@ -64,11 +62,6 @@ const loading = ref(false);
 const error = ref('');
 const summary = ref({});
 const devices = ref([]);
-// PLAN.md Stage 6.0/6.2 — the monitor board's device/sensor catalog is now sourced from the
-// public graph bootstrap (public_monitoring_enabled sensors only), never from the transitional
-// `/dashboard/public` device list, which is not gated by the graph visibility boundary. `devices`
-// above stays the transitional dashboard-metrics device list used by DeviceStatusList /
-// RecentReadingsTable — unrelated to the graph feature and untouched by this cutover.
 const graphDevices = ref([]);
 const authStore = useAuthStore();
 
@@ -80,7 +73,7 @@ async function load() {
 
   try {
     const [dashboardResponse, bootstrapResponse] = await Promise.all([
-      getPublicDashboardData(),
+      authStore.isAuthenticated ? getPublicDashboardData() : Promise.resolve({ data: {} }),
       getGraphBootstrap()
     ]);
     const dashboardPayload = unwrapData(dashboardResponse) || {};
