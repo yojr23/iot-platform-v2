@@ -31,6 +31,8 @@ Evidence: `docs/implementation/pre-stage6-evidence.md`, `docs/implementation/rea
 - **Authenticated restricted-sensor realtime** uses the private `sensor.{id}` channel added in preflight; the consumer (not `NewSensorReading`) decides audience.
 - **Time semantics = C (mixed/ambiguous) → Task 1 and Stage 6 remain BLOCKED** until a historical migration/normalization decision lands. Never append `Z` to offsetless timestamps.
 
+> **Commit-review correction, 9 September 2026:** see `PRE_GATE6_COMMIT_REVIEW_2026-09-09.md`. Existing preflight passes both public and private sensor channels, but it has **not** introduced `PublicGraphVisibility` or visibility-gated public delivery. Keep the current `includePublicChannel: true` behavior classified as legacy/transitional until `NewSensorReading` becomes explicit-audience/fail-closed. Guest alert requests are suppressed only on fresh mount; login/logout transitions, alert realtime resubscription, stale counts, and `AlertToast` must be fixed before guest isolation is complete. Authenticated sensor realtime also needs a Vue private-channel consumer before restricted public delivery is disabled.
+
 ## v1.2 blocking preflight — perform before Task 1
 
 This plan is a design/implementation plan, not authority to commit or deploy. A worker records `git diff` and test evidence; it commits only when the operator explicitly authorizes it.
@@ -49,12 +51,12 @@ Visibility is evaluated at browser-delivery time using the current sensor flag. 
 | Operation | Contract | Enforcement |
 | --- | --- | --- |
 | Bootstrap | GET /api/public/graph/bootstrap → { version: 1, default_sensor_id: integer\|null, devices: [{ id, name, sensors: [{ id, name, unit }] }] } | publicSensorsQuery()->with(['sensorType', 'device']); sort device then sensor deterministically, omit devices with zero public sensors, make `default_sensor_id` null for an empty catalog, and expose every non-graph field nowhere. |
-| Series | GET /api/public/graph/sensors/{sensor}/series?from=YYYY-MM-DDTHH:mm:ssZ&to=YYYY-MM-DDTHH:mm:ssZ&aggregation=raw\|1m | Bind then call requirePublic. The exact UTC grammar and `[from,to)` semantics begin only after the timezone preflight. Existing restricted and guessed IDs all return 404. |
-| Bounds | RFC3339 UTC timestamps; from < to; raw at most 1 hour/2,000 samples; 1-minute aggregation at most 24 hours/1,440 buckets and 50,000 source samples. | Unknown aggregation or an exceeded bound returns documented 422; never silently truncate. |
+| Series | GET /api/public/graph/sensors/{sensor}/series?from=YYYY-MM-DDTHH:mm:ssZ&to=YYYY-MM-DDTHH:mm:ssZ&aggregation=<measured-mode> | Bind then call requirePublic. The exact UTC grammar and `[from,to)` semantics begin only after the timezone preflight. Existing restricted and guessed IDs all return 404. |
+| Bounds | RFC3339 UTC timestamps; from < to; measured range/sample ceilings recorded after MySQL EXPLAIN on `sensor_readings(sensor_id, reading_time, id)`. | Unknown aggregation or an exceeded measured bound returns documented 422; never silently truncate. |
 | Point semantics | { timestamp, value, min, max, sample_count, reading_id }; reading_id is an integer for raw and null for a one-minute bucket. Response includes original valid-sample min/max/mean/count and gap_encoding: absent-bucket. | Never synthesize zero/null samples for gaps. V1 has no threshold, quality, cadence, coverage, precision, stale, or device-status field. |
 | Realtime | Existing public sensor.{id} and a reduced NewSensorReading representation containing reading identity, sensor ID, value, timestamp, and envelope. | Consumer dispatches only after policy approval; the event has no policy/database lookup or sensor/device/lab metadata. |
 
-The range adapter maps 1m, 5m, and 1h to raw; it maps 6h and 24h to one-minute aggregation. The raw point guard protects high-frequency sensors instead of silently losing scientific source data.
+The range adapter names and ceilings are selected only after the timezone decision and MySQL EXPLAIN evidence. The raw point guard protects high-frequency sensors instead of silently losing scientific source data.
 
 ## Repository Change Map
 
@@ -256,7 +258,7 @@ Expected: new routes fail; the current public dashboard leaks metrics, alert cou
 
 - [ ] **Step 3: Implement minimal bootstrap and series ownership.**
 
-The bootstrap starts at publicSensorsQuery()->with(['sensorType', 'device']), projects only frozen fields, then groups/sorts by device. The series service owns aggregation only, uses an already-authorized Sensor, and reads complete windows from the indexed `sensor_readings` table; it may not use the 120-entry Redis latest cache as a range shortcut. It never receives client Device/Lab identity and never owns visibility. Validate the frozen UTC grammar before parsing. Use the framework's `ValidationException::withMessages(...)` for the documented 422 response rather than introducing an unspecified `GraphSeriesValidationException`. Keep the bounded single-read algorithm explicit:
+The bootstrap starts at publicSensorsQuery()->with(['sensorType', 'device']), projects only frozen fields, then groups/sorts by device. The series service owns aggregation only, uses an already-authorized Sensor, and reads complete windows from the indexed `sensor_readings` table; it may not use the 120-entry Redis latest cache as a range shortcut. It never receives client Device/Lab identity and never owns visibility. Validate the frozen UTC grammar before parsing. Use the framework's `ValidationException::withMessages(...)` for the documented 422 response rather than introducing an unspecified `GraphSeriesValidationException`. Keep the bounded single-read algorithm explicit, replacing the constants below with the measured ceilings recorded in Task 0:
 
 ~~~
 $readings = $sensor->readings()
@@ -265,15 +267,15 @@ $readings = $sensor->readings()
     ->where('reading_time', '<=', now())
     ->orderBy('reading_time')
     ->orderBy('id')
-    ->limit($aggregation === 'raw' ? 2001 : 50001)
+    ->limit($aggregation === 'raw' ? $rawSampleLimit + 1 : $aggregateSourceLimit + 1)
     ->get();
 
-if ($aggregation === 'raw' && $readings->count() > 2000) {
-    throw ValidationException::withMessages(['range' => 'Raw series exceeds 2,000 samples.']);
+if ($aggregation === 'raw' && $readings->count() > $rawSampleLimit) {
+    throw ValidationException::withMessages(['range' => 'Raw series exceeds the measured sample limit.']);
 }
 
-if ($aggregation === '1m' && $readings->count() > 50000) {
-    throw ValidationException::withMessages(['range' => 'Aggregated source series exceeds 50,000 samples.']);
+if ($aggregation !== 'raw' && $readings->count() > $aggregateSourceLimit) {
+    throw ValidationException::withMessages(['range' => 'Aggregated source series exceeds the measured sample limit.']);
 }
 ~~~
 
@@ -360,7 +362,7 @@ git commit -m "feat: gate public sensor broadcasts by visibility"
 - Create: front/src/api/publicGraph.js, front/src/stores/sensorReadings.js, front/src/realtime/useSensorRealtime.test.js, front/src/stores/sensorReadings.test.js
 - Modify: front/src/api/dashboard.js, front/src/api/sensors.js, front/src/realtime/useSensorRealtime.js, front/src/views/DashboardView.vue, front/src/components/dashboard/SensorMonitorBoard.vue
 
-**Interfaces:** getPublicGraphBootstrap() and getPublicGraphSeries({ sensorId, from, to, aggregation, signal }) are the only guest data adapters. Pinia uses key { authorizationScope, sensorId, from, to, aggregation } and owns generation, abort, normalized merge, dedupe, pruning, last-observed presentation, and release. useSensorRealtime receives a recovery callback/series adapter instead of importing the generic public latest-reading endpoint.
+**Interfaces:** getPublicGraphBootstrap() and getPublicGraphSeries({ sensorId, from, to, aggregation, signal }) are the only guest data adapters. The live Pinia projection is keyed by sensorId and owns normalization, validation, dedupe, ordering, latest value, bounded tail, and last-observed presentation. The historical query layer is keyed by { authorizationScope, sensorId, from, to, aggregation } and owns generation, abort, range hydration, and source-set statistics. useSensorRealtime/channelRegistry owns public/private channel selection, ref-count, subscription release, and the one-shot recovery trigger instead of importing the generic public latest-reading endpoint.
 
 - [ ] **Step 1: Write race and payload-safety unit tests.**
 
