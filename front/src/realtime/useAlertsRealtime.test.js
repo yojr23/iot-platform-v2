@@ -173,10 +173,10 @@ describe('alert recovery ownership', () => {
     authStore.token = 'test-token';
     authStore.user = { id: 1, name: 'Test User' };
     subscribeAlerts();
-    expect(listenOnChannel).toHaveBeenCalledTimes(1);
+    expect(listenOnChannel).toHaveBeenCalledTimes(2);
 
     for (const callback of [...resyncWatchers]) callback('auth');
 
-    expect(listenOnChannel).toHaveBeenCalledTimes(2);
+    expect(listenOnChannel).toHaveBeenCalledTimes(4);
   });
 });

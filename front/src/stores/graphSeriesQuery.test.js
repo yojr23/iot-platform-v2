@@ -101,8 +101,10 @@ describe('graphSeriesQuery historical query layer', () => {
     });
 
     const store = useGraphSeriesQueryStore();
-    const firstCall = store.fetchWindow(5, { scope: 'public', from: new Date(), to: new Date() });
-    const secondCall = store.fetchWindow(5, { scope: 'public', from: new Date(), to: new Date() });
+    const fixedFrom = new Date('2026-01-01T00:00:00Z');
+    const fixedTo = new Date('2026-01-01T00:05:00Z');
+    const firstCall = store.fetchWindow(5, { scope: 'public', from: fixedFrom, to: fixedTo });
+    const secondCall = store.fetchWindow(5, { scope: 'public', from: fixedFrom, to: fixedTo });
 
     await Promise.all([firstCall, secondCall]);
 
