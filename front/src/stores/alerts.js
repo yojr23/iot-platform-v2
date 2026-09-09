@@ -8,7 +8,7 @@ import {
   resolveAllAlerts
 } from '@/api/alerts';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
-import { getPublicConfig } from '@/api/config';
+import { getPublicConfig, getRuntimeConfig } from '@/api/config';
 
 function normalizeRealtimeAlert(payload) {
   const alert = payload?.alert ?? payload?.data ?? payload;
@@ -101,6 +101,36 @@ export const useAlertsStore = defineStore('alerts', {
         this.soundEnabled = false;
         return {};
       }
+    },
+
+    async loadRuntimeConfig() {
+      try {
+        const response = await getRuntimeConfig();
+        const config = unwrapData(response) || {};
+        this.soundEnabled = Boolean(config.alert_sound_enabled ?? config.alertSoundEnabled ?? false);
+        return config;
+      } catch {
+        this.soundEnabled = false;
+        return {};
+      }
+    },
+
+    clearAuthorizedState() {
+      this.items = [];
+      this.activeAlerts = [];
+      this.unresolvedCount = 0;
+      this.latestAlert = null;
+      this.soundEnabled = false;
+      this.loading = false;
+      this.error = null;
+      this.realtimeReady = false;
+      this.realtimeStatus = {
+        enabled: false,
+        connected: false,
+        mode: 'disconnected',
+        channel: null,
+        error: null
+      };
     },
 
     applyActiveSnapshot(alerts, { count, notifyNew = false } = {}) {

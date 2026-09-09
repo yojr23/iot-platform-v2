@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
 const connectionWatchers = new Set();
 const resyncWatchers = new Set();
 const fetchActiveAlerts = vi.fn();
+const listenOnChannel = vi.fn(() => () => {});
 
 vi.mock('./echo', () => ({
   disconnectEcho: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock('./echo', () => ({
 }));
 
 vi.mock('./channelRegistry', () => ({
-  listenOnChannel: () => () => {},
+  listenOnChannel: (...args) => listenOnChannel(...args),
 }));
 
 vi.mock('@/utils/sound', () => ({
@@ -36,7 +37,10 @@ vi.mock('@/api/alerts', () => ({
 }));
 
 vi.mock('@/api/client', () => ({
+  clearStoredToken: vi.fn(),
   getApiErrorMessage: () => 'request failed',
+  getStoredToken: vi.fn(() => null),
+  setStoredToken: vi.fn(),
   unwrapData: (response) => response?.data,
 }));
 
@@ -48,7 +52,17 @@ describe('alert recovery ownership', () => {
     connectionWatchers.clear();
     resyncWatchers.clear();
     fetchActiveAlerts.mockReset();
+    listenOnChannel.mockClear();
     setActivePinia(createPinia());
+  });
+
+  afterEach(async () => {
+    try {
+      const { unsubscribeAlerts } = await import('./useAlertsRealtime');
+      unsubscribeAlerts();
+    } catch {
+      // Some failure paths happen before the module is importable.
+    }
   });
 
   it('keeps the projection disconnected when an invalidated recovery rejects', async () => {
@@ -61,7 +75,7 @@ describe('alert recovery ownership', () => {
     const { useAlertsStore } = await import('@/stores/alerts');
 
     subscribeAlerts();
-    for (const callback of resyncWatchers) callback('reconnect');
+    for (const callback of [...resyncWatchers]) callback('reconnect');
     await vi.waitFor(() => expect(fetchActiveAlerts).toHaveBeenCalledOnce());
     unsubscribeAlerts();
     rejectRequest(new Error('network failure'));
@@ -75,9 +89,12 @@ describe('alert recovery ownership', () => {
   });
 
   it('does not report live while the initial connected transport still lacks a snapshot', async () => {
-    fetchActiveAlerts.mockImplementation(() => new Promise(() => {}));
+    let resolveRequest;
+    fetchActiveAlerts.mockImplementation(() => new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
 
-    const { subscribeAlerts } = await import('./useAlertsRealtime');
+    const { subscribeAlerts, unsubscribeAlerts } = await import('./useAlertsRealtime');
     const { useAlertsStore } = await import('@/stores/alerts');
 
     subscribeAlerts();
@@ -86,6 +103,10 @@ describe('alert recovery ownership', () => {
       connected: true,
       mode: 'recovering',
     }));
+
+    unsubscribeAlerts();
+    resolveRequest({ data: { alerts: [], count: 0 } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
   it('does not apply a successful invalidated snapshot after unsubscribe', async () => {
@@ -108,5 +129,54 @@ describe('alert recovery ownership', () => {
       enabled: false,
       mode: 'disconnected',
     });
+  });
+
+  it('does not reopen the alerts channel on auth resync after logout', async () => {
+    fetchActiveAlerts.mockResolvedValue({ data: { alerts: [], count: 0 } });
+    const { subscribeAlerts } = await import('./useAlertsRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const authStore = useAuthStore();
+    const alertsStore = useAlertsStore();
+
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test User' };
+    subscribeAlerts();
+    expect(listenOnChannel).toHaveBeenCalledTimes(1);
+
+    alertsStore.items = [{ id: 20 }];
+    alertsStore.activeAlerts = [{ id: 20 }];
+    alertsStore.unresolvedCount = 1;
+    alertsStore.latestAlert = { id: 20 };
+    authStore.clearAuth();
+
+    for (const callback of [...resyncWatchers]) callback('auth');
+
+    expect(listenOnChannel).toHaveBeenCalledTimes(1);
+    expect(alertsStore.items).toEqual([]);
+    expect(alertsStore.activeAlerts).toEqual([]);
+    expect(alertsStore.unresolvedCount).toBe(0);
+    expect(alertsStore.latestAlert).toBeNull();
+    expect(alertsStore.realtimeStatus).toMatchObject({
+      enabled: false,
+      connected: false,
+      mode: 'disconnected',
+    });
+  });
+
+  it('reopens the alerts channel once on auth resync while still authenticated', async () => {
+    fetchActiveAlerts.mockResolvedValue({ data: { alerts: [], count: 0 } });
+    const { subscribeAlerts } = await import('./useAlertsRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const authStore = useAuthStore();
+
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test User' };
+    subscribeAlerts();
+    expect(listenOnChannel).toHaveBeenCalledTimes(1);
+
+    for (const callback of [...resyncWatchers]) callback('auth');
+
+    expect(listenOnChannel).toHaveBeenCalledTimes(2);
   });
 });

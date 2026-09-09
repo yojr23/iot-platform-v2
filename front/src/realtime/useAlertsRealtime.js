@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { disconnectEcho, getEcho, onConnectionStateChange, onResync } from './echo';
 import { listenOnChannel } from './channelRegistry';
 import { useAlertsStore } from '@/stores/alerts';
+import { useAuthStore } from '@/stores/auth';
 import { playAlertSound } from '@/utils/sound';
 
 export const ALERTS_CHANNEL = 'alerts';
@@ -278,6 +279,11 @@ export function subscribeAlerts() {
       // The shared Echo instance was torn down by echo.js; rebuild our own subscription
       // against the fresh one instead of resyncing a now-dead channel.
       unsubscribeAlerts();
+      if (!useAuthStore().isAuthenticated) {
+        useAlertsStore().clearAuthorizedState();
+        return;
+      }
+
       subscribeAlerts();
       return;
     }

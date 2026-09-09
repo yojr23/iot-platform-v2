@@ -21,7 +21,7 @@
     <LoadingSpinner v-if="loading" label="Cargando metricas..." />
 
     <template v-if="!loading">
-      <MetricsCards :summary="summary" />
+      <MetricsCards :summary="summary" :include-alerts="authStore.isAuthenticated" />
 
       <SensorMonitorBoard
         class="mt-3"
@@ -30,7 +30,7 @@
       />
 
       <div class="row g-3 mt-1">
-        <div class="col-12 col-xl-4">
+        <div v-if="authStore.isAuthenticated" class="col-12 col-xl-4">
           <ActiveAlertsCard />
         </div>
 
@@ -59,12 +59,14 @@ import DeviceStatusList from '@/components/dashboard/DeviceStatusList.vue';
 import MetricsCards from '@/components/dashboard/MetricsCards.vue';
 import RecentReadingsTable from '@/components/dashboard/RecentReadingsTable.vue';
 import SensorMonitorBoard from '@/components/dashboard/SensorMonitorBoard.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const loading = ref(false);
 const error = ref('');
 const summary = ref({});
 const devices = ref([]);
 const pollInterval = ref(2000);
+const authStore = useAuthStore();
 
 const latestReadings = computed(() => summary.value.latest_readings || summary.value.latestReadings || []);
 

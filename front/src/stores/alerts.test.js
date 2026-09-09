@@ -16,6 +16,7 @@ vi.mock('@/api/client', () => ({
 
 vi.mock('@/api/config', () => ({
   getPublicConfig: vi.fn(),
+  getRuntimeConfig: vi.fn(),
 }));
 
 import { useAlertsStore } from './alerts';

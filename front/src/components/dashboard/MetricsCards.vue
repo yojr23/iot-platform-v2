@@ -21,30 +21,44 @@ const props = defineProps({
   summary: {
     type: Object,
     default: () => ({})
+  },
+  includeAlerts: {
+    type: Boolean,
+    default: false
   }
 });
 
-const metrics = computed(() => [
-  {
-    label: 'Dispositivos',
-    value: formatNumber(props.summary.total_devices),
-    hint: `${formatNumber(props.summary.active_devices)} activos`,
-    variant: 'blue'
-  },
-  {
-    label: 'Sensores',
-    value: formatNumber(props.summary.total_sensors),
-    variant: 'cyan'
-  },
-  {
-    label: 'Alertas activas',
-    value: formatNumber(props.summary.active_alerts),
-    variant: 'danger'
-  },
-  {
-    label: 'No resueltas',
-    value: formatNumber(props.summary.unresolved_alerts),
-    variant: 'slate'
+const metrics = computed(() => {
+  const publicMetrics = [
+    {
+      label: 'Dispositivos',
+      value: formatNumber(props.summary.total_devices),
+      hint: `${formatNumber(props.summary.active_devices)} activos`,
+      variant: 'blue'
+    },
+    {
+      label: 'Sensores',
+      value: formatNumber(props.summary.total_sensors),
+      variant: 'cyan'
+    }
+  ];
+
+  if (!props.includeAlerts) {
+    return publicMetrics;
   }
-]);
+
+  return [
+    ...publicMetrics,
+    {
+      label: 'Alertas activas',
+      value: formatNumber(props.summary.active_alerts),
+      variant: 'danger'
+    },
+    {
+      label: 'No resueltas',
+      value: formatNumber(props.summary.unresolved_alerts),
+      variant: 'slate'
+    }
+  ];
+});
 </script>

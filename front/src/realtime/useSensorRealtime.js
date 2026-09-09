@@ -4,6 +4,7 @@ import { getEcho, onConnectionStateChange, onResync } from './echo';
 import { listenOnChannel } from './channelRegistry';
 import { getSensorLatestReadings } from '@/api/sensors';
 import { unwrapData } from '@/api/client';
+import { useAuthStore } from '@/stores/auth';
 
 export const SENSOR_EVENT = 'NewSensorReading';
 export const SENSOR_EVENT_CLASS = 'App\\Events\\NewSensorReading';
@@ -90,6 +91,7 @@ export function useSensorRealtime(sensorIdSource, onReading) {
 
     currentSensorId = sensorId;
     const channelName = `sensor.${sensorId}`;
+    const privateChannel = useAuthStore().isAuthenticated;
 
     releaseChannel = listenOnChannel(channelName, SENSOR_EVENT, (event) => {
       const reading = normalizeReading(event);
@@ -99,7 +101,7 @@ export function useSensorRealtime(sensorIdSource, onReading) {
       }
 
       onReading?.(reading);
-    });
+    }, { privateChannel });
 
     // S5-02: connected state now derives from the shared transport ack (echo.js) and
     // delivers the current state immediately to late subscribers via { immediate: true }.

@@ -23,6 +23,13 @@ class ConfigController extends Controller
         ]);
     }
 
+    public function runtime(): JsonResponse
+    {
+        return response()->json([
+            'alert_sound_enabled' => SystemSetting::get('alert_sound_enabled', true),
+        ]);
+    }
+
     public function alerts(): JsonResponse
     {
         return response()->json($this->alertSettings());

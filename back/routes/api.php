@@ -81,6 +81,7 @@ Route::middleware('auth:sanctum')->group(function () {
     })->middleware('throttle:api-read');
 
     Route::get('/profile', [ApiProfileController::class, 'show'])->middleware('throttle:api-read');
+    Route::get('/config/runtime', [ApiConfigController::class, 'runtime'])->middleware('throttle:api-read');
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/metrics', [ApiDashboardController::class, 'metrics'])->middleware('throttle:api-read');

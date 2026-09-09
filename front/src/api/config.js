@@ -4,6 +4,10 @@ export function getPublicConfig() {
   return apiClient.get('/config/public');
 }
 
+export function getRuntimeConfig() {
+  return apiClient.get('/config/runtime');
+}
+
 export function getAlertConfig() {
   return apiClient.get('/config/alerts');
 }

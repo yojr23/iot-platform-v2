@@ -237,6 +237,29 @@ class Phase2ApiEndpointsTest extends TestCase
         $this->assertArrayNotHasKey('mail_password', $response->json());
     }
 
+    public function test_runtime_config_requires_authentication(): void
+    {
+        $this->getJson('/api/config/runtime')->assertUnauthorized();
+    }
+
+    public function test_runtime_config_exposes_authenticated_alert_runtime_settings(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+        SystemSetting::set('mail_password', 'super-secret-password', 'string', 'mail');
+        SystemSetting::set('alert_sound_enabled', 1, 'boolean', 'alerts');
+        SystemSetting::set('alert_threshold', 7, 'integer', 'alerts');
+
+        $response = $this->actingAs($user)->getJson('/api/config/runtime');
+
+        $response->assertOk()
+            ->assertJsonPath('alert_sound_enabled', true)
+            ->assertJsonMissingPath('alert_threshold')
+            ->assertJsonMissingPath('sensor_update_interval');
+
+        $this->assertSame(['alert_sound_enabled'], array_keys($response->json()));
+        $this->assertStringNotContainsString('super-secret-password', $response->getContent());
+    }
+
     public function test_alert_config_can_be_read_and_updated_as_json(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);

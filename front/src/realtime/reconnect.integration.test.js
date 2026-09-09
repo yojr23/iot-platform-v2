@@ -34,8 +34,10 @@ const getActiveAlerts = vi.fn();
 vi.mock('laravel-echo', () => ({ default: transport.Echo }));
 vi.mock('pusher-js', () => ({ default: {} }));
 vi.mock('@/api/client', () => ({
+  clearStoredToken: vi.fn(),
   getStoredToken: () => 'test-token',
   getApiErrorMessage: () => 'request failed',
+  setStoredToken: vi.fn(),
   unwrapData: (response) => response?.data,
 }));
 vi.mock('@/api/alerts', () => ({
@@ -45,7 +47,7 @@ vi.mock('@/api/alerts', () => ({
   resolveAlert: vi.fn(),
   resolveAllAlerts: vi.fn(),
 }));
-vi.mock('@/api/config', () => ({ getPublicConfig: vi.fn() }));
+vi.mock('@/api/config', () => ({ getPublicConfig: vi.fn(), getRuntimeConfig: vi.fn() }));
 vi.mock('@/utils/sound', () => ({ playAlertSound: vi.fn() }));
 
 describe('alert reconnect recovery', () => {

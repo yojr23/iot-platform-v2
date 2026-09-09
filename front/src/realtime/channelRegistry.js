@@ -5,7 +5,15 @@
 // every consumer's unsubscribe tearing down the whole channel for everyone else.
 import { getEcho } from './echo';
 
-const refCounts = new Map(); // channelName -> number of active listeners
+const refCounts = new Map(); // channel key -> number of active listeners
+
+function channelKey(channelName, { privateChannel = false } = {}) {
+  return `${privateChannel ? 'private' : 'public'}:${channelName}`;
+}
+
+function leaveChannelName(channelName, { privateChannel = false } = {}) {
+  return privateChannel ? `private-${channelName}` : channelName;
+}
 
 /**
  * Subscribe `callback` to `eventName` on `channelName`, sharing the underlying Echo channel
@@ -13,16 +21,21 @@ const refCounts = new Map(); // channelName -> number of active listeners
  * must be called exactly once when this particular consumer no longer needs the event; the
  * channel itself is only left when the last consumer releases.
  */
-export function listenOnChannel(channelName, eventName, callback) {
+export function listenOnChannel(channelName, eventName, callback, { privateChannel = false } = {}) {
   const echo = getEcho();
 
   if (!echo) {
     return null;
   }
 
-  const channel = echo.channel(channelName);
+  const channel = privateChannel ? echo.private?.(channelName) : echo.channel(channelName);
+  if (!channel) {
+    return null;
+  }
+
   channel.listen(eventName, callback);
-  refCounts.set(channelName, (refCounts.get(channelName) || 0) + 1);
+  const key = channelKey(channelName, { privateChannel });
+  refCounts.set(key, (refCounts.get(key) || 0) + 1);
 
   let released = false;
 
@@ -33,21 +46,21 @@ export function listenOnChannel(channelName, eventName, callback) {
     released = true;
 
     channel.stopListening(eventName, callback);
-    const remaining = (refCounts.get(channelName) || 1) - 1;
+    const remaining = (refCounts.get(key) || 1) - 1;
 
     if (remaining <= 0) {
-      refCounts.delete(channelName);
+      refCounts.delete(key);
       // ponytail: assumes the echo instance captured at listen-time is still the live one.
       // Holds because disconnectEcho() is only ever called after consumers have already
       // released (see reconnectAlerts/auth-change flow in useAlertsRealtime.js) — revisit if
       // a future caller disconnects Echo while channels are still ref-counted.
-      echo.leaveChannel(channelName);
+      echo.leaveChannel(leaveChannelName(channelName, { privateChannel }));
     } else {
-      refCounts.set(channelName, remaining);
+      refCounts.set(key, remaining);
     }
   };
 }
 
-export function getChannelRefCount(channelName) {
-  return refCounts.get(channelName) || 0;
+export function getChannelRefCount(channelName, { privateChannel = false } = {}) {
+  return refCounts.get(channelKey(channelName, { privateChannel })) || 0;
 }
