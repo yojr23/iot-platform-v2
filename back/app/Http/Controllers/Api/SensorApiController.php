@@ -273,8 +273,16 @@ class SensorApiController extends Controller
 
             $source = 'redis';
             $readings = $this->readingProjection->latest($sensor->id, $limit);
+            $databaseLatestReadingId = $sensor->readings()
+                ->where('reading_time', '<=', now())
+                ->orderBy('reading_time', 'desc')
+                ->orderBy('id', 'desc')
+                ->value('id');
+            $redisLatestReadingId = $readings?->first()['id'] ?? null;
 
-            if ($readings === null || $readings->isEmpty()) {
+            if ($readings === null
+                || $readings->isEmpty()
+                || (int) $redisLatestReadingId !== (int) $databaseLatestReadingId) {
                 $source = 'database';
                 $readings = $sensor->readings()
                     ->where('reading_time', '<=', now())
@@ -285,9 +293,7 @@ class SensorApiController extends Controller
                       ->map(fn ($reading) => $this->readingProjection->format($reading))
                       ->values();
 
-                  if ($readings->isNotEmpty()) {
-                    $this->readingProjection->warm($sensor->id, $readings);
-                }
+                $this->readingProjection->warm($sensor->id, $readings);
             }
 
             Log::info('Latest sensor readings fetched', [

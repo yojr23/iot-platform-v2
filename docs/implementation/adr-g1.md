@@ -27,23 +27,22 @@ the core reliability contract of Stages 3–4.
 
 ## ADR-1 — Durable publication
 
-**Decision:** same-transaction **transactional outbox + Laravel queue relay with a durable
-committed-outbox discovery loop**. Reuse `RawSensorEventPublisher` as the low-level `XADD` transport.
+**Decision (superseded scope, 8 September 2026):** the final architecture interprets **NO POLLING**
+strictly: it includes periodic backend discovery of pending outbox rows. The target durable publication
+path is therefore transactional outbox + a binlog/CDC relay with durable offsets. Reuse
+`RawSensorEventPublisher` only as an optional low-level `XADD` transport while the transitional relay
+exists.
 
-**Rejected:** Debezium/binlog CDC — over-engineering for this deployment (audit §15a): no measured
-event-loss incident, no second write path bypassing the outbox, `docker-compose.yml` lacks binlog/offset
-ops maturity. Escalate to CDC only if a real second write path appears.
+**Transitional exception:** the current Laravel relay's `--interval=2` committed-outbox discovery loop
+remains operational only until CDC is deployed and verified. It is not evidence of the final
+zero-polling architecture and must be retired before the final architecture gate.
 
 **Rejected:** `DB::afterCommit()`-only dispatch — a process can die after commit before the job is
 queued, permanently stranding the row. `afterCommit()` is kept only as a low-latency **wake-up hint**.
 
-**Anti-stranding mechanism (required):** the relay worker also runs a bounded discovery query for
-`outbox` rows in `pending` state older than the in-flight lease window, claims them atomically
-(`status=publishing`, `locked_until`), publishes, then marks `published`. This is **not** steady-state
-polling of realtime state — it is a bounded, restart-recovery sweep of a durable work table triggered by
-worker lifecycle + wake-up hint, exactly the pattern audit §18 ("drain pending on startup / lease
-expiry") endorses. The zero-polling rule targets browser realtime state discovery, not durable
-work-queue recovery.
+**Required final anti-stranding mechanism:** CDC reads the committed binlog and persists connector offsets;
+restart/recovery is driven by those offsets rather than a `SELECT pending` loop. A post-commit wake-up is
+only a latency hint and never the delivery guarantee.
 
 **Idempotency at schema level (Stage 2):** unique `(source, source_event_id)` on `raw_sensor_events`;
 unique `(sensor_reading_id, alert_rule_id)` on `alerts` (closes the `AlertService:60` check-then-create

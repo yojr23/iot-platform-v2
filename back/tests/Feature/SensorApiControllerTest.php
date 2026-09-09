@@ -128,6 +128,7 @@ class SensorApiControllerTest extends TestCase
 
             public function lpush(string $key, string $value): void
             {
+                $this->lists[$key] ??= [];
                 array_unshift($this->lists[$key], $value);
             }
 
@@ -147,6 +148,7 @@ class SensorApiControllerTest extends TestCase
             }
         };
         $key = "sensor:latest_readings:{$sensor->id}";
+        $redis->lists[$key] = [];
         $redis->lpush($key, json_encode([
             'id' => $oldReading->id,
             'value' => 10.0,
@@ -162,7 +164,7 @@ class SensorApiControllerTest extends TestCase
 
             $this->postJson("/api/sensors/{$sensor->id}/readings", [
                 'value' => 42.75,
-                'reading_time' => '2026-01-15 12:30:00',
+                'reading_time' => now()->format('Y-m-d H:i:s'),
                 'api_key' => 'valid-key',
             ])->assertCreated();
 
@@ -240,6 +242,73 @@ class SensorApiControllerTest extends TestCase
                 ->assertJsonPath('1.id', $older->id);
         } finally {
             Carbon::setTestNow();
+        }
+    }
+
+    public function test_latest_readings_repairs_a_non_empty_redis_projection_when_it_lags_the_database(): void
+    {
+        $sensor = Sensor::factory()->create();
+        $staleReading = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 10,
+            'reading_time' => now()->subMinutes(5),
+        ]);
+        $latestReading = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 20,
+            'reading_time' => now()->subMinute(),
+        ]);
+        $redis = new class
+        {
+            public array $lists = [];
+
+            public function pipeline(callable $callback): void
+            {
+                $callback($this);
+            }
+
+            public function lpush(string $key, string $value): void
+            {
+                $this->lists[$key] ??= [];
+                array_unshift($this->lists[$key], $value);
+            }
+
+            public function ltrim(string $key, int $start, int $stop): void
+            {
+                $this->lists[$key] = array_slice($this->lists[$key] ?? [], $start, $stop - $start + 1);
+            }
+
+            public function lrange(string $key, int $start, int $stop): array
+            {
+                return array_slice($this->lists[$key] ?? [], $start, $stop - $start + 1);
+            }
+
+            public function del(string $key): void
+            {
+                unset($this->lists[$key]);
+            }
+        };
+        $key = "sensor:latest_readings:{$sensor->id}";
+        $redis->lists[$key] = [];
+        $redis->lpush($key, json_encode([
+            'id' => $staleReading->id,
+            'value' => 10.0,
+            'reading_time' => $staleReading->reading_time->toIso8601String(),
+            'created_at' => $staleReading->created_at->toIso8601String(),
+        ], JSON_THROW_ON_ERROR));
+
+        $originalRedis = Redis::getFacadeRoot();
+        Redis::swap($redis);
+
+        try {
+            $this->actingAs(User::factory()->create())
+                ->getJson("/api/sensors/{$sensor->id}/latest-readings?limit=1")
+                ->assertOk()
+                ->assertJsonPath('0.id', $latestReading->id);
+
+            $this->assertSame($latestReading->id, json_decode($redis->lists[$key][0], true, 512, JSON_THROW_ON_ERROR)['id']);
+        } finally {
+            Redis::swap($originalRedis);
         }
     }
 }

@@ -86,10 +86,6 @@ class SensorReadingProjectionService
                 ->values()
                 ->all();
 
-            if ($serialized === []) {
-                return;
-            }
-
             $key = $this->key($sensorId);
             Redis::pipeline(function ($pipe) use ($key, $serialized): void {
                 $pipe->del($key);

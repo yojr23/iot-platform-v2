@@ -11,6 +11,8 @@
     "test:phase4": "node scripts/verify-phase4.mjs",
     "test:phase5": "node scripts/verify-phase5.mjs",
     "test:phase7": "node scripts/verify-phase7.mjs",
+    "test:unit": "vitest run",
+    "test:realtime": "vitest run src/realtime",
     "audit:baseline": "node .audit-e2e/run-all.mjs",
     "audit:events": "node .audit-e2e/event-injection.mjs",
     "audit:network": "node .audit-e2e/network-assertion.mjs"
@@ -29,7 +31,9 @@
   "devDependencies": {
     "@playwright/test": "1.55.1",
     "@vitejs/plugin-vue": "^5.2.4",
+    "jsdom": "^26.1.0",
     "sass": "^1.104.0",
-    "vite": "^5.4.21"
+    "vite": "^5.4.21",
+    "vitest": "^3.2.7"
   }
 }

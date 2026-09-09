@@ -27,6 +27,7 @@ let recoveryStartTime = 0;
 let activeRecovery = null;
 let recoveryRequested = false;
 let recoveryGeneration = 0;
+let projectionFresh = false;
 const MAX_RECOVERY_EVENTS = 100;
 const MAX_RECOVERY_DURATION_MS = 15_000;
 
@@ -97,7 +98,10 @@ async function runSnapshot(alertsStore, generation) {
       return;
     }
 
-    const newAlerts = alertsStore.applyActiveSnapshot(snapshot, { notifyNew: true });
+    const newAlerts = alertsStore.applyActiveSnapshot(snapshot.alerts, {
+      count: snapshot.count,
+      notifyNew: true,
+    });
 
     newAlerts.forEach((alert) => {
       playAlertSound({
@@ -114,6 +118,7 @@ async function runSnapshot(alertsStore, generation) {
     replayRecoveryBuffer(alertsStore);
 
     // S5-06: mark projection fresh only if transport is also connected
+    projectionFresh = true;
     setStatus({
       enabled: true,
       connected: isConnected.value,
@@ -122,8 +127,13 @@ async function runSnapshot(alertsStore, generation) {
       error: null
     });
   } catch {
+    if (generation !== recoveryGeneration) {
+      return;
+    }
+
     // S5-06: snapshot failure — mark stale/recovery_failed, NOT live
     recoveryBuffer.length = 0;
+    projectionFresh = false;
     setStatus({
       enabled: true,
       connected: isConnected.value,
@@ -141,7 +151,14 @@ function requestRecovery(alertsStore) {
   }
 
   const generation = ++recoveryGeneration;
-  activeRecovery = runSnapshot(alertsStore, generation).finally(() => {
+  const recovery = runSnapshot(alertsStore, generation);
+  activeRecovery = recovery;
+
+  recovery.finally(() => {
+    if (activeRecovery !== recovery) {
+      return;
+    }
+
     activeRecovery = null;
     recoveryStartTime = 0;
     if (recoveryRequested) {
@@ -184,6 +201,7 @@ export function subscribeAlerts() {
         // Buffer bound exceeded — mark stale, clear buffer, let the snapshot finish
         recoveryBuffer.length = 0;
         recoveryGeneration++;
+        projectionFresh = false;
         recoveryRequested = true;
         setStatus({
           enabled: true,
@@ -220,14 +238,20 @@ export function subscribeAlerts() {
 
   stopConnectionWatch = onConnectionStateChange((state, connectionError) => {
     if (state === 'connected') {
-      setStatus({ enabled: true, connected: true, mode: 'live', channel: ALERTS_CHANNEL, error: null });
+      if (projectionFresh) {
+        setStatus({ enabled: true, connected: true, mode: 'live', channel: ALERTS_CHANNEL, error: null });
+      } else {
+        setStatus({ enabled: true, connected: true, mode: 'stale', channel: ALERTS_CHANNEL, error: null });
+        requestRecovery(alertsStore);
+      }
       return;
     }
 
+    projectionFresh = false;
     setStatus({
       enabled: true,
       connected: false,
-      mode: 'stale',
+      mode: 'disconnected',
       channel: ALERTS_CHANNEL,
       error:
         connectionError?.error?.message
@@ -265,6 +289,7 @@ export function unsubscribeAlerts() {
   activeRecovery = null;
   recoveryRequested = false;
   recoveryGeneration++;
+  projectionFresh = false;
   recoveryBuffer.length = 0;
 
   setStatus({

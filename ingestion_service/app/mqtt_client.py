@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from typing import Any
@@ -8,7 +7,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 from app.backend_client import BackendClient, BackendClientError
-from app.normalizer import build_raw_event
+from app.normalizer import build_raw_event, derive_source_event_id
 from app.settings import Settings
 from app.validators import PayloadValidationError, validate_payload
 
@@ -58,11 +57,7 @@ class MQTTIngestionClient:
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
             payload = validate_payload(payload)
-            source_event_id = "mqtt:{}:{}:{}".format(
-                topic,
-                msg.mid,
-                hashlib.sha256(msg.payload).hexdigest(),
-            )
+            source_event_id = derive_source_event_id(payload, topic=topic)
             raw_event = build_raw_event(
                 payload,
                 topic=topic,

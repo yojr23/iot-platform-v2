@@ -103,7 +103,7 @@ export const useAlertsStore = defineStore('alerts', {
       }
     },
 
-    applyActiveSnapshot(alerts, { notifyNew = false } = {}) {
+    applyActiveSnapshot(alerts, { count, notifyNew = false } = {}) {
       const nextActiveAlerts = Array.isArray(alerts) ? alerts : [];
       let newAlerts = [];
 
@@ -118,7 +118,9 @@ export const useAlertsStore = defineStore('alerts', {
       }
 
       this.activeAlerts = nextActiveAlerts;
-      this.unresolvedCount = this.activeAlerts.length;
+      this.unresolvedCount = Number.isFinite(Number(count))
+        ? Number(count)
+        : this.activeAlerts.length;
       return newAlerts;
     },
 
@@ -129,17 +131,20 @@ export const useAlertsStore = defineStore('alerts', {
       this.error = null;
       try {
         const response = await getActiveAlerts();
-        const alerts = response.data?.alerts ?? [];
+        const snapshot = {
+          alerts: response.data?.alerts ?? [],
+          count: response.data?.count,
+        };
         if (!apply) {
-          return alerts;
+          return snapshot;
         }
-        return this.applyActiveSnapshot(alerts, { notifyNew });
+        return this.applyActiveSnapshot(snapshot.alerts, { count: snapshot.count, notifyNew });
       } catch (error) {
         this.error = getApiErrorMessage(error, 'No se pudieron cargar las alertas activas.');
         if (throwOnError) {
           throw error;
         }
-        return [];
+        return apply ? [] : { alerts: [], count: 0 };
       } finally {
         this.loading = false;
       }
