@@ -109,9 +109,9 @@
           </div>
 
           <div class="monitor-card__meta">
-            <span class="badge" :class="selectedSensor(monitor)?.status ? 'text-bg-success' : 'text-bg-secondary'">
-              {{ selectedSensor(monitor)?.status ? 'Activo' : 'Sin estado' }}
-            </span>
+            <!-- Stage 6 graph-only: the public graph bootstrap intentionally does NOT expose sensor
+                 operational status, so no Activo/Sin-estado badge is rendered (it would always read
+                 "Sin estado" and imply a device-health claim the graph contract doesn't own). -->
             <span>{{ readingsFor(monitor).length }} puntos</span>
             <span v-if="latestReading(monitor)">
               Ultimo: {{ formatNumber(latestReading(monitor).value) }} {{ selectedSensor(monitor)?.unit || '' }}

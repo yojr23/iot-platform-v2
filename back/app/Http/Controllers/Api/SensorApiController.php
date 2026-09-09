@@ -681,6 +681,9 @@ class SensorApiController extends Controller
             'device_id' => ['required', 'exists:devices,id'],
             'sensor_type_id' => ['required', 'exists:sensor_types,id'],
             'status' => ['sometimes', 'boolean'],
+            // Stage 6 boundary: admins opt a sensor into the public graph through this existing
+            // CRUD owner (never raw SQL). Fail-closed — the column defaults FALSE; absence keeps it so.
+            'public_monitoring_enabled' => ['sometimes', 'boolean'],
         ]);
     }
 

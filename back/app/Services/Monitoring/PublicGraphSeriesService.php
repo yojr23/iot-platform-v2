@@ -38,7 +38,9 @@ final class PublicGraphSeriesService
      * @return array{
      *     window: array{from:string,to:string},
      *     points: list<array{timestamp:string,value:float,reading_id:int}>,
-     *     stats: array{min:?float,max:?float,mean:?float,count:int},
+     *     stats: array{min:?float,max:?float,mean:?float,count:int,partial:bool},
+     *     truncated: bool,
+     *     returned_count: int,
      * }
      */
     public function series(Sensor $sensor, CarbonImmutable $fromUtc, CarbonImmutable $toUtc): array
@@ -51,15 +53,22 @@ final class PublicGraphSeriesService
         $fromLocal = $fromUtc->setTimezone($appTimezone)->format('Y-m-d H:i:s');
         $toLocal = $toUtc->setTimezone($appTimezone)->format('Y-m-d H:i:s');
 
-        /** @var Collection<int, SensorReading> $readings */
-        $readings = $sensor->readings()
+        // Fetch one MORE than the ceiling so we can DETECT truncation instead of hiding it.
+        // Wide legitimate windows (e.g. 24h @ 2s) exceed the raw ceiling, so we can't 422-reject
+        // them until server-side aggregation exists — but we must never present a truncated sample
+        // as if it were the complete window (PLAN.md: bounded query + NO silent truncation).
+        /** @var Collection<int, SensorReading> $fetched */
+        $fetched = $sensor->readings()
             ->where('reading_time', '>=', $fromLocal)
             ->where('reading_time', '<', $toLocal)
             ->where('reading_time', '<=', now())
             ->orderBy('reading_time')
             ->orderBy('id')
-            ->limit(self::SAMPLE_LIMIT)
+            ->limit(self::SAMPLE_LIMIT + 1)
             ->get(['id', 'value', 'reading_time']);
+
+        $truncated = $fetched->count() > self::SAMPLE_LIMIT;
+        $readings = $truncated ? $fetched->take(self::SAMPLE_LIMIT) : $fetched;
 
         return [
             'window' => [
@@ -67,7 +76,9 @@ final class PublicGraphSeriesService
                 'to' => $this->toWireFormat($toUtc),
             ],
             'points' => $this->points($readings),
-            'stats' => $this->stats($readings),
+            'stats' => $this->stats($readings, $truncated),
+            'truncated' => $truncated,
+            'returned_count' => $readings->count(),
         ];
     }
 
@@ -85,13 +96,16 @@ final class PublicGraphSeriesService
     }
 
     /**
+     * `partial` = the window held more readings than the returned sample, so count is a count of the
+     * RETURNED points, not of the window. Callers must not present partial stats as complete totals.
+     *
      * @param Collection<int, SensorReading> $readings
-     * @return array{min:?float,max:?float,mean:?float,count:int}
+     * @return array{min:?float,max:?float,mean:?float,count:int,partial:bool}
      */
-    private function stats(Collection $readings): array
+    private function stats(Collection $readings, bool $truncated = false): array
     {
         if ($readings->isEmpty()) {
-            return ['min' => null, 'max' => null, 'mean' => null, 'count' => 0];
+            return ['min' => null, 'max' => null, 'mean' => null, 'count' => 0, 'partial' => false];
         }
 
         $values = $readings->map(fn (SensorReading $reading) => (float) $reading->value);
@@ -101,6 +115,7 @@ final class PublicGraphSeriesService
             'max' => $values->max(),
             'mean' => round($values->avg(), 6),
             'count' => $values->count(),
+            'partial' => $truncated,
         ];
     }
 

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Device;
 use App\Models\Sensor;
+use App\Models\SensorReading;
 use App\Models\SensorType;
 use App\Services\Ingestion\SensorReadingService;
 use App\Services\Monitoring\PublicGraphVisibility;
@@ -203,6 +204,67 @@ class PublicGraphControllerTest extends TestCase
         $this->assertSame(151, $response->json('stats.count'));
         $this->assertSame(0.0, $response->json('stats.min'));
         $this->assertSame(150.0, $response->json('stats.max'));
+    }
+
+    /**
+     * PLAN.md: bounded query + NO silent truncation. When a window holds more readings than the
+     * sample ceiling, the series must FLAG it (`truncated`) and mark the stats `partial` instead of
+     * presenting a capped sample as the complete window. (Wide windows legitimately exceed the raw
+     * ceiling until server-side aggregation exists, so this is a truthful contract, not a 422.)
+     */
+    public function test_series_flags_truncation_and_marks_stats_partial_when_window_exceeds_ceiling(): void
+    {
+        $sensor = $this->publicSensor();
+        // Store at the same wall-clock the SensorReadingService convention would (UTC → APP_TIMEZONE)
+        // so every row lands inside the queried half-open window.
+        $readingTime = CarbonImmutable::parse('2026-09-09T00:00:30Z')
+            ->setTimezone(config('app.timezone'))
+            ->format('Y-m-d H:i:s');
+        $now = now();
+
+        $rows = [];
+        for ($i = 0; $i < 5001; $i++) {
+            $rows[] = [
+                'sensor_id' => $sensor->id,
+                'value' => $i,
+                'reading_time' => $readingTime,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        foreach (array_chunk($rows, 150) as $chunk) {
+            SensorReading::insert($chunk);
+        }
+
+        $response = $this->getJson(
+            "/api/public/graph/sensors/{$sensor->id}/series?from=2026-09-09T00:00:00Z&to=2026-09-09T00:05:00Z"
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('truncated', true)
+            ->assertJsonPath('returned_count', 5000)
+            ->assertJsonPath('stats.count', 5000)
+            ->assertJsonPath('stats.partial', true);
+        $this->assertCount(5000, $response->json('points'));
+    }
+
+    public function test_series_within_ceiling_is_not_flagged_truncated_or_partial(): void
+    {
+        $sensor = $this->publicSensor();
+        app(SensorReadingService::class)->createReading(
+            $sensor,
+            10.0,
+            CarbonImmutable::parse('2026-09-09T00:00:30Z')
+        );
+
+        $response = $this->getJson(
+            "/api/public/graph/sensors/{$sensor->id}/series?from=2026-09-09T00:00:00Z&to=2026-09-09T00:05:00Z"
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('truncated', false)
+            ->assertJsonPath('returned_count', 1)
+            ->assertJsonPath('stats.partial', false);
     }
 
     public function test_public_graph_visibility_service_never_infers_from_operational_status(): void

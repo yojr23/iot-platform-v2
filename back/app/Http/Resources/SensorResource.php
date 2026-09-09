@@ -18,6 +18,7 @@ class SensorResource extends JsonResource
             'device_id' => $this->device_id,
             'sensor_type_id' => $this->sensor_type_id,
             'status' => (bool) $this->status,
+            'public_monitoring_enabled' => (bool) $this->public_monitoring_enabled,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
             'unit' => $this->sensorType?->unit,
