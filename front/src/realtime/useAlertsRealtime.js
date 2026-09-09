@@ -170,6 +170,16 @@ function requestRecovery(alertsStore) {
   return activeRecovery;
 }
 
+function requestInitialRecoveryAfterConnection(alertsStore) {
+  queueMicrotask(() => {
+    if (!subscribed || !isConnected.value || projectionFresh || activeRecovery) {
+      return;
+    }
+
+    requestRecovery(alertsStore);
+  });
+}
+
 export function subscribeAlerts() {
   if (subscribed) {
     return true;
@@ -242,7 +252,9 @@ export function subscribeAlerts() {
         setStatus({ enabled: true, connected: true, mode: 'live', channel: ALERTS_CHANNEL, error: null });
       } else {
         setStatus({ enabled: true, connected: true, mode: 'stale', channel: ALERTS_CHANNEL, error: null });
-        requestRecovery(alertsStore);
+        // echo.js notifies reconnect immediately after connected. Deferring the initial
+        // hydration lets that lifecycle owner start the single reconnect recovery instead.
+        requestInitialRecoveryAfterConnection(alertsStore);
       }
       return;
     }

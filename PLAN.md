@@ -2,7 +2,7 @@
 
 **Derives from:** `audit.md` (original audit SHA `880cffbcfc7aecb081fb378642d8693c1df64170`) plus a required application-code refresh against baseline `06d619c4c57c2cacae0c890e4dd7056097ddc79d`. Current planning-document base HEAD is `773ff7ae89bd8b88e12633e9f0e78fd7d26a5d50`; future documentation-only commits should not be mistaken for application drift. Freeze a new implementation-start SHA when coding begins. The audit is the source of truth for *why* and *what's broken*, but it is not yet fully current/reproducible. This document is the ordered, gated *how* to fix every finding and reach the Definition of Done in `audit.md §23`.
 
-**Architecture status:** candidate, not final. The preferred candidate is the full target from `audit.md §17–§19`: transactional outbox + binlog-driven CDC relay, Redis Streams as the durable event backbone, a dedicated `iot.domain-events` stream, per-consumer-group DLQ, and the complete cursor/replay/snapshot recovery protocol. Redis Pub/Sub is a candidate internal fan-out layer, not mandatory before ADR approval. Because `audit.md §15a` explicitly flags CDC and full replay as complexity risks, Stage G1 below must close Architecture Decision Records before Stages 2–10 are implemented. A Laravel-queue relay may be selected only if it still has a durable discovery/wake-up mechanism for committed outbox rows; `afterCommit()` alone is not a durable relay.
+**Architecture status:** ADR-1 now selects transactional outbox + binlog-driven CDC with durable offsets as the final durable-publication topology. Redis Streams remain the durable event backbone, with `iot.domain-events` and per-consumer-group DLQ. The existing Laravel relay with `--interval=2` is transitional only and must retire at the final architecture gate; `afterCommit()` remains a latency hint, never a delivery guarantee.
 
 **Execution boundary:** build-and-verify in an isolated environment, stage by stage. No production rollout is authorized by this plan; the cutover stages (6/7/10) delete polling only after recovery and durable delivery are proven. Never run polling and events as a permanent hybrid.
 
@@ -85,11 +85,11 @@ Before implementation code writes or moves ownership, produce/update an ownershi
 
 ---
 
-## Stage G1 — Architecture Decision Records before implementation
+## Stage G1 — Architecture Decision Records (closed)
 
-Close the contradictions between `audit.md §15` and `§15a` before building the backend migration. The ADRs must define the exact scope of "no polling", choose durable publication, choose client recovery, choose DLQ strategy, and decide internal realtime fan-out. Stages 2–10 implement those decisions, not every candidate architecture.
+ADR-1 defines the strict scope of NO POLLING: it includes periodic backend outbox discovery. Stages 2–10 implement the selected decisions; they do not reopen alternate relay architectures.
 
-- **G1.1 ADR-1 durable publication:** prove transactional outbox → Debezium/binlog CDC → Redis Stream with durable offsets/checkpoints, restart survival, Redis outage recovery, and logical idempotency across duplicate/redelivered events. If CDC is too heavy for the deployment, prove same-transaction outbox + Laravel queue/worker with a durable outbox scanner or scheduler. `DB::afterCommit()` may be a low-latency wake-up hint, but it is not sufficient as the only mechanism because a process can die after commit and before job dispatch.
+- **G1.1 ADR-1 durable publication — CLOSED:** selected path is transactional outbox → binlog/CDC → Redis Stream with durable offsets/checkpoints, restart survival, Redis outage recovery, and logical idempotency across duplicate/redelivered events. The Laravel relay/scanner is a transitional exception only; retire it before Stage 10's final architecture gate.
 - **G1.2 ADR-2 client recovery:** choose full cursor/replay/snapshot/watermark recovery or a smaller V1 recovery: reconnect/visibility/mobile-resume-triggered one-shot consistent snapshot + resubscribe. Both are compatible with zero polling if they are event/lifecycle-triggered commands and never periodic state discovery.
 - **G1.3 ADR-3 DLQ strategy:** choose consumer-specific Redis DLQ streams, Laravel `failed_jobs`, or another explicit quarantine mechanism per selected relay. The decision must define retry limits, poison-message handling, replay tooling, retention, ownership, and observability.
 - **G1.4 ADR-4 internal realtime fan-out:** choose either `Stream consumer → Pusher-compatible broadcaster directly` or `Stream consumer → Redis Pub/Sub → N broadcaster instances`. Use Redis Pub/Sub only when there is a real fan-out or horizontal-scaling requirement; it is never source of truth, replay storage, retry/DLQ mechanism, or browser-facing transport.
@@ -231,7 +231,7 @@ Stages 1 and (G1→2→3→4→5) run in parallel after Stage 0 evidence and G0D
 
 ## Risk gates that can change this plan (`audit.md §22, §24`)
 
-- **Relay decision (Stage G1 / Stage 3.2):** if a MySQL-binlog→Redis relay with durable checkpoints can't be operated (open Q #6/#9 in `audit.md §24`), drop to a durable Laravel queue + outbox relay. The lean path must still include committed-outbox discovery; `afterCommit()` alone is not accepted.
+- **CDC delivery gate (Stage 10):** the MySQL-binlog→Redis relay with durable checkpoints is mandatory for the final architecture. The current Laravel relay's periodic discovery is transitional and cannot be retained as a fallback once the final no-polling gate is evaluated.
 - **Internal fan-out (Stage G1 / Stage 4.4):** Redis Pub/Sub is selected only if direct `browser-delivery-v1 → Pusher-compatible broadcaster` is insufficient for scale/topology. Streams remain the durable backbone either way.
 - **Webhook transport (Stage 8.3):** implement only the extension boundary until a real destination/consumer is approved; then add signed delivery, ledger, retry, SSRF validation, DLQ/replay and disabled-by-default configuration.
 - **Legacy Blade still deployed (open Q #2):** its mutation paths bypass the new transition service — inventory before Stage 10 retirement.

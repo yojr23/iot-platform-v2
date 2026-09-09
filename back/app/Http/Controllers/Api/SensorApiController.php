@@ -273,16 +273,21 @@ class SensorApiController extends Controller
 
             $source = 'redis';
             $readings = $this->readingProjection->latest($sensor->id, $limit);
-            $databaseLatestReadingId = $sensor->readings()
+            $databaseReadingIds = $sensor->readings()
                 ->where('reading_time', '<=', now())
                 ->orderBy('reading_time', 'desc')
                 ->orderBy('id', 'desc')
-                ->value('id');
-            $redisLatestReadingId = $readings?->first()['id'] ?? null;
+                ->limit($limit)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $redisReadingIds = $readings?->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
 
             if ($readings === null
                 || $readings->isEmpty()
-                || (int) $redisLatestReadingId !== (int) $databaseLatestReadingId) {
+                || $redisReadingIds !== $databaseReadingIds) {
                 $source = 'database';
                 $readings = $sensor->readings()
                     ->where('reading_time', '<=', now())

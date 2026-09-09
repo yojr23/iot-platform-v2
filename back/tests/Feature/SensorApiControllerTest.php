@@ -311,4 +311,79 @@ class SensorApiControllerTest extends TestCase
             Redis::swap($originalRedis);
         }
     }
+
+    public function test_latest_readings_repairs_an_interior_redis_projection_gap(): void
+    {
+        $sensor = Sensor::factory()->create();
+        $oldest = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 101,
+            'reading_time' => now()->subMinutes(3),
+        ]);
+        $missing = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 102,
+            'reading_time' => now()->subMinutes(2),
+        ]);
+        $latest = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 103,
+            'reading_time' => now()->subMinute(),
+        ]);
+        $redis = new class
+        {
+            public array $lists = [];
+
+            public function pipeline(callable $callback): void
+            {
+                $callback($this);
+            }
+
+            public function lpush(string $key, string $value): void
+            {
+                $this->lists[$key] ??= [];
+                array_unshift($this->lists[$key], $value);
+            }
+
+            public function ltrim(string $key, int $start, int $stop): void
+            {
+                $this->lists[$key] = array_slice($this->lists[$key] ?? [], $start, $stop - $start + 1);
+            }
+
+            public function lrange(string $key, int $start, int $stop): array
+            {
+                return array_slice($this->lists[$key] ?? [], $start, $stop - $start + 1);
+            }
+
+            public function del(string $key): void
+            {
+                unset($this->lists[$key]);
+            }
+        };
+        $key = "sensor:latest_readings:{$sensor->id}";
+        $redis->lists[$key] = [];
+
+        foreach ([$oldest, $latest] as $reading) {
+            $redis->lpush($key, json_encode([
+                'id' => $reading->id,
+                'value' => (float) $reading->value,
+                'reading_time' => $reading->reading_time->toIso8601String(),
+                'created_at' => $reading->created_at->toIso8601String(),
+            ], JSON_THROW_ON_ERROR));
+        }
+
+        $originalRedis = Redis::getFacadeRoot();
+        Redis::swap($redis);
+
+        try {
+            $this->actingAs(User::factory()->create())
+                ->getJson("/api/sensors/{$sensor->id}/latest-readings?limit=3")
+                ->assertOk()
+                ->assertJsonPath('0.id', $latest->id)
+                ->assertJsonPath('1.id', $missing->id)
+                ->assertJsonPath('2.id', $oldest->id);
+        } finally {
+            Redis::swap($originalRedis);
+        }
+    }
 }
