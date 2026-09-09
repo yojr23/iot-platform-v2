@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * Pre-Stage-6 Task 3 (PLAN.md Stage 6.0A preflight, `audit.md` §... "Before publishing a UTC
- * contract, run a DB/application timezone probe") — freezes how `sensor_readings.reading_time`
- * is actually stored/interpreted TODAY, before Stage 6.0B's UTC graph-range contract is designed.
+ * Pre-Stage-6 Task 1/3 (PLAN.md Stage 6.0A preflight, `audit.md` §... "Before publishing a UTC
+ * contract, run a DB/application timezone probe") — documents how `sensor_readings.reading_time`
+ * is stored/interpreted, before Stage 6.0B's UTC graph-range contract is designed.
  *
  * Existing code reused: exercises the real write path unmodified —
  * `App\Services\Ingestion\SensorReadingService::createReading()` (the same call
@@ -30,22 +30,19 @@ use Tests\TestCase;
  *   - config('app.timezone') === 'America/Bogota' (config/app.php:67), fixed UTC-05:00, no DST.
  *   - `sensor_readings.reading_time` is a Laravel `timestamp` column
  *     (database/migrations/2025_04_29_134329_create_sensor_readings_table.php:18).
- *   - `SensorReadingService::createReading()` accepts `DateTimeInterface|string|null` and passes
- *     it straight to `Eloquent::create()` (app/Services/Ingestion/SensorReadingService.php:18-24).
+ *   - `SensorReadingService::createReading()` accepts `DateTimeInterface|string|null` and, as of
+ *     Pre-Stage-6 Task 1, normalizes it through a private `normalizeReadingTime()` method before
+ *     handing Eloquent a single unambiguous APP_TIMEZONE wall-clock string
+ *     (app/Services/Ingestion/SensorReadingService.php) — caller PHP type no longer selects
+ *     storage semantics.
  *   - `SensorApiController::store()` (the real HTTP ingestion entrypoint) validates the
  *     `reading_time` request field with `nullable|date_format:Y-m-d H:i:s` only
  *     (app/Http/Controllers/Api/SensorApiController.php:63) — RFC3339 is not accepted there today.
  *
- * ENVIRONMENT GAP (do not read the assertions below as an executed/confirmed result until this
- * is closed): this file was authored and reviewed against source only. The authoring sandbox has
- * no `php` binary, no Docker, and no MySQL client on PATH, so this suite could not actually be
- * run. Close this GAP by running, from `back/`:
- *   APP_ENV=testing DB_CONNECTION=sqlite DB_DATABASE=:memory: CACHE_STORE=array \
- *   SESSION_DRIVER=array QUEUE_CONNECTION=sync php artisan test --filter=ReadingTimeSemanticsTest
- * and recording the actual pass/fail in docs/implementation/reading-time-semantics.md before
- * treating the A/B/C classification there as final. This sqlite run can only prove/refute the
- * *application-level* (PHP/Eloquent cast) half of the question below — see that doc's separate
- * MySQL-session-timezone GAP for the half this suite cannot reach at all.
+ * This suite has been executed against MySQL via `docker compose exec -T back php artisan test
+ * --filter=ReadingTimeSemanticsTest` (Pre-Stage-6 Task 1) — see
+ * docs/implementation/reading-time-semantics.md for the recorded pass/fail evidence and the
+ * resolved classification (previously frozen as C — mixed/ambiguous).
  */
 class ReadingTimeSemanticsTest extends TestCase
 {
@@ -63,16 +60,11 @@ class ReadingTimeSemanticsTest extends TestCase
      * value that is unambiguously UTC ($instantUtc = 2026-09-09T15:00:00Z, i.e. 2026-09-09
      * 10:00:00 Bogota wall clock).
      *
-     * This does not assert a UTC storage contract that does not exist — it records what the
-     * current code actually does with a UTC-instant input, per the task's requirement to prove
-     * reality rather than assume it. Laravel's Eloquent `datetime` cast only forces a
-     * `date_default_timezone_get()` (== config('app.timezone') == 'America/Bogota') conversion
-     * when given a raw string/timestamp; when given an existing Carbon/DateTimeInterface
-     * instance it wraps it as-is and formats *that instance's own timezone* for storage. A
-     * caller that hands this path a UTC Carbon instance is therefore predicted to store the
-     * literal UTC wall-clock digits with no offset marker — which the column's later read path
-     * then re-interprets as Bogota wall clock. If confirmed, this alone is enough to classify
-     * storage as mixed/ambiguous (C), independent of any MySQL-specific behavior.
+     * Pre-Stage-6 Task 1 RESOLVED the ambiguity this test originally documented:
+     * `SensorReadingService::createReading()` now converts any `DateTimeInterface` input to
+     * APP_TIMEZONE (America/Bogota) before formatting it for storage, instead of writing the
+     * instance's own (UTC) digits verbatim. This test now proves the instant is preserved
+     * end-to-end, not lost 5 hours off on read-back.
      */
     public function test_fixed_utc_instant_round_trip_through_the_real_ingestion_path(): void
     {
@@ -86,45 +78,28 @@ class ReadingTimeSemanticsTest extends TestCase
         $iso8601 = $castValue->toIso8601String();
         $convertedToUtc = $castValue->clone()->setTimezone('UTC');
 
-        fwrite(STDERR, sprintf(
-            "\n[reading-time-semantics] input=%s raw_db=%s cast=%s (tz=%s) iso8601=%s as_utc=%s\n",
-            $instantUtc->toIso8601String(),
-            $rawDbValue,
-            $castValue->toDateTimeString(),
-            $castValue->getTimezone()->getName(),
-            $iso8601,
-            $convertedToUtc->toIso8601String(),
-        ));
-
-        // Raw column value is a plain offsetless "Y-m-d H:i:s" string — no TZ marker is ever
-        // written by this cast, on sqlite or otherwise.
+        // Raw column value is a plain offsetless "Y-m-d H:i:s" string — the normalized
+        // APP_TIMEZONE wall clock, not the raw UTC digits.
         $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $rawDbValue);
 
-        // Predicted: the stored digits equal the UTC wall clock of the input (15:00:00), NOT the
-        // Bogota-converted wall clock (10:00:00) — because a DateTimeInterface instance bypasses
-        // the raw-string Bogota-parsing branch of Eloquent's date cast.
-        $this->assertSame('2026-09-09 15:00:00', $rawDbValue, 'GAP if this fails: re-run and update the classification in docs/implementation/reading-time-semantics.md.');
-        $this->assertNotSame('2026-09-09 10:00:00', $rawDbValue);
+        // The instant is preserved and converted: 15:00:00 UTC == 10:00:00 Bogota wall clock.
+        $this->assertSame('2026-09-09 10:00:00', $rawDbValue);
+        $this->assertNotSame('2026-09-09 15:00:00', $rawDbValue);
 
-        // The cast Carbon instance is then labeled Bogota (app default) over those UTC digits —
-        // reading the value back does not recover the original instant.
         $this->assertSame('America/Bogota', $castValue->getTimezone()->getName());
-        $this->assertStringStartsWith('2026-09-09T15:00:00', $iso8601);
+        $this->assertStringStartsWith('2026-09-09T10:00:00', $iso8601);
         $this->assertStringEndsWith('-05:00', $iso8601);
 
-        // Converting the mislabeled value to UTC shifts it a further 5 hours instead of
-        // recovering "2026-09-09T15:00:00Z" — proof the round trip is lossy/ambiguous for a
-        // UTC-instant caller, not just cosmetically offset.
-        $this->assertNotSame($instantUtc->toIso8601String(), $convertedToUtc->toIso8601String());
+        // Converting back to UTC recovers the original instant exactly — no drift, no loss.
+        $this->assertSame($instantUtc->toIso8601String(), $convertedToUtc->toIso8601String());
     }
 
     /**
      * The legacy `Y-m-d H:i:s` string path (the only format `SensorApiController::store()`
-     * accepts today) takes the *other* branch of the same cast: a raw string is parsed against
-     * `date_default_timezone_get()` == Bogota, so it round-trips as a consistent Bogota
-     * wall clock with no drift on re-read — the opposite of the DateTimeInterface case above.
-     * This asymmetry (same column, two different effective semantics depending on caller input
-     * type) is the concrete evidence for classification C.
+     * accepts today) is interpreted explicitly as an APP_TIMEZONE (Bogota) wall clock by
+     * `SensorReadingService::normalizeReadingTime()`, so it round-trips with no drift on re-read
+     * — and, per Pre-Stage-6 Task 1's fix, now agrees with the `DateTimeInterface` case above for
+     * the same physical instant, instead of the two diverging by caller input type.
      */
     public function test_legacy_offsetless_string_is_interpreted_as_bogota_wall_clock(): void
     {
@@ -140,12 +115,9 @@ class ReadingTimeSemanticsTest extends TestCase
         $this->assertSame('America/Bogota', $castValue->getTimezone()->getName());
         $this->assertStringEndsWith('-05:00', $castValue->toIso8601String());
 
-        // Interpreted as Bogota, this instant equals 2026-09-09T15:00:00Z — i.e. the same
-        // instant as the UTC test above, proving both paths *can* agree, but only if the caller
-        // supplies a Bogota-local string for a Bogota-intended instant. A caller that means
-        // "15:00 UTC" and sends the raw string "2026-09-09 15:00:00" (reusing UTC digits, as a
-        // naive integration might) collides with this test's own input and is silently
-        // mis-stored 5 hours off from the previous test's UTC-instant expectation.
+        // Interpreted as Bogota, this instant equals 2026-09-09T15:00:00Z — the SAME instant the
+        // UTC-DateTimeInterface test above now converges on, confirming the two input types are
+        // no longer ambiguous with each other.
         $this->assertSame('2026-09-09T15:00:00Z', $castValue->clone()->setTimezone('UTC')->format('Y-m-d\TH:i:s\Z'));
     }
 
@@ -191,10 +163,9 @@ class ReadingTimeSemanticsTest extends TestCase
     }
 
     /**
-     * A missing `reading_time` falls back to `now()` inside `SensorReadingService::createReading`
-     * (app/Services/Ingestion/SensorReadingService.php:23) — `now()` resolves in
-     * `date_default_timezone_get()` == Bogota, so this path is internally consistent with the
-     * legacy-string path (both land in Bogota wall-clock terms), not with the UTC-instant path.
+     * A missing `reading_time` falls back to `Carbon::now(APP_TIMEZONE)` inside
+     * `SensorReadingService::normalizeReadingTime()` — Bogota wall-clock terms, consistent with
+     * every other input branch after Pre-Stage-6 Task 1's fix.
      */
     public function test_missing_reading_time_defaults_to_bogota_now(): void
     {

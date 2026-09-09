@@ -4,6 +4,7 @@ namespace App\Services\Ingestion;
 
 use App\Models\Sensor;
 use App\Models\SensorReading;
+use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -20,7 +21,7 @@ class SensorReadingService
         return DB::transaction(function () use ($sensor, $value, $readingTime): SensorReading {
             $reading = $sensor->readings()->create([
                 'value' => $value,
-                'reading_time' => $readingTime ?? now(),
+                'reading_time' => $this->normalizeReadingTime($readingTime),
             ]);
 
             $this->recorder->record(
@@ -41,5 +42,35 @@ class SensorReadingService
 
             return $reading;
         });
+    }
+
+    /**
+     * Single write-time normalization owner for `reading_time` (Pre-Stage-6 Task 1 —
+     * see docs/implementation/reading-time-semantics.md). Eloquent's `datetime` cast treats a
+     * `DateTimeInterface` and a raw string differently (preserves the instance's own tz vs.
+     * parsing the string in `date_default_timezone_get()`), so letting the caller's PHP type pick
+     * the branch made storage semantics ambiguous. This method always hands Eloquent one
+     * unambiguous APP_TIMEZONE wall-clock string:
+     * - null -> now() in APP_TIMEZONE.
+     * - DateTimeInterface -> same instant, converted to APP_TIMEZONE.
+     * - offsetless "Y-m-d H:i:s" -> interpreted AS an APP_TIMEZONE wall clock (legacy behavior).
+     * - RFC3339 with `Z`/explicit offset -> parsed as that instant, converted to APP_TIMEZONE.
+     * `Carbon::parse($string, $appTimezone)` already implements the string branch correctly on
+     * its own: PHP ignores the second (default-timezone) argument whenever the string carries its
+     * own UTC offset/`Z`, and honors it otherwise — so one call covers both string cases.
+     */
+    private function normalizeReadingTime(DateTimeInterface|string|null $readingTime): string
+    {
+        $appTimezone = config('app.timezone');
+
+        if ($readingTime === null) {
+            return Carbon::now($appTimezone)->format('Y-m-d H:i:s');
+        }
+
+        if ($readingTime instanceof DateTimeInterface) {
+            return Carbon::instance($readingTime)->setTimezone($appTimezone)->format('Y-m-d H:i:s');
+        }
+
+        return Carbon::parse($readingTime, $appTimezone)->setTimezone($appTimezone)->format('Y-m-d H:i:s');
     }
 }

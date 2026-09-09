@@ -1,13 +1,79 @@
-# Pre-Stage-6 Task 3 — `sensor_readings.reading_time` semantics freeze
+# Pre-Stage-6 Task 1/3 — `sensor_readings.reading_time` semantics: resolved
 
 Prerequisite for PLAN.md Stage 6.0A ("Before publishing a UTC contract, run a DB/application
 timezone probe and record how existing `sensor_readings.reading_time` values are interpreted").
-This document is the frozen answer that gates Stage 6.0B's UTC graph-range contract. It does not
-implement that contract.
+This document originally froze classification **C (mixed/ambiguous)** for this column. Pre-Stage-6
+Task 1 closed every GAP below with real evidence, implemented the normalization fix, and this
+document now records the **resolved storage rule** in force from this commit forward.
 
-**Gate verdict: reading-time semantics frozen: C (Stage 6 blocked)**
+**Gate verdict: reading-time semantics RESOLVED — single deterministic storage rule, caller PHP
+type no longer selects semantics. Historical classification C is superseded (see "Resolution"
+below).**
 
-## Status of this document — read before trusting the classification
+## Resolution (Pre-Stage-6 Task 1)
+
+Real evidence gathered against the running `back` container (`docker compose exec -T back ...`,
+not simulated):
+
+- `config('app.timezone')` = `America/Bogota` (unchanged, `back/config/app.php`).
+- MySQL `@@session.time_zone` = `@@global.time_zone` = `SYSTEM`; the container's system timezone
+  is UTC, so `NOW()` == `UTC_TIMESTAMP()` in that session. This closes **GAP-1**: the session
+  timezone is not pinned by `back/config/database.php` (still no `'timezone'` key), but it
+  resolves to UTC in the actual deployment container, not an unknown/arbitrary value.
+- `sensor_readings` had **0 rows** and `raw_sensor_events` had **0 rows** at the time of this
+  probe. This closes **GAP-3**: there was no historical data to inspect, reconcile, or migrate.
+  Per the task's decision table, an empty table is the **"Disposable local/test DB"** case — the
+  correct action is to document the legacy ambiguity (below, preserved for the historical record)
+  and ship the normalization fix directly, with **no data migration** and **no rewriting of rows**
+  (there were none to rewrite). Nothing was truncated or recreated, because nothing needed to be.
+- **GAP-0/GAP-2** are closed: `back/tests/Feature/ReadingTimeSemanticsTest.php` and the new
+  `back/tests/Feature/RawReadingNormalizerTest.php` were executed against the real `back` +
+  MySQL container (`docker compose exec -T back php artisan test --filter=...`), not sqlite, not
+  simulated. All 10 tests pass.
+- **GAP-4** is closed by construction: `RawReadingNormalizer::normalize()` feeds
+  `SensorReadingService::createReading()` from `data_get($event->payload, 'timestamp') ??
+  $event->received_at ?? now()` — a raw payload string OR a `received_at` `DateTimeInterface`.
+  Since `SensorReadingService` is now the single normalization owner (below), this raw-ingestion
+  caller no longer needs a bespoke pre-conversion; whatever it hands the service converges on the
+  same rule as every other caller.
+
+### The resolved rule
+
+`SensorReadingService::createReading()` (`back/app/Services/Ingestion/SensorReadingService.php`)
+now routes every `reading_time` input through a private `normalizeReadingTime()` method before
+handing Eloquent a value, so the column always receives one unambiguous APP_TIMEZONE
+(`America/Bogota`) wall-clock `"Y-m-d H:i:s"` string:
+
+| Input | Rule |
+|---|---|
+| `null` | `Carbon::now(APP_TIMEZONE)` |
+| `DateTimeInterface` (e.g. a UTC Carbon) | Same instant, converted to APP_TIMEZONE — **no longer** written as literal foreign-timezone digits |
+| Legacy offsetless `"Y-m-d H:i:s"` | Interpreted explicitly IN APP_TIMEZONE (unchanged from before — this was already correct) |
+| RFC3339 with `Z` or explicit offset | Parsed as the instant it specifies, then converted to APP_TIMEZONE |
+
+Implementation detail: `Carbon::parse($string, $appTimezone)->setTimezone($appTimezone)` handles
+both string rows in one call — PHP's `DateTime` parser ignores the supplied default-timezone
+argument whenever the string itself carries a UTC offset/`Z`, and honors it otherwise, so the same
+call is correct for both the legacy and RFC3339 branches.
+
+**Proof (`back/tests/Feature/RawReadingNormalizerTest.php`, run against MySQL):** four different
+input representations of the identical physical instant (`2026-09-09T15:00:00Z` ==
+`2026-09-09 10:00:00` America/Bogota) — a `DateTimeInterface` fallback via `received_at`, a legacy
+offsetless string, an RFC3339 `Z` string, and an RFC3339 explicit-offset string — all four now
+store the identical raw DB value `'2026-09-09 10:00:00'` and the identical instant on read-back.
+Before the fix, the `DateTimeInterface` and RFC3339-`Z` cases stored `'2026-09-09 15:00:00'`
+instead (literal UTC digits, mislabeled Bogota on re-read) — this was the concrete, executed
+demonstration of the original classification-C bug, not merely a source-derived prediction.
+
+### Why no historical migration was performed
+
+The task's decision table (`.superpowers/sdd/PRE_GATE6_UNLOCK_PLAN/task-1-brief.md`, step 1D)
+requires a live migration/reconciliation plan only when a **non-disposable** DB has evidence of
+mixed writers. This DB is disposable/local (0 rows in both `sensor_readings` and
+`raw_sensor_events` at probe time), so that branch does not apply. No row was rewritten, and no
+`Z` suffix was appended to any historical string — there were no historical strings to touch.
+
+## Status of this document — historical context (superseded by "Resolution" above)
 
 The authoring session had **no `php` binary, no Docker, no MySQL client** reachable on `PATH`
 (confirmed by direct probing, not assumed). `back/tests/Feature/ReadingTimeSemanticsTest.php` was
@@ -20,7 +86,13 @@ column's semantics depend on caller input type and unpinned DB config," but the 
 values (what a real MySQL server does) are unverified. Close every GAP before removing the C
 verdict.
 
-## Verified facts (read from source)
+**This section is retained for the historical evidence trail only — see "Resolution" above for
+the rule now in force.**
+
+## Verified facts (read from source) — historical, as originally authored
+
+*(The claims below describe the code BEFORE Pre-Stage-6 Task 1's fix. See "Resolution" above for
+the rule now in force; the write-path bullet is corrected inline.)*
 
 - `config('app.timezone')` = `'America/Bogota'` (`back/config/app.php:67`) — PHP's
   `date_default_timezone_get()` is set to this at Laravel bootstrap, and Bogota has a fixed
@@ -49,9 +121,10 @@ verdict.
   default is (`SYSTEM` unless a MySQL image sets `TZ`/`--default-time-zone` explicitly — not
   verified, see GAP-1).
 
-## The A/B/C classification and its evidence
+## The A/B/C classification and its evidence — historical (resolved, see above)
 
-**C — mixed/ambiguous**, for two independent, source-verifiable reasons:
+**C — mixed/ambiguous**, for two independent, source-verifiable reasons — this was the state
+BEFORE Pre-Stage-6 Task 1's fix; both reasons below are eliminated by the resolved rule:
 
 ### Reason 1 — input-type asymmetry inside `SensorReadingService::createReading()` (SQLite-provable, GAP-2 to confirm)
 
@@ -94,82 +167,88 @@ Because neither reason can be fully closed without runtime evidence (GAP-1 and G
 today is **C**, not a provisional B pending confirmation. **Do not relabel historical rows as UTC
 or as Bogota until both GAPs are closed against the real deployment target.**
 
-## New-ingestion input semantics (frozen contract for today's code, not a target design)
+## New-ingestion input semantics — HTTP boundary validation (unchanged by this task)
 
-| Input | Accepted at HTTP boundary today? | Effective interpretation if it reaches storage |
+`SensorApiController::store()`'s validator still only accepts the legacy offsetless format at the
+HTTP boundary (`ReadingTimeSemanticsTest::test_rfc3339_utc_z_format_is_rejected_by_current_ingestion_validation`
+and `::test_rfc3339_explicit_offset_format_is_rejected_by_current_ingestion_validation` still pass,
+unchanged — this task did not touch controller-level validation, only `SensorReadingService`'s
+internal normalization):
+
+| Input | Accepted at HTTP boundary today? | Storage semantics once it reaches `SensorReadingService` |
 |---|---|---|
-| Legacy `Y-m-d H:i:s` (offsetless) | Yes — the only format `SensorApiController::store()`'s validator accepts | Bogota wall clock (raw-string branch) |
-| RFC3339 `...Z` | **No** — fails `date_format:Y-m-d H:i:s` validation, HTTP 422, no row written (`ReadingTimeSemanticsTest::test_rfc3339_utc_z_format_is_rejected_by_current_ingestion_validation`) | n/a — rejected before reaching `SensorReadingService` |
-| RFC3339 explicit offset (e.g. `...-05:00`) | **No** — same validation rule, same rejection (`ReadingTimeSemanticsTest::test_rfc3339_explicit_offset_format_is_rejected_by_current_ingestion_validation`) | n/a — rejected |
-| Missing `reading_time` | Yes — field is `nullable` | `now()` in `date_default_timezone_get()` == Bogota wall clock (same branch/semantics as the legacy string path) |
+| Legacy `Y-m-d H:i:s` (offsetless) | Yes — the only format `SensorApiController::store()`'s validator accepts | Interpreted explicitly in APP_TIMEZONE (Bogota) |
+| RFC3339 `...Z` | **No** — fails `date_format:Y-m-d H:i:s` validation, HTTP 422 | n/a at HTTP boundary; if reached directly (e.g. raw-ingestion path), parsed as its instant and converted to APP_TIMEZONE |
+| RFC3339 explicit offset (e.g. `...-05:00`) | **No** — same validation rule, same rejection | Same as above |
+| Missing `reading_time` | Yes — field is `nullable` | `Carbon::now(APP_TIMEZONE)` |
+| `DateTimeInterface` (e.g. raw-ingestion `received_at` fallback) | n/a — not an HTTP wire format | Same instant, converted to APP_TIMEZONE |
 
-Only `SensorReadingService::createReading()`'s PHP signature accepts a `DateTimeInterface` (Reason
-1's UTC-instant case); no current HTTP caller can reach that branch, because the controller-level
-validator only lets offsetless strings through. That branch is reachable today only by a
-non-HTTP/internal caller passing a `DateTimeInterface` directly (none currently do, per the earlier
-`grep` inventory of `reading_time` call sites) — this makes Reason 1 a **latent** risk today, not
-yet an observed production bug, but it is exactly the risk Stage 6.0B's "never relabel ambiguous
-historical values as UTC" instruction is guarding against, and any future raw-consumer/CDC
-processor (Stage 3/4) that constructs readings from a parsed-UTC device timestamp must go through
-this exact method — so it will hit this branch the moment it exists.
-
-**Rule going forward, until a migration/normalization decision is made:** never append `Z` to an
-offsetless timestamp to fake UTC, and never pass a UTC `DateTimeInterface` into
-`SensorReadingService::createReading()` expecting Bogota-consistent storage — today it is not.
+**Rule now in force (superseding the old "never pass a UTC DateTimeInterface..." warning):** any
+caller of `SensorReadingService::createReading()` — HTTP controller, `RawReadingNormalizer`, or a
+future raw-consumer/CDC processor — gets caller-type-independent, instant-preserving storage. The
+`RawReadingNormalizer`'s `data_get($event->payload, 'timestamp') ?? $event->received_at ?? now()`
+fallback chain (mixing a raw payload string and a `DateTimeInterface`) is safe as written, because
+`SensorReadingService` now normalizes whichever branch it receives.
 
 ## GAPs — exact commands to close each one
 
-**GAP-0 — Execute the written test suite at all** (blocks GAP-2 below). Blocked in this session by
-total absence of `php`/Docker/MySQL client on `PATH`. Run from `back/`:
+**GAP-0 — Execute the written test suite at all.** CLOSED (Pre-Stage-6 Task 1). Run against the
+real `back` + MySQL container:
 
 ```bash
-APP_ENV=testing DB_CONNECTION=sqlite DB_DATABASE=:memory: CACHE_STORE=array \
-SESSION_DRIVER=array QUEUE_CONNECTION=sync php artisan test --filter=ReadingTimeSemanticsTest
+docker compose exec -T back php artisan test --filter=ReadingTimeSemanticsTest
+docker compose exec -T back php artisan test --filter=RawReadingNormalizerTest
 ```
 
-**GAP-1 — MySQL session/global timezone facts** (Reason 2). Not run; no MySQL reachable in this
-session. Run against the real deployment target (e.g. via `docker compose exec back php artisan
-diagnostics:reading-time-semantics`, which wraps this same query when the active connection driver
-is `mysql`/`mariadb`, or directly):
+Result: 10/10 pass.
 
-```sql
-SELECT @@session.time_zone, @@global.time_zone, NOW(), UTC_TIMESTAMP();
-```
+**GAP-1 — MySQL session/global timezone facts** (Reason 2). CLOSED. Probed against the running
+`back`/MySQL container: `@@session.time_zone` = `@@global.time_zone` = `SYSTEM`; the container
+resolves `SYSTEM` to UTC, so `NOW()` == `UTC_TIMESTAMP()`. `config('app.timezone')` remains
+`America/Bogota` — the two do differ, confirming Reason 2 was real, not just theoretical. This is
+exactly why storage now goes through an explicit `normalizeReadingTime()` conversion rather than
+relying on MySQL's own `TIMESTAMP` UTC conversion to paper over the gap.
 
-Compare `@@session.time_zone` against `config('app.timezone')` (`America/Bogota`). If they differ
-(including `SYSTEM` resolving to something other than Bogota), Reason 2 is confirmed active, not
-just theoretical.
+**GAP-2 — Confirm the input-type asymmetry numerically.** CLOSED. Before the fix,
+`ReadingTimeSemanticsTest::test_fixed_utc_instant_round_trip_through_the_real_ingestion_path`
+proved the predicted asymmetry with real, executed values (raw DB `'2026-09-09 15:00:00'` for a
+UTC-instant `DateTimeInterface` input vs. `'2026-09-09 10:00:00'` for the equivalent-instant
+legacy string) — Reason 1 moved from "predicted" to "confirmed" by running the suite. After the
+fix, both inputs now store `'2026-09-09 10:00:00'` — the asymmetry is eliminated, confirmed by the
+same (now-updated) test.
 
-**GAP-2 — Confirm the input-type asymmetry numerically.** Covered by GAP-0's test run;
-`ReadingTimeSemanticsTest::test_fixed_utc_instant_round_trip_through_the_real_ingestion_path` and
-`::test_legacy_offsetless_string_is_interpreted_as_bogota_wall_clock` must both pass with the exact
-raw/cast values asserted in that file for Reason 1 to move from "predicted" to "confirmed."
-
-**GAP-3 — Inspect representative historical rows** (task step 3; no local DB reachable, so no rows
-were inspected and none were mutated). Read-only query, run once a DB is reachable (or via `php
-artisan diagnostics:reading-time-semantics --limit=20`, added by this task for exactly this
-purpose):
+**GAP-3 — Inspect representative historical rows.** CLOSED. `sensor_readings` had 0 rows and
+`raw_sensor_events` had 0 rows at probe time — there was nothing to inspect, and the disposable-DB
+branch of the task's decision table applies (see "Resolution" above). If this doc is revisited
+against a deployment that has since accumulated historical rows, use:
 
 ```sql
 SELECT id, sensor_id, reading_time, created_at FROM sensor_readings ORDER BY id DESC LIMIT 20;
 ```
 
-Cross-reference against the original ingestion source (device/MQTT log) if available for a sample
-of rows, to see whether historical values line up with Reason 1's Bogota-string branch (the only
-branch reachable via the HTTP path historically) or show any UTC-digit anomalies consistent with a
-non-HTTP writer having used the `DateTimeInterface` branch.
+Rows written **before** this fix may still show the pre-fix asymmetry (Bogota-string writes are
+fine as-is; any `DateTimeInterface`-sourced writes would carry the 5-hour mislabeling this task
+fixed going forward) — do not assume any pre-fix row's `reading_time` is UTC-consistent without
+checking its origin.
 
-**GAP-4 — `--interval=2` transitional relay / future raw-consumer timestamp construction.** Not a
-runtime GAP, a design GAP: whichever component eventually parses a device-supplied UTC timestamp
-out of `raw_sensor_events` and calls `SensorReadingService::createReading()` (Stage 3/4) must not
-pass a UTC `DateTimeInterface` naively — per Reason 1, doing so does not store a UTC-consistent
-value today. This needs either (a) an explicit `->setTimezone('America/Bogota')` conversion before
-calling `createReading()`, keeping today's Bogota-wall-clock column semantics, or (b) a schema/cast
-change to make the column unambiguous, decided together with Stage 6.0B, not implemented here.
+**GAP-4 — future raw-consumer timestamp construction.** CLOSED by the fix itself:
+`SensorReadingService::normalizeReadingTime()` now performs the `->setTimezone(APP_TIMEZONE)`
+conversion internally for every `DateTimeInterface` input, so `RawReadingNormalizer` (or any
+future raw-consumer/CDC processor) does not need to pre-convert before calling `createReading()`
+— it already didn't, and that was previously a latent bug; now it is correct by construction.
 
-## What this task does not do
+## What this task does and does not do
 
-This task freezes the observed rule and inventories the gaps; it does not migrate historical rows,
-does not change `SensorReading::$casts`, does not change the `reading_time` column type, and does
-not change `SensorApiController`'s validation rule. Those are Stage 6.0A/6.0B decisions once GAP-0
-through GAP-3 are closed with real evidence.
+**Done (Pre-Stage-6 Task 1):** implemented `SensorReadingService::normalizeReadingTime()` as the
+single write-time normalization owner; proved it with `RawReadingNormalizerTest` (4 new cases) and
+updated `ReadingTimeSemanticsTest` to assert the resolved (not the old ambiguous) behavior; closed
+GAP-0 through GAP-4 with real evidence gathered against the running `back`/MySQL container.
+
+**Not done (explicitly out of scope for this task):** no historical-row migration (none existed —
+0 rows in both tables at probe time); no change to `SensorReading::$casts` or the `reading_time`
+column type/schema; no change to `SensorApiController`'s HTTP-boundary validation rule (RFC3339
+remains rejected at that layer); no change to `RawSensorEvent`'s own `received_at`/`processed_at`
+casts, which carry the identical caller-type-dependent ambiguity this task fixed in
+`SensorReadingService` but were not in this task's Modify list — a future task should apply the
+same fix there if `RawSensorEvent`'s own timestamp fields are ever read for anything beyond
+feeding `RawReadingNormalizer`'s already-normalized fallback chain.
