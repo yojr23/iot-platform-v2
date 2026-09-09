@@ -2,15 +2,16 @@
 
 namespace App\Observers;
 
+use App\Jobs\SendDangerAlertEmailJob;
 use App\Models\Alert;
 use App\Services\Notifications\NotificationService;
 use Illuminate\Support\Facades\Cache;
 
 /**
  * PLAN.md Stage 4.3 (G0D row B3) scope note: this observer still owns the `alert.triggered`
- * synchronous broadcast + email on `created()` — that pair was already a single, non-duplicated
- * side effect (audit did not flag it as missing, unlike resolve/device-status), so Stage 4 leaves
- * it as-is rather than widening this change to the reading->alert creation transaction boundary.
+ * synchronous broadcast on `created()` — that side effect was already a single, non-duplicated
+ * one (audit did not flag it as missing, unlike resolve/device-status), so Stage 4 left it as-is
+ * rather than widening the change to the reading->alert creation transaction boundary.
  *
  * ponytail: `alert.triggered` is NOT yet routed through the domain outbox / `browser-delivery-v1`
  * consumer the way `alert.resolved` and `device.status.changed` now are (PLAN.md 4.1/4.2/4.4) — it
@@ -18,10 +19,13 @@ use Illuminate\Support\Facades\Cache;
  * broadcast in the alert lifecycle. Upgrade path: move `AlertService::createAlertsForReading()`'s
  * `Alert::create()` into a DB transaction that also writes an `alert.triggered` domain-outbox row
  * (mirroring `AlertLifecycleService::resolveWithinTransaction()`), then drop `broadcastNewAlert()`
- * here — do this only alongside Stage 8's email-off-the-sync-path work, since both touch the same
- * `created()` hook and should not be split across two half-migrations.
- * `notifyDangerAlertByEmail()` staying synchronous here is intentional and out of scope for Stage 4
- * (PLAN.md Stage 8.2 owns moving email off the sync path).
+ * here. Not done as part of Stage 8.2: that stage only owned moving email off the sync path, not
+ * the broadcast.
+ *
+ * PLAN.md Stage 8.2: `notifyDangerAlertByEmail()` no longer runs inline here. It is dispatched via
+ * `SendDangerAlertEmailJob` (`afterCommit()`) so an unavailable/slow SMTP destination cannot delay
+ * the ingestion response. `NotificationService::notifyDangerAlertByEmail()` itself is unchanged —
+ * this observer is no longer its caller, the job is.
  */
 class AlertObserver
 {
@@ -33,7 +37,7 @@ class AlertObserver
     {
         $this->clearDashboardAlertCaches();
         $this->notificationService->broadcastNewAlert($alert);
-        $this->notificationService->notifyDangerAlertByEmail($alert);
+        SendDangerAlertEmailJob::dispatch($alert->id)->afterCommit();
     }
 
     public function updated(Alert $alert): void

@@ -5,8 +5,8 @@ namespace App\Events;
 use App\Events\Concerns\HasEventEnvelope;
 use App\Events\Contracts\VersionedDomainEvent;
 use App\Models\Alert;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -17,9 +17,11 @@ use Illuminate\Queue\SerializesModels;
  * single `resolve()` never dispatched anything).
  *
  * Existing code reused: shape mirrors `App\Events\NewAlertTriggered` exactly (same envelope trait,
- * same public channel name `alerts`, same `ShouldBroadcastNow` contract) so the front-end Echo
- * wiring pattern (`useAlertsRealtime.js`) can add a listener for this class the same way it already
- * listens for `NewAlertTriggered` (Stage 7, front-owned, not part of this change).
+ * same channel name `alerts` — now a `PrivateChannel` per Stage 7 (audit.md §12a: alerts are not
+ * public/guest data), authorized in `routes/channels.php` — same `ShouldBroadcastNow` contract) so
+ * the front-end Echo wiring pattern (`useAlertsRealtime.js`) can add a listener for this class the
+ * same way it already listens for `NewAlertTriggered` (front-side private-channel subscription is a
+ * separate frontend wave, not part of this change).
  * Existing owner retired/delegated: n/a — no `alert.resolved` broadcast existed before this stage.
  * Compatibility window: none.
  *
@@ -45,7 +47,7 @@ class AlertResolved implements ShouldBroadcastNow, VersionedDomainEvent
 
     public function broadcastOn()
     {
-        return new Channel('alerts');
+        return new PrivateChannel('alerts');
     }
 
     public function broadcastWith()

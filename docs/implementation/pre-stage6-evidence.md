@@ -5,7 +5,7 @@
 **Baseline commit:** `correcciones documentales, se establecen issues bloqueantes previas a stage 6`
 **Execution environment:** THIS session/machine has **no `php`, no Composer/`vendor/`, no Docker, no MySQL client, no `vitest`** on PATH and no package-registry access. It is a code/audit environment only. Every test below was **written and reviewed against source (TDD-style) but NOT executed here**. No result was fabricated; unrun assertions are marked GAP with the exact command to run in a real runtime.
 
-> **PRE-STAGE-6 GATE: BLOCKED** — blocked by Time semantics = classification **C** (see Task 3), pending runtime execution, guest/auth transition isolation defects, incomplete frontend private-sensor realtime, a known private-channel test expectation issue, and unresolved `/config/public` replacement. Do not treat this preflight as Stage-6 completion.
+> **PRE-STAGE-6 GATE: still FAIL — but for a shorter list (updated 2026-09-09, working HEAD `faae3aa`).** Time semantics are **RESOLVED** (committed `3ce38ac`; `SensorReadingService::normalizeReadingTime()` is the single write-time owner — the old classification-C blocker is superseded). The sensor private/public realtime path, the private-channel test expectation (`private-sensor.{id}`), the PAT `/broadcasting/auth` proof, and `NewSensorReading` fail-closed are all **fixed** this session. Remaining gate blockers: **(1) P0 — `.env.host-backup` secret still in repo/history** (purge blocked by operator push-hold; rotate credentials); **(2) backend suites + MySQL EXPLAIN unrun here** (no php/mysql — GAP for the run-machine); **(3) Stage 7 frontend** (private alerts channel + store idempotency + delete both alert timers) and **`GET /api/config/runtime`** replacement for `/config/public` — both started but not completed this session. Stage 6 core, Stage 7 backend, and Stage 8.2 are code-complete. Full session detail: `front_rebuild_plan/STAGE_6_7_8_SESSION_EVIDENCE_2026-09-09.md`. Do not freeze a Stage-6 baseline SHA before the secret history rewrite (it changes SHAs) and green run-machine evidence.
 
 ---
 
@@ -92,7 +92,12 @@ Applied as an authoritative **v1.3 pre-Stage-6 corrections** addendum block (ove
 |---|---|---|
 | Canonical entry point | ✅ code / ⏳ runtime | backend emits no dashboard HTML; run redirect test |
 | Route classification | ✅ code / ⏳ runtime | 401 tests + route:list written |
-| **Time** | ⛔ **BLOCKED** | classification **C**; needs MySQL probe + migration decision |
+| **Time** | ✅ RESOLVED / ⏳ MySQL EXPLAIN | single normalization owner (`3ce38ac`); classification-C superseded; probe/EXPLAIN GAP on run-machine |
+| Sensor private realtime | ✅ code | channel by stored token (race fixed); PAT `/broadcasting/auth` test added |
+| Stage 6 graph boundary | ✅ code | `PublicGraphVisibility` fail-closed + `/api/public/graph/{bootstrap,series}` + consumer gating; sensor polling deleted |
+| Stage 7 backend | ✅ code | `/api/alerts/active` auth:sanctum; alert events → `private-alerts` |
+| Stage 7 frontend + `/config/runtime` | ⛔ not done | started, agents cancelled — private alerts channel + timer deletion + runtime config pending |
+| Secret hygiene (P0) | ⛔ open | `.env.host-backup` in history; purge blocked by push-hold; rotate creds |
 | Query index | ✅ code / ⏳ EXPLAIN | index present; benchmark pending |
 | Compatibility (Blade retire) | ✅ code / ⏳ runtime | public Blade dashboard + sensor read pages gone |
 | Authenticated realtime | ⚠ partial / ⏳ runtime | backend private channel exists; frontend private consumer + PAT auth test pending |

@@ -4,13 +4,16 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Jobs\SendDangerAlertEmailJob;
 use App\Models\SensorReading;
 use App\Models\Alert;
 use App\Mail\DangerAlertMail;
 use App\Models\Sensor;
 use App\Models\AlertRule;
 use App\Models\SystemSetting;
+use App\Services\Notifications\NotificationService;
 
 class AlertEmailTest extends TestCase
 {
@@ -47,9 +50,17 @@ class AlertEmailTest extends TestCase
         $this->assertTrue($sent);
     }
 
+    /**
+     * PLAN.md Stage 8.2: the alert-triggered email now leaves the reading -> observer -> alert
+     * request path via `SendDangerAlertEmailJob` (dispatched `afterCommit()`). Triggering the rule
+     * must only *queue* the job here — asserting a real send additionally proves the job still
+     * performs `NotificationService`'s unchanged severity gate/rate-limit/payload mapping once
+     * processed, i.e. only the transport moved.
+     */
     public function testEmailIsSentWhenDangerAlertRuleIsTriggered()
     {
         Mail::fake();
+        Queue::fake();
 
         $sensor = Sensor::factory()->create();
 
@@ -69,12 +80,25 @@ class AlertEmailTest extends TestCase
             'value' => 80,
         ]);
 
+        // Off the sync path: nothing sent inline while the request/observer chain ran.
+        Mail::assertNothingSent();
+
+        $dispatched = null;
+        Queue::assertPushed(SendDangerAlertEmailJob::class, function (SendDangerAlertEmailJob $job) use (&$dispatched) {
+            $dispatched = $job;
+
+            return true;
+        });
+
+        $dispatched->handle(app(NotificationService::class));
+
         Mail::assertSent(DangerAlertMail::class, 1);
     }
 
     public function testEmailIsNotSentForNonDangerAlerts()
     {
         Mail::fake();
+        Queue::fake();
 
         $sensor = Sensor::factory()->create();
 
@@ -93,6 +117,17 @@ class AlertEmailTest extends TestCase
             'sensor_id' => $sensor->id,
             'value' => 80,
         ]);
+
+        // The observer still queues the job unconditionally (severity gate lives in
+        // NotificationService, not in the dispatch decision) — processing it must not send.
+        $dispatched = null;
+        Queue::assertPushed(SendDangerAlertEmailJob::class, function (SendDangerAlertEmailJob $job) use (&$dispatched) {
+            $dispatched = $job;
+
+            return true;
+        });
+
+        $dispatched->handle(app(NotificationService::class));
 
         Mail::assertNotSent(DangerAlertMail::class);
     }

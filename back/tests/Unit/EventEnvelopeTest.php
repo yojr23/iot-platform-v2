@@ -11,6 +11,7 @@ use App\Models\Device;
 use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Models\SensorType;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -46,8 +47,22 @@ class EventEnvelopeTest extends TestCase
         $this->assertNotEmpty($data['correlation_id']);
         $this->assertNull($data['causation_id']);
 
-        // Channel name stays the backward-compat public name.
-        $this->assertSame('sensor.'.$sensor->id, $event->broadcastOn()->name);
+        // Gate 6 fail-closed default: no audience flags passed -> no broadcast channel at all.
+        $this->assertSame([], $event->broadcastOn());
+
+        // Explicit public-only.
+        $publicOnly = new NewSensorReading($reading, includePublicChannel: true);
+        $this->assertSame('sensor.'.$sensor->id, $publicOnly->broadcastOn()->name);
+
+        // Explicit private-only.
+        $privateOnly = new NewSensorReading($reading, includePrivateChannel: true);
+        $this->assertSame('private-sensor.'.$sensor->id, $privateOnly->broadcastOn()->name);
+
+        // Explicit both.
+        $both = new NewSensorReading($reading, includePublicChannel: true, includePrivateChannel: true);
+        $channels = $both->broadcastOn();
+        $this->assertIsArray($channels);
+        $this->assertCount(2, $channels);
 
         // event_id/correlation_id are stable across repeated calls on the same instance.
         $this->assertSame($data['event_id'], $event->broadcastWith()['event_id']);
@@ -73,7 +88,13 @@ class EventEnvelopeTest extends TestCase
         $this->assertSame($alert->id, $data['aggregate_id']);
         $this->assertSame('corr-123', $data['correlation_id']);
         $this->assertSame('cause-456', $data['causation_id']);
-        $this->assertSame('alerts', $event->broadcastOn()->name);
+
+        // PLAN.md Stage 7 / audit.md §12a: alerts are not public/guest data. The channel is now a
+        // PrivateChannel (wire name `private-alerts`), authorized in routes/channels.php, not the
+        // plain public `Channel('alerts')` it used to be.
+        $channel = $event->broadcastOn();
+        $this->assertInstanceOf(PrivateChannel::class, $channel);
+        $this->assertSame('private-alerts', $channel->name);
     }
 
     public function test_device_status_updated_broadcast_payload_keeps_legacy_fields_and_adds_envelope(): void

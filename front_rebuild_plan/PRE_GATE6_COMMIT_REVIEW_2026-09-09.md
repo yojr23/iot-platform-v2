@@ -1,5 +1,7 @@
 # Pre-Gate-6 commit review - 9 September 2026
 
+> **SUPERSEDED for status — see `front_rebuild_plan/STAGE_6_7_8_SESSION_EVIDENCE_2026-09-09.md` (working HEAD `faae3aa`).** Most blockers below are now fixed in the working tree: time semantics RESOLVED (`3ce38ac`), sensor realtime private/public by stored token (race fixed), `NewSensorReading` fail-closed, PAT `/broadcasting/auth` test, private-channel expectation corrected to `private-sensor.{id}`, Stage 6 graph boundary wired, Stage 7 backend + Stage 8.2 done. **Still open:** P0 `.env.host-backup` (push-hold), Stage 7 frontend + `/config/runtime`, unrun backend/MySQL evidence. This document is retained as the point-in-time review record only.
+
 **Reviewed range:** `dab105a..00b560c` on `refraccion` (mechanical removal of the tracked `.opencode` and virtual-environment trees excluded from application findings).
 
 **Method:** local source/diff review using the ponytail (minimalism/one owner), zero-hallucination (known/inferred/unknown), adversarial review, API-design, security-hardening, and verification disciplines. No external reviewer was installed or used.

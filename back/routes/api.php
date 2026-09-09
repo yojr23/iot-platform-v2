@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\InternalMetricsController;
 use App\Http\Controllers\Api\LabController as ApiLabController;
 use App\Http\Controllers\Api\MetricsController as ApiMetricsController;
 use App\Http\Controllers\Api\ProfileController as ApiProfileController;
+use App\Http\Controllers\Api\PublicGraphController;
 use App\Http\Controllers\Api\SensorTypeController as ApiSensorTypeController;
 use App\Http\Controllers\Api\UserRoleController as ApiUserRoleController;
 
@@ -26,6 +27,18 @@ Route::get('/config/public', [ApiConfigController::class, 'publicConfig'])->midd
 Route::get('/dashboard/public', [ApiDashboardController::class, 'publicData'])
     ->middleware('api.metrics')
     ->middleware('throttle:api-read');
+
+// PLAN.md Stage 6.0 — the only anonymous product-domain surface this stage adds: a minimal
+// public graph bootstrap plus a bounded, visibility-gated series read. Transitional routes above
+// (config/public, dashboard/public) stay reachable until their atomic removal step.
+Route::prefix('public/graph')->group(function () {
+    Route::get('/bootstrap', [PublicGraphController::class, 'bootstrap'])
+        ->middleware('api.metrics')
+        ->middleware('throttle:api-read');
+    Route::get('/sensors/{sensor}/series', [PublicGraphController::class, 'series'])
+        ->middleware('api.metrics')
+        ->middleware('throttle:api-read');
+});
 
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthApiController::class, 'login'])->middleware('throttle:auth-login');
@@ -63,9 +76,6 @@ Route::get('/sensors/{sensor}/latest-readings', [SensorApiController::class, 'la
     ->middleware('api.metrics')
     ->middleware('throttle:api-read');
 Route::get('/devices/{device}/sensors', [DeviceApiController::class, 'sensors'])
-    ->middleware('api.metrics')
-    ->middleware('throttle:api-read');
-Route::get('/alerts/active', [ApiAlertController::class, 'active'])
     ->middleware('api.metrics')
     ->middleware('throttle:api-read');
 
@@ -114,6 +124,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::prefix('alerts')->group(function () {
         Route::get('/', [ApiAlertController::class, 'index'])->middleware('throttle:api-read');
+        // PLAN.md Stage 7 / audit.md §12a: alerts are an authorized capability, not public/guest
+        // data. Moved from the top-level anonymous route into this auth:sanctum group — same
+        // controller action (`ApiAlertController::active`), same AlertService-backed query, only
+        // the audience changed. Kept alongside `/unresolved` (both literal segments must stay
+        // ordered before the `{alert}` wildcard route below).
+        Route::get('/active', [ApiAlertController::class, 'active'])->middleware('throttle:api-read');
         Route::get('/unresolved', [ApiAlertController::class, 'unresolved'])->middleware('throttle:api-read');
         Route::post('/resolve-all', [ApiAlertController::class, 'resolveAll'])->middleware('throttle:api-write');
         Route::get('/{alert}', [ApiAlertController::class, 'show'])->middleware('throttle:api-read');

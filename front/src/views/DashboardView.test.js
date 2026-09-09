@@ -12,7 +12,9 @@ const getPublicDashboardData = vi.fn(() => Promise.resolve({
     devices: []
   }
 }));
-const getPublicConfig = vi.fn(() => Promise.resolve({ data: { sensor_update_interval: 2000 } }));
+const getGraphBootstrap = vi.fn(() => Promise.resolve({
+  data: { version: 1, default_sensor_id: null, devices: [] }
+}));
 const getActiveAlerts = vi.fn(() => Promise.resolve({ data: { alerts: [], count: 0 } }));
 
 vi.mock('@/api/dashboard', () => ({
@@ -21,9 +23,8 @@ vi.mock('@/api/dashboard', () => ({
   updateDashboardPreferences: vi.fn()
 }));
 
-vi.mock('@/api/config', () => ({
-  getPublicConfig: (...args) => getPublicConfig(...args),
-  getRuntimeConfig: vi.fn()
+vi.mock('@/api/graph', () => ({
+  getGraphBootstrap: (...args) => getGraphBootstrap(...args)
 }));
 
 vi.mock('@/api/alerts', () => ({

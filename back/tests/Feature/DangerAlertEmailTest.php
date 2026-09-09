@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SendDangerAlertEmailJob;
 use App\Mail\DangerAlertMail;
 use App\Models\AlertRule;
 use App\Models\Device;
@@ -9,8 +10,10 @@ use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Models\SensorType;
 use App\Models\SystemSetting;
+use App\Services\Notifications\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class DangerAlertEmailTest extends TestCase
@@ -20,6 +23,7 @@ class DangerAlertEmailTest extends TestCase
     public function test_danger_alert_triggers_email_via_alert_observer(): void
     {
         Mail::fake();
+        Queue::fake();
 
         SystemSetting::set('mail_to', 'alerts@example.test');
         SystemSetting::set('mail_mailer', 'log');
@@ -56,12 +60,26 @@ class DangerAlertEmailTest extends TestCase
 
         $reading->checkForAlert();
 
+        // PLAN.md Stage 8.2: the alert-creation observer no longer calls Mail synchronously —
+        // it only queues SendDangerAlertEmailJob. Processing that job is what still sends.
+        Mail::assertNothingSent();
+
+        $dispatched = null;
+        Queue::assertPushed(SendDangerAlertEmailJob::class, function (SendDangerAlertEmailJob $job) use (&$dispatched) {
+            $dispatched = $job;
+
+            return true;
+        });
+
+        $dispatched->handle(app(NotificationService::class));
+
         Mail::assertSent(DangerAlertMail::class);
     }
 
     public function test_danger_alert_email_is_rate_limited_for_burst_events(): void
     {
         Mail::fake();
+        Queue::fake();
 
         SystemSetting::set('mail_to', 'alerts@example.test');
         SystemSetting::set('mail_mailer', 'log');
@@ -94,6 +112,21 @@ class DangerAlertEmailTest extends TestCase
             'sensor_id' => $sensor->id,
             'value' => 82,
         ]);
+
+        // Two triggering readings -> two queued jobs. Processing both (in dispatch order) must
+        // still only send once: the rate limit is enforced when the job runs, not at dispatch time.
+        $dispatchedJobs = [];
+        Queue::assertPushed(SendDangerAlertEmailJob::class, function (SendDangerAlertEmailJob $job) use (&$dispatchedJobs) {
+            $dispatchedJobs[] = $job;
+
+            return true;
+        });
+        $this->assertCount(2, $dispatchedJobs);
+
+        $notificationService = app(NotificationService::class);
+        foreach ($dispatchedJobs as $job) {
+            $job->handle($notificationService);
+        }
 
         Mail::assertSent(DangerAlertMail::class, 1);
     }

@@ -65,6 +65,26 @@ class BroadcastChannelAuthorizationTest extends TestCase
         $response->assertOk()->assertJsonStructure(['auth']);
     }
 
+    /**
+     * The real SPA authorizes private channels via a stored Sanctum PAT sent as
+     * `Authorization: Bearer <token>` (front/src/realtime/echo.js), not a session cookie.
+     * `actingAs()` above only proves the session-guard path; this proves the actual
+     * auth:sanctum token path works end to end through `/api/broadcasting/auth`.
+     */
+    public function test_sanctum_personal_access_token_can_authorize_a_private_channel(): void
+    {
+        $user = User::factory()->create();
+        $sensor = Sensor::factory()->create();
+        $token = $user->createToken('broadcast-test', ['read'])->plainTextToken;
+
+        $response = $this->withToken($token)->postJson('/api/broadcasting/auth', [
+            'channel_name' => 'private-sensor.'.$sensor->id,
+            'socket_id' => '1234.1234',
+        ]);
+
+        $response->assertOk()->assertJsonStructure(['auth']);
+    }
+
     public function test_missing_sensor_is_denied(): void
     {
         $user = User::factory()->create();

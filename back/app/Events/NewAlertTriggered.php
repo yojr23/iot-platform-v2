@@ -6,8 +6,8 @@ use App\Events\Concerns\HasEventEnvelope;
 use App\Events\Contracts\VersionedDomainEvent;
 use App\Models\Alert;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -27,8 +27,12 @@ class NewAlertTriggered implements ShouldBroadcastNow, VersionedDomainEvent
 
     public function broadcastOn()
     {
-        // Backward-compat channel name kept (PLAN.md 2.2/2.3) — public guest dashboard projection.
-        return new Channel('alerts');
+        // PLAN.md Stage 7 / audit.md §12a: alerts are an authorized capability, not public/guest
+        // data. Channel name kept (`alerts`, wire name `private-alerts`) for continuity with the
+        // pre-existing event/channel identity; only the transport moved from a public `Channel` to
+        // an authorization-enforced `PrivateChannel`, gated by routes/channels.php. Payload/event
+        // name unchanged.
+        return new PrivateChannel('alerts');
     }
 
     public function broadcastWith()

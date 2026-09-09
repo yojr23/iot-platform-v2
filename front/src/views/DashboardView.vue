@@ -25,8 +25,7 @@
 
       <SensorMonitorBoard
         class="mt-3"
-        :devices="devices"
-        :poll-interval="pollInterval"
+        :devices="graphDevices"
       />
 
       <div class="row g-3 mt-1">
@@ -49,8 +48,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 
-import { getPublicConfig } from '@/api/config';
 import { getPublicDashboardData } from '@/api/dashboard';
+import { getGraphBootstrap } from '@/api/graph';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
@@ -65,7 +64,12 @@ const loading = ref(false);
 const error = ref('');
 const summary = ref({});
 const devices = ref([]);
-const pollInterval = ref(2000);
+// PLAN.md Stage 6.0/6.2 — the monitor board's device/sensor catalog is now sourced from the
+// public graph bootstrap (public_monitoring_enabled sensors only), never from the transitional
+// `/dashboard/public` device list, which is not gated by the graph visibility boundary. `devices`
+// above stays the transitional dashboard-metrics device list used by DeviceStatusList /
+// RecentReadingsTable — unrelated to the graph feature and untouched by this cutover.
+const graphDevices = ref([]);
 const authStore = useAuthStore();
 
 const latestReadings = computed(() => summary.value.latest_readings || summary.value.latestReadings || []);
@@ -75,17 +79,16 @@ async function load() {
   error.value = '';
 
   try {
-    const [dashboardResponse, configResponse] = await Promise.all([
+    const [dashboardResponse, bootstrapResponse] = await Promise.all([
       getPublicDashboardData(),
-      getPublicConfig()
+      getGraphBootstrap()
     ]);
     const dashboardPayload = unwrapData(dashboardResponse) || {};
-    const configPayload = unwrapData(configResponse) || {};
+    const bootstrapPayload = unwrapData(bootstrapResponse) || {};
 
     summary.value = dashboardPayload;
     devices.value = Array.isArray(dashboardPayload.devices) ? dashboardPayload.devices : [];
-    const configuredInterval = Number(configPayload.sensor_update_interval || 2000);
-    pollInterval.value = Number.isFinite(configuredInterval) ? configuredInterval : 2000;
+    graphDevices.value = Array.isArray(bootstrapPayload.devices) ? bootstrapPayload.devices : [];
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las metricas del dashboard.');
   } finally {

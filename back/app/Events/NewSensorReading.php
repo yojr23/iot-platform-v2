@@ -20,13 +20,11 @@ class NewSensorReading implements ShouldBroadcastNow, VersionedDomainEvent
     public $reading;
 
     /**
-     * Pre-Stage-6 preflight (delivery-audience flags): both default to the exact pre-existing
-     * behavior of this event — public-only, single `Channel`, so `broadcastOn()` keeps returning
-     * a lone Channel object (not an array) for any caller that doesn't opt in, preserving
-     * `tests/Unit/EventEnvelopeTest.php`'s `->name` access on the un-flagged construction path.
-     * `DomainEventBroadcastConsumer` (the only real dispatch site) explicitly passes both flags
-     * true today; Stage 6 will instead compute `includePublicChannel` from
-     * `PublicGraphVisibility::isPublic()` at that same call site — no change needed here.
+     * Gate 6 fail-closed default (PublicGraphVisibility default FALSE): both audience flags
+     * default to false, so a bare `new NewSensorReading($reading)` broadcasts on NO channel
+     * (`broadcastOn()` returns `[]`). Every production dispatcher must opt in explicitly.
+     * `DomainEventBroadcastConsumer` (the only real dispatch site) already passes both flags
+     * true explicitly and is unaffected by this default change.
      */
     private bool $includePublicChannel;
     private bool $includePrivateChannel;
@@ -35,7 +33,7 @@ class NewSensorReading implements ShouldBroadcastNow, VersionedDomainEvent
         SensorReading $reading,
         ?string $correlationId = null,
         ?string $causationId = null,
-        bool $includePublicChannel = true,
+        bool $includePublicChannel = false,
         bool $includePrivateChannel = false,
     ) {
         $this->reading = $reading;

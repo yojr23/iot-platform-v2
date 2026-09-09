@@ -118,22 +118,12 @@
             </span>
           </div>
 
-          <BaseAlert
-            v-if="readErrorByMonitor[monitor.id]"
-            class="mt-3"
-            variant="warning"
-            :message="readErrorByMonitor[monitor.id]"
-          />
-
           <div class="monitor-chart">
-            <LoadingSpinner
-              v-if="loadingByMonitor[monitor.id]"
-              label="Cargando lecturas..."
+            <SensorReadingChart
+              v-bind="chartViewModel(monitor)"
+              :loading="loadingByMonitor[monitor.id]"
+              :error="readErrorByMonitor[monitor.id]"
             />
-            <div v-else-if="readingsFor(monitor).length === 0" class="monitor-empty">
-              Selecciona un sensor con lecturas para ver la grafica.
-            </div>
-            <Line v-else :data="chartData(monitor)" :options="chartOptions" />
           </div>
         </article>
       </div>
@@ -142,42 +132,44 @@
 </template>
 
 <script setup>
-import {
-  CategoryScale,
-  Chart as ChartJS,
-  Filler,
-  Legend,
-  LinearScale,
-  LineElement,
-  PointElement,
-  Tooltip
-} from 'chart.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Line } from 'vue-chartjs';
 
 import { getDashboardPreferences, updateDashboardPreferences } from '@/api/dashboard';
-import { getSensorLatestReadings } from '@/api/sensors';
+import { graphPointToReading } from '@/api/graph';
 import BaseAlert from '@/components/base/BaseAlert.vue';
-import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import SensorReadingChart from '@/components/charts/SensorReadingChart.vue';
+import { buildSensorChartViewModel } from '@/components/charts/sensorChartViewModel';
+import { RECOVERY_WINDOW_MS, useSensorRealtime } from '@/realtime/useSensorRealtime';
+import { useGraphSeriesQueryStore } from '@/stores/graphSeriesQuery';
+import { useSensorReadingsStore } from '@/stores/sensorReadings';
 import { useAuthStore } from '@/stores/auth';
-import { formatDate, formatNumber } from '@/utils/formatters';
+import { formatNumber } from '@/utils/formatters';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
+// PLAN.md Stage 6.2 — cutover from component-local polling to the shared live sensor
+// projection + historical graph query layer. This board is the guest-capable "Lab Blue" graph
+// surface (PLAN.md 6.0/6.2): it always queries the public graph bootstrap/series contract,
+// never an authenticated-only endpoint, regardless of whether the viewer happens to be logged
+// in — guest and authenticated visitors see the same graph workflow.
+//
+// Existing code reused: add/remove/move/select monitor behavior and the dashboard-preferences /
+// localStorage persistence below are unchanged from the pre-cutover version. The readings
+// merge/history/MAX_POINTS behavior itself moved verbatim to stores/sensorReadings.js (kept,
+// not rewritten) per the G0D ownership rule.
+// Deleted in this cutover (PLAN.md Stage 6, "Delete in the same cutover"): `pollTimer`,
+// `startPolling`/`stopPolling`, `refreshVisibleMonitors`, `refreshMonitor`, and the
+// `pollInterval` prop / browser interval configuration. No polling fallback remains.
 
 const props = defineProps({
   devices: {
     type: Array,
     default: () => []
-  },
-  pollInterval: {
-    type: Number,
-    default: 2000
   }
 });
 
-const MAX_POINTS = 60;
 const LOCAL_STORAGE_KEY = 'iot-platform-v2.dashboard_layout';
 const authStore = useAuthStore();
+const sensorReadingsStore = useSensorReadingsStore();
+const graphSeriesQueryStore = useGraphSeriesQueryStore();
 
 const mainMonitor = reactive({
   id: 'main',
@@ -185,48 +177,18 @@ const mainMonitor = reactive({
   sensor_id: ''
 });
 const monitors = ref([]);
-const readingsByMonitor = ref({});
 const loadingByMonitor = reactive({});
 const readErrorByMonitor = reactive({});
 const realtimeEnabled = ref(true);
 const restoring = ref(false);
 
-let pollTimer = null;
 let persistTimer = null;
+// monitor.id -> { realtime: ReturnType<useSensorRealtime>, sensorId }. Not reactive state —
+// mirrors channelRegistry.js's own module-scope bookkeeping convention; these are subscription
+// handles, not data to render.
+const realtimeHandles = new Map();
 
 const visibleMonitors = computed(() => [mainMonitor, ...monitors.value]);
-
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  interaction: {
-    mode: 'index',
-    intersect: false
-  },
-  plugins: {
-    legend: {
-      display: false
-    }
-  },
-  scales: {
-    x: {
-      ticks: {
-        maxRotation: 0,
-        autoSkip: true,
-        maxTicksLimit: 6
-      },
-      grid: {
-        display: false
-      }
-    },
-    y: {
-      beginAtZero: false,
-      grid: {
-        color: 'rgba(37, 99, 235, 0.1)'
-      }
-    }
-  }
-};
 
 function normalizeId(value) {
   return value === null || value === undefined ? '' : String(value);
@@ -265,116 +227,92 @@ function selectedSensorName(monitor) {
 }
 
 function readingsFor(monitor) {
-  return readingsByMonitor.value[monitor.id] || [];
+  return sensorReadingsStore.readingsFor(monitor.sensor_id);
 }
 
 function latestReading(monitor) {
-  const readings = readingsFor(monitor);
-
-  return readings[readings.length - 1] || null;
+  return sensorReadingsStore.latestFor(monitor.sensor_id);
 }
 
-function normalizeReading(reading) {
-  const timestamp = reading.reading_time || reading.created_at || reading.time;
-
-  return {
-    id: reading.id ?? `${timestamp}-${reading.value}`,
-    value: Number(reading.value),
-    reading_time: timestamp
-  };
+function chartViewModel(monitor) {
+  // sensorReadingsStore keeps readings chronological ascending; buildSensorChartViewModel
+  // expects newest-first (it reverses internally), so hand it a reversed copy.
+  const readings = [...readingsFor(monitor)].reverse();
+  return buildSensorChartViewModel(readings, { unit: selectedSensor(monitor)?.unit || '' });
 }
 
-function normalizeReadings(readings) {
-  return (Array.isArray(readings) ? readings : [])
-    .map(normalizeReading)
-    .filter((reading) => Number.isFinite(reading.value) && reading.reading_time)
-    .sort((a, b) => new Date(a.reading_time).getTime() - new Date(b.reading_time).getTime())
-    .slice(-MAX_POINTS);
+function teardownRealtime(monitorId) {
+  const handle = realtimeHandles.get(monitorId);
+
+  if (handle) {
+    handle.realtime.unsubscribeSensor();
+    realtimeHandles.delete(monitorId);
+  }
 }
 
-function setReadings(monitorId, readings) {
-  readingsByMonitor.value = {
-    ...readingsByMonitor.value,
-    [monitorId]: normalizeReadings(readings)
-  };
+function teardownAllRealtime() {
+  [...realtimeHandles.keys()].forEach(teardownRealtime);
 }
 
-function mergeReadings(monitorId, readings) {
-  const current = readingsByMonitor.value[monitorId] || [];
-  const byId = new Map(current.map((reading) => [reading.id, reading]));
+function syncRealtime(monitor) {
+  const sensorId = monitor.sensor_id;
+  const existing = realtimeHandles.get(monitor.id);
 
-  normalizeReadings(readings).forEach((reading) => {
-    byId.set(reading.id, reading);
-  });
+  if (existing && existing.sensorId !== sensorId) {
+    teardownRealtime(monitor.id);
+  }
 
-  setReadings(monitorId, Array.from(byId.values()));
+  if (!sensorId || !realtimeEnabled.value) {
+    return;
+  }
+
+  if (!realtimeHandles.has(monitor.id)) {
+    const realtime = useSensorRealtime(sensorId, (reading) => {
+      sensorReadingsStore.mergeReading(sensorId, reading);
+    });
+    realtimeHandles.set(monitor.id, { realtime, sensorId });
+  }
+
+  realtimeHandles.get(monitor.id).realtime.subscribeSensor();
 }
 
-function chartData(monitor) {
-  const sensor = selectedSensor(monitor);
-  const color = monitor.id === 'main' ? '#2563eb' : '#0ea5e9';
-  const readings = readingsFor(monitor);
+async function loadHistory(monitor) {
+  const sensorId = monitor.sensor_id;
 
-  return {
-    labels: readings.map((reading) => formatDate(reading.reading_time)),
-    datasets: [
-      {
-        label: sensor?.name || 'Valor',
-        data: readings.map((reading) => reading.value),
-        borderColor: color,
-        backgroundColor: monitor.id === 'main' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(14, 165, 233, 0.16)',
-        pointBackgroundColor: '#ffffff',
-        pointBorderColor: color,
-        pointRadius: 3,
-        tension: 0.32,
-        fill: true
-      }
-    ]
-  };
-}
-
-async function loadReadings(monitor, limit = MAX_POINTS) {
-  if (!monitor.sensor_id) {
-    setReadings(monitor.id, []);
+  if (!sensorId) {
     return;
   }
 
   loadingByMonitor[monitor.id] = true;
   readErrorByMonitor[monitor.id] = '';
 
-  try {
-    const response = await getSensorLatestReadings(monitor.sensor_id, { limit });
-    setReadings(monitor.id, response.data || []);
-  } catch {
-    readErrorByMonitor[monitor.id] = 'No se pudieron cargar las lecturas del sensor.';
-  } finally {
-    loadingByMonitor[monitor.id] = false;
-  }
-}
+  const to = new Date();
+  const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
 
-async function refreshMonitor(monitor) {
-  if (!monitor.sensor_id) {
-    return;
+  // Always the public graph-series contract: this board is the guest-capable graph surface
+  // (PLAN.md 6.0/6.2), never a restricted/private sensor.
+  await graphSeriesQueryStore.fetchWindow(sensorId, { scope: 'public', from, to });
+
+  const outcome = graphSeriesQueryStore.resultFor(sensorId);
+
+  if (outcome?.error) {
+    readErrorByMonitor[monitor.id] = outcome.error;
+  } else if (outcome?.points) {
+    sensorReadingsStore.hydrate(sensorId, outcome.points.map((point) => graphPointToReading(point, sensorId)));
   }
 
-  try {
-    const response = await getSensorLatestReadings(monitor.sensor_id, { limit: 1 });
-    mergeReadings(monitor.id, response.data || []);
-    readErrorByMonitor[monitor.id] = '';
-  } catch {
-    readErrorByMonitor[monitor.id] = 'No se pudo actualizar la ultima lectura.';
-  }
+  loadingByMonitor[monitor.id] = false;
 }
 
 function handleDeviceChange(monitor) {
   const firstSensor = availableSensors(monitor)[0];
   monitor.sensor_id = firstSensor ? normalizeId(firstSensor.id) : '';
-  setReadings(monitor.id, []);
   handleSensorChange(monitor);
 }
 
 async function handleSensorChange(monitor) {
-  await loadReadings(monitor);
+  await loadHistory(monitor);
+  syncRealtime(monitor);
   schedulePersist();
 }
 
@@ -388,16 +326,16 @@ function addMonitor() {
   });
 
   nextTick(async () => {
-    await loadReadings(monitors.value[monitors.value.length - 1]);
+    const monitor = monitors.value[monitors.value.length - 1];
+    await loadHistory(monitor);
+    syncRealtime(monitor);
     schedulePersist();
   });
 }
 
 function removeMonitor(monitorId) {
+  teardownRealtime(monitorId);
   monitors.value = monitors.value.filter((monitor) => monitor.id !== monitorId);
-  const nextReadings = { ...readingsByMonitor.value };
-  delete nextReadings[monitorId];
-  readingsByMonitor.value = nextReadings;
   schedulePersist();
 }
 
@@ -517,42 +455,25 @@ async function restoreLayout() {
       }))
     : [];
 
-  await Promise.all(visibleMonitors.value.map((monitor) => loadReadings(monitor)));
+  await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
+  visibleMonitors.value.forEach(syncRealtime);
   restoring.value = false;
   schedulePersist();
 }
 
-async function refreshVisibleMonitors() {
-  await Promise.all(visibleMonitors.value.map(refreshMonitor));
-}
-
-function startPolling() {
-  stopPolling();
-
-  if (!realtimeEnabled.value) {
-    return;
+watch(realtimeEnabled, (enabled) => {
+  if (enabled) {
+    visibleMonitors.value.forEach(syncRealtime);
+  } else {
+    teardownAllRealtime();
   }
-
-  pollTimer = window.setInterval(refreshVisibleMonitors, Math.max(1000, props.pollInterval));
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    window.clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
-
-onMounted(async () => {
-  await restoreLayout();
-  startPolling();
 });
+watch(() => props.devices, restoreLayout);
+
+onMounted(restoreLayout);
 
 onBeforeUnmount(() => {
-  stopPolling();
+  teardownAllRealtime();
   window.clearTimeout(persistTimer);
 });
-
-watch(realtimeEnabled, startPolling);
-watch(() => props.devices, restoreLayout);
 </script>

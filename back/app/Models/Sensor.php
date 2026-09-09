@@ -13,6 +13,12 @@ class Sensor extends Model
         'device_id',
         'sensor_type_id',
         'status',
+        'public_monitoring_enabled',
+    ];
+
+    protected $casts = [
+        'status' => 'boolean',
+        'public_monitoring_enabled' => 'boolean',
     ];
 
     // Relación con el dispositivo

@@ -86,6 +86,15 @@ class NotificationService
         $emailSent = Alert::sendDangerAlertEmail($alertDetails);
 
         if (! $emailSent) {
+            // PLAN.md Stage 8.2 / audit.md §13: the rate-limit key above is a "reservation", not a
+            // record of an actual send. Acquiring it before the send meant a failed/unavailable
+            // SMTP attempt permanently occupied the window and suppressed a legitimate retry until
+            // it expired. Release it on failure so the next triggering alert (or a queued retry) is
+            // still eligible to send within the same window.
+            if ($rateLimitSeconds > 0) {
+                Cache::forget($rateLimitKey);
+            }
+
             Log::warning('NotificationService: fallo de envío de correo danger', [
                 'alert_id' => $alert->id,
             ]);

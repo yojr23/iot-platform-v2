@@ -20,8 +20,8 @@ export function deleteSensor(sensorId) {
   return apiClient.delete(`/sensors/${sensorId}`);
 }
 
-export function getSensorLatestReadings(sensorId, params = {}) {
-  return apiClient.get(`/sensors/${sensorId}/latest-readings`, { params });
+export function getSensorLatestReadings(sensorId, { signal, ...params } = {}) {
+  return apiClient.get(`/sensors/${sensorId}/latest-readings`, { params, signal });
 }
 
 export function getSensorReadings(sensorId, params = {}) {

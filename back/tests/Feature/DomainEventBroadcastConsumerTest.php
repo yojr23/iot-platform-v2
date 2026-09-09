@@ -98,9 +98,13 @@ class DomainEventBroadcastConsumerTest extends TestCase
         ]);
     }
 
-    private function sensorReadingOutbox(): DomainEventOutbox
+    private function sensorReadingOutbox(?bool $publicMonitoringEnabled = null): DomainEventOutbox
     {
-        $reading = SensorReading::factory()->create();
+        $sensor = $publicMonitoringEnabled === null
+            ? Sensor::factory()->create()
+            : Sensor::factory()->create(['public_monitoring_enabled' => $publicMonitoringEnabled]);
+
+        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id]);
 
         return DomainEventOutbox::factory()->create([
             'event_type' => 'sensor.reading.created',
@@ -210,16 +214,18 @@ class DomainEventBroadcastConsumerTest extends TestCase
     }
 
     /**
-     * Pre-Stage-6 preflight: the real dispatch site (this consumer) must opt in to both the
-     * pre-existing public channel and the new authenticated private channel, so a restricted
-     * sensor's authenticated viewers already have realtime before Stage 6 suppresses the public
-     * one for them.
+     * Stage 6.0 update (was pre-Stage-6 preflight, hardcoded `includePublicChannel: true`): the
+     * real dispatch site now opts into the public channel only via
+     * `PublicGraphVisibility::isPublic()`. For an explicitly public sensor both the public and the
+     * authenticated private channel are still populated — unchanged end result for this case, now
+     * policy-driven instead of a literal `true`. The restricted-sensor case (public channel
+     * suppressed) is covered by `test_restricted_sensor_fact_is_acked_without_public_reading_event`.
      */
     public function test_sensor_reading_created_is_broadcast_on_both_public_and_private_channels(): void
     {
         Event::fake([NewSensorReading::class]);
 
-        $outbox = $this->sensorReadingOutbox();
+        $outbox = $this->sensorReadingOutbox(publicMonitoringEnabled: true);
         $this->xadd($outbox->id, 'sensor.reading.created');
 
         $this->consumer()->runOnce('worker-A', 10, 100);
@@ -243,10 +249,9 @@ class DomainEventBroadcastConsumerTest extends TestCase
     }
 
     /**
-     * NewSensorReading::broadcastOn() audience flags, exercised directly (no Redis needed): the
-     * un-flagged construction path stays public-only/single-Channel (backward compat with
-     * tests/Unit/EventEnvelopeTest.php's `->name` access), and each flag combination produces the
-     * expected channel set.
+     * NewSensorReading::broadcastOn() audience flags, exercised directly (no Redis needed):
+     * Gate 6 fail-closed default — the un-flagged construction path broadcasts on NO channel —
+     * and each explicit flag combination produces the expected channel set.
      */
     public function test_new_sensor_reading_broadcast_on_honors_audience_flags(): void
     {
@@ -254,12 +259,9 @@ class DomainEventBroadcastConsumerTest extends TestCase
         $sensor = Sensor::factory()->create(['sensor_type_id' => $sensorType->id]);
         $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id]);
 
-        // Default (no flags passed): unchanged current behavior — single public Channel object.
+        // Default (no flags passed): fail-closed — no channels at all.
         $default = new NewSensorReading($reading);
-        $channel = $default->broadcastOn();
-        $this->assertInstanceOf(Channel::class, $channel);
-        $this->assertNotInstanceOf(PrivateChannel::class, $channel);
-        $this->assertSame('sensor.'.$sensor->id, $channel->name);
+        $this->assertSame([], $default->broadcastOn());
 
         // Public-only, explicit.
         $publicOnly = new NewSensorReading($reading, includePublicChannel: true, includePrivateChannel: false);
@@ -278,6 +280,60 @@ class DomainEventBroadcastConsumerTest extends TestCase
         $channels = $both->broadcastOn();
         $this->assertIsArray($channels);
         $this->assertCount(2, $channels);
+    }
+
+    /**
+     * PLAN.md Stage 6.0 Task 4: the dispatch site now asks `PublicGraphVisibility` instead of
+     * hardcoding `includePublicChannel: true`. An explicitly public sensor's fact is delivered on
+     * both channels, unchanged from pre-Stage-6 behavior.
+     */
+    public function test_explicitly_public_sensor_reading_is_broadcast_on_public_and_private_channels(): void
+    {
+        Event::fake([NewSensorReading::class]);
+
+        $outbox = $this->sensorReadingOutbox(publicMonitoringEnabled: true);
+        $this->xadd($outbox->id, 'sensor.reading.created');
+
+        $stats = $this->consumer()->runOnce('worker-A', 10, 100);
+
+        $this->assertSame(1, $stats['acked']);
+        Event::assertDispatched(NewSensorReading::class, function (NewSensorReading $event) {
+            $channels = $event->broadcastOn();
+            $this->assertIsArray($channels);
+            $this->assertCount(2, $channels);
+
+            $public = array_values(array_filter($channels, fn ($c) => $c instanceof Channel && ! $c instanceof PrivateChannel));
+            $this->assertCount(1, $public);
+
+            return true;
+        });
+        $this->assertNotNull($outbox->fresh()->delivered_at);
+    }
+
+    /**
+     * PLAN.md Stage 6.0 Task 4: a restricted sensor's fact is still a successful terminal
+     * delivery outcome (acked, `delivered_at` set) but never reaches the public channel. The
+     * private channel keeps working unchanged for authorized viewers.
+     */
+    public function test_restricted_sensor_fact_is_acked_without_public_reading_event(): void
+    {
+        Event::fake([NewSensorReading::class]);
+
+        $outbox = $this->sensorReadingOutbox(publicMonitoringEnabled: false);
+        $this->xadd($outbox->id, 'sensor.reading.created');
+
+        $stats = $this->consumer()->runOnce('worker-A', 10, 100);
+
+        $this->assertSame(1, $stats['acked']);
+        Event::assertDispatched(NewSensorReading::class, function (NewSensorReading $event) {
+            $channels = $event->broadcastOn();
+            $this->assertIsArray($channels);
+            $this->assertCount(1, $channels);
+            $this->assertInstanceOf(PrivateChannel::class, $channels[0]);
+
+            return true;
+        });
+        $this->assertNotNull($outbox->fresh()->delivered_at);
     }
 
     public function test_already_delivered_outbox_row_is_skipped_without_rebroadcast(): void

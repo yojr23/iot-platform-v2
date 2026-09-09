@@ -10,6 +10,7 @@ use App\Models\Device;
 use App\Models\DomainEventOutbox;
 use App\Models\SensorReading;
 use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
+use App\Services\Monitoring\PublicGraphVisibility;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -47,6 +48,7 @@ class DomainEventBroadcastConsumer
         private string $stream,
         private string $group,
         private string $deadLetterStream,
+        private PublicGraphVisibility $publicVisibility = new PublicGraphVisibility(),
     ) {
     }
 
@@ -292,15 +294,16 @@ class DomainEventBroadcastConsumer
             return;
         }
 
-        // Pre-Stage-6 preflight: this is the real dispatch site, so the audience decision lives
-        // here (not inside the event). Both true today = current public behavior unchanged, plus
-        // the new authenticated private channel already delivering. Stage 6 plugs in here: replace
-        // the public flag literal with `PublicGraphVisibility::isPublic($reading->sensor)` once that
-        // service exists (PLAN.md 6.0) — restricted sensors then stop getting the public broadcast
-        // while this private channel keeps working unchanged.
+        // Stage 6.0: this is the real dispatch site, so the audience decision lives here (not
+        // inside the event, which stays fail-closed and query-free). The public flag is now the
+        // explicit, fail-closed `PublicGraphVisibility::isPublic()` decision instead of a literal
+        // `true` — a restricted sensor's queued fact still gets acked/delivered (terminal success),
+        // it just never reaches the public channel. The private channel is unaffected: authorized
+        // viewers of a restricted sensor keep realtime via the private `sensor.{id}` channel added
+        // in preflight.
         event(new NewSensorReading(
             $reading,
-            includePublicChannel: true,
+            includePublicChannel: $this->publicVisibility->isPublic($reading->sensor),
             includePrivateChannel: true,
         ));
     }

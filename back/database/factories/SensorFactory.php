@@ -21,6 +21,7 @@ class SensorFactory extends Factory
             'sensor_type_id' => \App\Models\SensorType::factory(),
             'name' => $this->faker->unique()->word . ' Sensor', // Generar nombres únicos
             'status' => $this->faker->boolean(90),
+            'public_monitoring_enabled' => false,
         ];
     }
 }
