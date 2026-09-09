@@ -11,6 +11,7 @@ import hashlib
 import re
 import unicodedata
 from datetime import datetime
+from pathlib import Path
 
 import requests
 from requests.exceptions import ConnectionError, RequestException, Timeout
@@ -18,6 +19,31 @@ try:
     import paho.mqtt.publish as mqtt_publish
 except Exception:  # noqa: BLE001
     mqtt_publish = None
+
+
+def load_local_env(env_path=None):
+    """Load simulator settings from a local .env without overriding the shell."""
+    path = Path(env_path) if env_path is not None else Path(__file__).resolve().with_name(".env")
+
+    if not path.is_file():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export "):].strip()
+        if not separator or not (key == "API_KEY" or key.startswith(("IOT_", "MQTT_"))):
+            continue
+
+        os.environ.setdefault(key, value.strip().strip('"').strip("'"))
+
+
+load_local_env()
 
 # Endpoint para obtener sensores y publicar payloads MQTT
 BASE_URL = os.getenv("IOT_BASE_URL", "http://127.0.0.1:8000")
@@ -601,4 +627,3 @@ if __name__ == "__main__":
 
         for worker in device_workers.values():
             worker.join(timeout=3.0)
-

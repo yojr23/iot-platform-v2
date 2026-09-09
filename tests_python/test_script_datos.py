@@ -1,5 +1,7 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 import script_datos
@@ -15,6 +17,15 @@ class ScriptDatosTest(unittest.TestCase):
 
         with patch.dict('os.environ', {'IOT_API_KEY': '', 'API_KEY': 'legacy-key'}, clear=False):
             self.assertEqual('legacy-key', script_datos.get_api_key())
+
+    def test_load_local_env_reads_a_missing_simulator_api_key(self):
+        with TemporaryDirectory() as temporary_directory, patch.dict('os.environ', {}, clear=True):
+            env_path = Path(temporary_directory) / '.env'
+            env_path.write_text('API_KEY=simulator-secret\n', encoding='utf-8')
+
+            script_datos.load_local_env(env_path)
+
+            self.assertEqual('simulator-secret', script_datos.get_api_key())
 
     def test_require_api_key_exits_when_no_key_available(self):
         with patch.object(script_datos, 'DEFAULT_API_KEY', ''), patch.dict('os.environ', {'IOT_API_KEY': '', 'API_KEY': ''}, clear=False), patch('builtins.print'):
