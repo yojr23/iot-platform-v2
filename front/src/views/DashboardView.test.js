@@ -103,6 +103,8 @@ describe('DashboardView guest alert containment', () => {
     const { el, unmount } = await mountDashboardView();
 
     expect(el.textContent).not.toContain('Alertas activas');
+    expect(el.textContent).not.toContain('dispositivos y alertas activas');
+    expect(el.textContent).not.toContain('Estado:');
     expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
 

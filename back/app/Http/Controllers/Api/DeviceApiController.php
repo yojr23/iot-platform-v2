@@ -4,8 +4,10 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DeviceResource;
+use App\Http\Resources\DeviceStatusSnapshotResource;
 use App\Http\Resources\SensorResource;
 use App\Models\Device;
+use App\Models\DomainEventOutbox;
 use App\Services\DeviceService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -71,6 +73,39 @@ class DeviceApiController extends Controller
                 'message' => 'Se produjo un error inesperado consultando dispositivos.',
             ], 500);
         }
+    }
+
+    /**
+     * Bounded cursor snapshot for lifecycle recovery. The latest durable outbox ID is the
+     * authoritative sequence watermark, so delayed broadcasts cannot regress recovered state.
+     */
+    public function statusSnapshot(Request $request)
+    {
+        $perPage = max(1, min((int) $request->query('per_page', 100), 100));
+        $cursor = max(0, (int) $request->query('cursor', 0));
+
+        $latestStatusEvents = DomainEventOutbox::query()
+            ->selectRaw('aggregate_id, MAX(id) as event_sequence')
+            ->where('event_type', 'device.status.changed')
+            ->where('aggregate_type', 'device')
+            ->groupBy('aggregate_id');
+
+        $devices = Device::query()
+            ->leftJoinSub($latestStatusEvents, 'latest_status_events', function ($join): void {
+                $join->on('devices.id', '=', 'latest_status_events.aggregate_id');
+            })
+            ->where('devices.id', '>', $cursor)
+            ->orderBy('devices.id')
+            ->limit($perPage + 1)
+            ->get(['devices.*', 'latest_status_events.event_sequence']);
+
+        $hasMore = $devices->count() > $perPage;
+        $items = $devices->take($perPage)->values();
+
+        return response()->json([
+            'data' => DeviceStatusSnapshotResource::collection($items)->resolve($request),
+            'next_cursor' => $hasMore ? $items->last()?->id : null,
+        ]);
     }
 
     public function show(Request $request, Device $device)

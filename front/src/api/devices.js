@@ -4,6 +4,10 @@ export function getDevices(params = {}) {
   return apiClient.get('/devices', { params });
 }
 
+export function getDeviceStatusSnapshot(params = {}) {
+  return apiClient.get('/devices/status-snapshot', { params });
+}
+
 export function getDevice(deviceId) {
   return apiClient.get(`/devices/${deviceId}`);
 }

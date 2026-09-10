@@ -8,12 +8,13 @@
 
     <div v-else class="table-responsive">
       <table class="table table-sm align-middle mb-0">
+        <caption class="visually-hidden">Ultimas lecturas de sensores</caption>
         <thead>
           <tr>
-            <th>Sensor</th>
-            <th>Dispositivo</th>
-            <th>Valor</th>
-            <th>Fecha</th>
+            <th scope="col">Sensor</th>
+            <th scope="col">Dispositivo</th>
+            <th scope="col">Valor</th>
+            <th scope="col">Fecha</th>
           </tr>
         </thead>
         <tbody>

@@ -10,12 +10,13 @@
       </div>
 
       <div class="monitor-toolbar__actions">
-        <div class="form-check form-switch mb-0">
+        <div class="form-check form-switch mb-0" style="min-height: 44px; display: flex; align-items: center;">
           <input
             id="dashboardRealtimeToggle"
             v-model="realtimeEnabled"
             class="form-check-input"
             type="checkbox"
+            role="switch"
           />
           <label class="form-check-label" for="dashboardRealtimeToggle">Tiempo real</label>
         </div>
@@ -343,9 +344,10 @@ async function restoreLayout() {
   await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
 }
 
-watch(realtimeEnabled, (enabled) => {
+watch(realtimeEnabled, async (enabled) => {
   if (enabled) {
     visibleMonitors.value.forEach(syncRealtime);
+    await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
   } else {
     teardownAllRealtime();
   }

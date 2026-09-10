@@ -56,7 +56,8 @@ class DeviceService
     public function changeStatus(Device $device, bool $newStatus): Device
     {
         DB::transaction(function () use ($device, $newStatus): void {
-            $previousStatus = (bool) $device->status;
+            $lockedDevice = Device::query()->lockForUpdate()->findOrFail($device->id);
+            $previousStatus = (bool) $lockedDevice->status;
 
             if ($previousStatus === $newStatus) {
                 return;
@@ -64,12 +65,12 @@ class DeviceService
 
             $changedAt = now();
 
-            $device->update([
+            $lockedDevice->update([
                 'status' => $newStatus,
                 'is_active' => $newStatus,
             ]);
 
-            $device->statusLogs()->create([
+            $lockedDevice->statusLogs()->create([
                 'status' => $newStatus,
                 'changed_at' => $changedAt,
             ]);
@@ -77,10 +78,10 @@ class DeviceService
             // Gate 8: capture the fact as an immutable payload of scalars at write time — the
             // consumer must never re-read the (mutable, possibly already-changed-again) Device row
             // to learn what this particular transition was.
-            $this->recorderInstance()->record('device.status.changed', 'device', $device->id, [
-                'device_id' => $device->id,
-                'status' => (bool) $device->status,
-                'is_active' => (bool) $device->is_active,
+            $this->recorderInstance()->record('device.status.changed', 'device', $lockedDevice->id, [
+                'device_id' => $lockedDevice->id,
+                'status' => (bool) $lockedDevice->status,
+                'is_active' => (bool) $lockedDevice->is_active,
                 'changed_at' => $changedAt->toIso8601String(),
             ]);
         });

@@ -102,6 +102,22 @@ describe('SensorMonitorBoard polling removal', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('refetches history when realtime is re-enabled so the missed window is repaired', async () => {
+    const { el, unmount } = await mountBoard();
+    fetchWindow.mockClear();
+
+    const toggle = el.querySelector('#dashboardRealtimeToggle');
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    await nextTick();
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(fetchWindow).toHaveBeenCalledWith('10', expect.objectContaining({ scope: 'public' }));
+    unmount();
+  });
+
   it('uses the extracted MonitorCard selection event to load the first sensor of the selected device', async () => {
     const { el, unmount } = await mountBoard();
     fetchWindow.mockClear();

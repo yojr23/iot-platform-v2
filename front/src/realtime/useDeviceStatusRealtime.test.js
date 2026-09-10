@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 
 const connectionWatchers = new Set();
 const resyncWatchers = new Set();
-const getDevices = vi.fn();
+const getDeviceStatusSnapshot = vi.fn();
 
 const echoMock = vi.hoisted(() => {
   const makeChannel = () => ({ listen: vi.fn(), stopListening: vi.fn() });
@@ -30,7 +30,7 @@ vi.mock('./echo', () => ({
 }));
 
 vi.mock('@/api/devices', () => ({
-  getDevices: (...args) => getDevices(...args),
+  getDeviceStatusSnapshot: (...args) => getDeviceStatusSnapshot(...args),
 }));
 
 function fireResync(reason) {
@@ -52,8 +52,8 @@ describe('device status realtime adapter', () => {
     echoMock.echo.leaveChannel.mockClear();
     echoMock.privateChannel.listen.mockClear();
     echoMock.privateChannel.stopListening.mockClear();
-    getDevices.mockReset();
-    getDevices.mockResolvedValue({ data: [] });
+    getDeviceStatusSnapshot.mockReset();
+    getDeviceStatusSnapshot.mockResolvedValue({ data: { data: [], next_cursor: null } });
     setActivePinia(createPinia());
   });
 
@@ -69,7 +69,7 @@ describe('device status realtime adapter', () => {
 
     expect(subscribed).toBe(false);
     expect(echoMock.echo.private).not.toHaveBeenCalled();
-    expect(getDevices).not.toHaveBeenCalled();
+    expect(getDeviceStatusSnapshot).not.toHaveBeenCalled();
   });
 
   it('subscribes on the private device-status channel with ref-count 1, released on unsubscribe', async () => {
@@ -91,7 +91,7 @@ describe('device status realtime adapter', () => {
 
   it('buffers a live event that arrives during the in-flight snapshot and applies it after', async () => {
     let resolveSnapshot;
-    getDevices.mockImplementation(() => new Promise((resolve) => {
+    getDeviceStatusSnapshot.mockImplementation(() => new Promise((resolve) => {
       resolveSnapshot = resolve;
     }));
 
@@ -102,7 +102,7 @@ describe('device status realtime adapter', () => {
     const store = useDeviceStatusesStore();
 
     subscribeDeviceStatus();
-    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledOnce());
 
     // The device metadata snapshot for device 1 is still "active" while a live event
     // already reports it went inactive — the race this buffer must survive.
@@ -113,7 +113,7 @@ describe('device status realtime adapter', () => {
     // Not lost, but not applied yet either (snapshot still in flight).
     expect(store.statusFor(1)).toBeNull();
 
-    resolveSnapshot({ data: [{ id: 1, status: true, is_active: true }] });
+    resolveSnapshot({ data: { data: [{ device_id: 1, status: true, is_active: true, event_sequence: 0 }], next_cursor: null } });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(store.statusFor(1)).toMatchObject({ status: false, is_active: false, source: 'realtime' });
@@ -121,7 +121,7 @@ describe('device status realtime adapter', () => {
 
   it('coalesces overlapping recovery requests and applies the newest authoritative recovery snapshot', async () => {
     const snapshots = [];
-    getDevices.mockImplementation(() => new Promise((resolve) => snapshots.push(resolve)));
+    getDeviceStatusSnapshot.mockImplementation(() => new Promise((resolve) => snapshots.push(resolve)));
 
     const { subscribeDeviceStatus, DEVICE_STATUS_EVENT } = await import('./useDeviceStatusRealtime');
     const { useAuthStore } = await import('@/stores/auth');
@@ -130,15 +130,15 @@ describe('device status realtime adapter', () => {
     const store = useDeviceStatusesStore();
 
     subscribeDeviceStatus();
-    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledOnce());
     fireResync('reconnect');
 
     const listenCall = echoMock.privateChannel.listen.mock.calls.find(([event]) => event === DEVICE_STATUS_EVENT);
     listenCall[1]({ device_id: 8, event_sequence: 9, status: false, is_active: false });
 
-    snapshots[0]({ data: [{ id: 8, status: true, is_active: true }] });
-    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledTimes(2));
-    snapshots[1]({ data: [{ id: 8, status: true, is_active: true }] });
+    snapshots[0]({ data: { data: [{ device_id: 8, status: true, is_active: true, event_sequence: 9 }], next_cursor: null } });
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledTimes(2));
+    snapshots[1]({ data: { data: [{ device_id: 8, status: true, is_active: true, event_sequence: 9 }], next_cursor: null } });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(store.statusFor(8)).toMatchObject({
@@ -157,7 +157,8 @@ describe('device status realtime adapter', () => {
     const store = useDeviceStatusesStore();
 
     subscribeDeviceStatus();
-    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const listenCall = echoMock.privateChannel.listen.mock.calls.find(([event]) => event === DEVICE_STATUS_EVENT);
     const deliver = listenCall[1];
@@ -176,21 +177,40 @@ describe('device status realtime adapter', () => {
     const store = useDeviceStatusesStore();
 
     subscribeDeviceStatus();
-    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledOnce());
     await new Promise((resolve) => setTimeout(resolve, 0));
     store.applyStatusEvent({ device_id: 4, event_sequence: 12, status: true, is_active: true });
 
-    getDevices.mockResolvedValueOnce({ data: [{ id: 4, status: false, is_active: false }] });
+    getDeviceStatusSnapshot.mockResolvedValueOnce({ data: { data: [{ device_id: 4, status: false, is_active: false, event_sequence: 13 }], next_cursor: null } });
     fireResync('reconnect');
-    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledTimes(2));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(store.statusFor(4)).toMatchObject({
       status: false,
       is_active: false,
-      event_sequence: 12,
+      event_sequence: 13,
       source: 'recovery'
     });
+  });
+
+  it('reads every cursor page before applying the authoritative recovery snapshot', async () => {
+    getDeviceStatusSnapshot
+      .mockResolvedValueOnce({ data: { data: [{ device_id: 1, status: true, is_active: true, event_sequence: 4 }], next_cursor: 1 } })
+      .mockResolvedValueOnce({ data: { data: [{ device_id: 2, status: false, is_active: false, event_sequence: 7 }], next_cursor: null } });
+    const { subscribeDeviceStatus } = await import('./useDeviceStatusRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useDeviceStatusesStore } = await import('@/stores/deviceStatuses');
+    authenticate(useAuthStore());
+    const store = useDeviceStatusesStore();
+
+    subscribeDeviceStatus();
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledTimes(2));
+
+    expect(getDeviceStatusSnapshot).toHaveBeenNthCalledWith(1, { per_page: 100 });
+    expect(getDeviceStatusSnapshot).toHaveBeenNthCalledWith(2, { per_page: 100, cursor: 1 });
+    expect(store.statusFor(1)).toMatchObject({ event_sequence: 4, source: 'recovery' });
+    expect(store.statusFor(2)).toMatchObject({ event_sequence: 7, source: 'recovery' });
   });
 
   it('unsubscribes and clears the projection on auth loss', async () => {
@@ -203,7 +223,7 @@ describe('device status realtime adapter', () => {
     const store = useDeviceStatusesStore();
 
     subscribeDeviceStatus();
-    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledOnce());
     store.applyStatusEvent({ device_id: 3, event_sequence: 1, status: true, is_active: true });
     expect(store.statusFor(3)).not.toBeNull();
 

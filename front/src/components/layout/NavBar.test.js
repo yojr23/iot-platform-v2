@@ -19,15 +19,21 @@ vi.mock('@/api/alerts', () => ({
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function mountNavBar() {
+async function mountNavBar({ authenticated = false } = {}) {
   const { default: NavBar } = await import('./NavBar.vue');
   const el = document.createElement('div');
   const app = createApp(NavBar);
   app.component('RouterLink', { template: '<a><slot /></a>' });
+  if (authenticated) {
+    const { useAuthStore } = await import('@/stores/auth');
+    const authStore = useAuthStore();
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test User' };
+  }
   app.mount(el);
   await nextTick();
   await flush();
-  return () => app.unmount();
+  return { el, unmount: () => app.unmount() };
 }
 
 describe('NavBar guest vs authenticated alert badge refresh', () => {
@@ -37,24 +43,22 @@ describe('NavBar guest vs authenticated alert badge refresh', () => {
   });
 
   it('makes no alert API call for a guest (unauthenticated) mount', async () => {
-    const unmount = await mountNavBar();
+    const { el, unmount } = await mountNavBar();
 
     expect(fetchUnresolved).not.toHaveBeenCalled();
     expect(fetchActiveAlerts).not.toHaveBeenCalled();
+    expect(el.textContent).not.toContain('Polling');
+    expect(el.textContent).not.toContain('Sin conexion');
 
     unmount();
   });
 
   it('fetches unresolved alerts for an authenticated mount', async () => {
-    const { useAuthStore } = await import('@/stores/auth');
-    const authStore = useAuthStore();
-    authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User' };
-
-    const unmount = await mountNavBar();
+    const { el, unmount } = await mountNavBar({ authenticated: true });
 
     expect(fetchUnresolved).toHaveBeenCalledTimes(1);
     expect(fetchActiveAlerts).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('Sin conexion');
 
     unmount();
   });

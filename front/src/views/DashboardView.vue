@@ -4,13 +4,18 @@
       <div>
         <p class="section-kicker mb-2">Vista publica de monitoreo</p>
         <h1 class="display-6 fw-semibold mb-2">Dashboard IoT</h1>
-        <p class="mb-0">
+        <p v-if="authStore.isAuthenticated" class="mb-0">
           Supervisa sensores, graficas configurables, dispositivos y alertas activas en una sola pantalla.
+        </p>
+        <p v-else class="mb-0">
+          Supervisa graficas configurables de sensores publicos en una sola pantalla.
         </p>
       </div>
 
       <div class="dashboard-hero__actions">
-        <span class="badge rounded-pill text-bg-light">Estado: {{ summary.system_status || 'ok' }}</span>
+        <span v-if="authStore.isAuthenticated" class="badge rounded-pill text-bg-light">
+          Estado: {{ summary.system_status || 'sin datos' }}
+        </span>
         <button class="btn btn-light" type="button" :disabled="loading" @click="load">
           Actualizar
         </button>

@@ -2,8 +2,7 @@ import { ref } from 'vue';
 
 import { getEcho, onConnectionStateChange, onResync } from './echo';
 import { listenOnChannel } from './channelRegistry';
-import { getDevices } from '@/api/devices';
-import { paginatedItems } from '@/utils/formatters';
+import { getDeviceStatusSnapshot } from '@/api/devices';
 import { useAuthStore } from '@/stores/auth';
 import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 
@@ -39,11 +38,11 @@ async function runSnapshot(store, generation) {
   recoveryBuffer.length = 0;
 
   try {
-    const response = await getDevices({ per_page: 100 });
+    const devices = await fetchStatusSnapshot();
     if (generation !== recoveryGeneration) {
       return;
     }
-    store.applySnapshot(paginatedItems(response), { authoritative: true });
+    store.applySnapshot(devices, { authoritative: true });
   } catch {
     // Lean V1: snapshot failure leaves whatever realtime already produced in place; the
     // channel stays subscribed so the next DeviceStatusUpdated still applies.
@@ -53,6 +52,28 @@ async function runSnapshot(store, generation) {
       recoveryBuffer.splice(0, recoveryBuffer.length).forEach((payload) => store.applyStatusEvent(payload));
     }
   }
+}
+
+async function fetchStatusSnapshot() {
+  const devices = [];
+  const seenCursors = new Set();
+  let cursor = null;
+
+  do {
+    const response = await getDeviceStatusSnapshot({ per_page: 100, ...(cursor ? { cursor } : {}) });
+    const payload = response?.data ?? response ?? {};
+    devices.push(...(Array.isArray(payload.data) ? payload.data : []));
+    const nextCursor = Number(payload.next_cursor);
+    cursor = Number.isFinite(nextCursor) && nextCursor > 0 ? nextCursor : null;
+    if (cursor !== null && seenCursors.has(cursor)) {
+      throw new Error('Device status snapshot cursor repeated.');
+    }
+    if (cursor !== null) {
+      seenCursors.add(cursor);
+    }
+  } while (cursor !== null);
+
+  return devices;
 }
 
 function requestSnapshot(store) {

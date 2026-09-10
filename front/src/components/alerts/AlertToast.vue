@@ -12,7 +12,7 @@
           <span class="badge me-2" :class="severityClass">{{ severityLabel(currentSeverity) }}</span>
           <strong class="me-auto">{{ currentTitle }}</strong>
           <small class="text-muted">{{ currentTime }}</small>
-          <button type="button" class="btn-close ms-2 mb-1" aria-label="Cerrar" @click="close" />
+          <button type="button" class="btn-close ms-2 mb-1" aria-label="Cerrar alerta" @click="close" />
         </div>
         <div class="toast-body">
           <p class="mb-1">{{ currentMessage }}</p>

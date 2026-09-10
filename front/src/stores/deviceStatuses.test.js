@@ -84,6 +84,27 @@ describe('deviceStatuses sequence guard', () => {
     });
   });
 
+  it('uses the recovery watermark to reject a delayed event older than the snapshot', () => {
+    const store = useDeviceStatusesStore();
+
+    store.applyStatusEvent({ device_id: 1, event_sequence: 12, status: true, is_active: true });
+    store.applySnapshot([{
+      device_id: 1,
+      status: true,
+      is_active: true,
+      changed_at: '2026-09-10T12:00:00.000Z',
+      event_sequence: 14
+    }], { authoritative: true });
+
+    expect(store.applyStatusEvent({ device_id: 1, event_sequence: 13, status: false, is_active: false })).toBe(false);
+    expect(store.statusFor(1)).toMatchObject({
+      status: true,
+      changed_at: '2026-09-10T12:00:00.000Z',
+      event_sequence: 14,
+      source: 'recovery'
+    });
+  });
+
   it('clear() resets the projection for logout', () => {
     const store = useDeviceStatusesStore();
 

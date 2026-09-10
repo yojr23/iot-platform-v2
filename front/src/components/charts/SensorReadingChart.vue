@@ -10,6 +10,7 @@
 
     <div v-else>
       <div
+        ref="chartContainer"
         class="sensor-chart"
         role="img"
         tabindex="0"
@@ -62,7 +63,7 @@ import {
   PointElement,
   Tooltip
 } from 'chart.js';
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Line } from 'vue-chartjs';
 
 import BaseAlert from '@/components/base/BaseAlert.vue';
@@ -116,6 +117,9 @@ const props = defineProps({
 
 const hasData = computed(() => props.series.length > 0 && Boolean(props.stats));
 
+const chartContainer = ref(null);
+let resizeObserver = null;
+
 const tokens = resolveChartTokens();
 
 const chartData = computed(() => ({
@@ -146,6 +150,24 @@ const chartOptions = {
     }
   }
 };
+
+onMounted(() => {
+  // ResizeObserver is unavailable in older browsers and our non-browser test environment.
+  // Chart.js still handles window resizes there, so retain a working chart rather than failing
+  // the entire component mount.
+  if (!chartContainer.value || typeof ResizeObserver === 'undefined') return;
+  resizeObserver = new ResizeObserver(() => {
+    chartContainer.value?.dispatchEvent(new Event('resize'));
+  });
+  resizeObserver.observe(chartContainer.value);
+});
+
+onBeforeUnmount(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+});
 
 const accessibleSummary = computed(() => {
   if (!hasData.value) {

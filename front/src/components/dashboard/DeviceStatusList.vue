@@ -18,6 +18,8 @@
         v-for="device in visibleDevices"
         :key="device.id"
         class="list-group-item list-group-item-action px-0"
+        :tabindex="authStore.isAuthenticated ? undefined : 0"
+        :role="authStore.isAuthenticated ? undefined : 'listitem'"
         :to="authStore.isAuthenticated ? '/devices' : undefined"
       >
         <div class="d-flex justify-content-between gap-3">

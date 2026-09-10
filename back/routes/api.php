@@ -91,6 +91,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // API para dispositivos
     Route::prefix('devices')->group(function () {
+        Route::get('/status-snapshot', [DeviceApiController::class, 'statusSnapshot'])
+            ->middleware('throttle:api-read');
         Route::get('/', [DeviceApiController::class, 'index'])->middleware('throttle:api-read');
         Route::post('/', [DeviceApiController::class, 'store'])->middleware(['admin', 'throttle:api-write']);
         Route::get('/{device}', [DeviceApiController::class, 'show'])->middleware('throttle:api-read');

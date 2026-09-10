@@ -27,7 +27,11 @@
         </ul>
 
         <div class="d-flex align-items-center gap-3">
-          <span class="badge rounded-pill d-none d-lg-inline-flex" :class="realtimeStatusClass">
+          <span
+            v-if="authStore.isAuthenticated"
+            class="badge rounded-pill d-none d-lg-inline-flex"
+            :class="realtimeStatusClass"
+          >
             {{ realtimeStatusLabel }}
           </span>
 
@@ -113,11 +117,15 @@ const realtimeStatusLabel = computed(() => {
     return 'Tiempo real';
   }
 
+  if (realtimeStatus.mode === 'recovering') {
+    return 'Recuperando';
+  }
+
   if (realtimeStatus.enabled) {
     return 'Conectando';
   }
 
-  return 'Polling';
+  return realtimeStatus.mode === 'stale' ? 'Estado desactualizado' : 'Sin conexion';
 });
 
 const realtimeStatusClass = computed(() => {

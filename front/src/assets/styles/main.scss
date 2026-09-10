@@ -280,3 +280,25 @@ a {
   overflow: auto;
   border-radius: 8px;
 }
+
+@media (pointer: coarse) {
+  .btn,
+  a.list-group-item-action,
+  .toast .btn-close,
+  input[type="range"],
+  select {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .btn-sm {
+    padding: 0.625rem 1rem;
+  }
+}
+
+.btn,
+a.list-group-item-action,
+.toast .btn-close {
+  min-height: 44px;
+  min-width: 44px;
+}

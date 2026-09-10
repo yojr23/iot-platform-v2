@@ -65,10 +65,12 @@ export const useDeviceStatusesStore = defineStore('deviceStatuses', {
         next[id] = {
           status: Boolean(device.status),
           is_active: Boolean(device.is_active),
-          changed_at: device.updated_at || device.last_communication || null,
-          // The recovery snapshot is current truth but has no outbox cursor. Keep the last
-          // known cursor so a buffered older websocket event cannot regress recovered state.
-          event_sequence: authoritative ? Number(current?.event_sequence || 0) : 0,
+          changed_at: device.changed_at || device.updated_at || device.last_communication || null,
+          // Recovery carries the latest durable outbox cursor. Its watermark prevents a delayed
+          // websocket event from regressing the recovered state.
+          event_sequence: authoritative
+            ? Number(device.event_sequence ?? current?.event_sequence ?? 0)
+            : 0,
           source: authoritative ? 'recovery' : 'snapshot'
         };
       });

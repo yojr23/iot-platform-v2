@@ -49,6 +49,8 @@ __pycache__/
 .opencode/
 
 # Zip files
+
+
 *.zip
 # Host/env backups must never be committed (see .env.host-backup P0 incident)
 .env.*-backup
