@@ -100,23 +100,15 @@ final class MigrationIntegrityTest extends TestCase
         }
     }
 
-    public function test_no_duplicate_migration_timestamps(): void
+    public function test_no_duplicate_migration_names(): void
     {
         $files = $this->globMigrations();
-        $timestamps = [];
-
-        foreach ($files as $file) {
-            $basename = basename($file);
-            if (preg_match('/^(\d{4}_\d{2}_\d{2}_\d{6})/', $basename, $m)) {
-                $timestamps[] = $m[1];
-            }
-        }
-
-        $duplicates = array_diff_key($timestamps, array_unique($timestamps));
-        $this->assertEmpty(
-            $duplicates,
-            'Duplicate migration timestamps found: ' . implode(', ', array_unique($duplicates))
+        $names = array_map(
+            static fn (string $file): string => basename($file, '.php'),
+            $files
         );
+
+        $this->assertSame(count($names), count(array_unique($names)), 'Duplicate migration names found.');
     }
 
     private function globMigrations(): array

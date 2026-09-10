@@ -119,7 +119,7 @@ describe('device status realtime adapter', () => {
     expect(store.statusFor(1)).toMatchObject({ status: false, is_active: false, source: 'realtime' });
   });
 
-  it('coalesces overlapping recovery requests so an earlier response cannot overwrite the newer projection', async () => {
+  it('coalesces overlapping recovery requests and applies the newest authoritative recovery snapshot', async () => {
     const snapshots = [];
     getDevices.mockImplementation(() => new Promise((resolve) => snapshots.push(resolve)));
 
@@ -142,10 +142,10 @@ describe('device status realtime adapter', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(store.statusFor(8)).toMatchObject({
-      status: false,
-      is_active: false,
+      status: true,
+      is_active: true,
       event_sequence: 9,
-      source: 'realtime'
+      source: 'recovery'
     });
   });
 
@@ -166,6 +166,31 @@ describe('device status realtime adapter', () => {
     deliver({ device_id: 2, event_sequence: 11, status: false, is_active: false });
 
     expect(store.statusFor(2)).toMatchObject({ status: true, event_sequence: 12 });
+  });
+
+  it('uses a reconnect recovery snapshot to repair a device event missed while disconnected', async () => {
+    const { subscribeDeviceStatus } = await import('./useDeviceStatusRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useDeviceStatusesStore } = await import('@/stores/deviceStatuses');
+    authenticate(useAuthStore());
+    const store = useDeviceStatusesStore();
+
+    subscribeDeviceStatus();
+    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    store.applyStatusEvent({ device_id: 4, event_sequence: 12, status: true, is_active: true });
+
+    getDevices.mockResolvedValueOnce({ data: [{ id: 4, status: false, is_active: false }] });
+    fireResync('reconnect');
+    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.statusFor(4)).toMatchObject({
+      status: false,
+      is_active: false,
+      event_sequence: 12,
+      source: 'recovery'
+    });
   });
 
   it('unsubscribes and clears the projection on auth loss', async () => {

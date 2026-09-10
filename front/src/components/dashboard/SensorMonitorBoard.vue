@@ -39,93 +39,24 @@
         class="col-12"
         :class="monitor.id === 'main' ? 'col-xxl-8' : 'col-xxl-4 col-lg-6'"
       >
-        <article class="monitor-card h-100">
-          <div class="monitor-card__header">
-            <div>
-              <p class="text-muted small mb-1">{{ monitor.id === 'main' ? 'Principal' : `Grafica ${index}` }}</p>
-              <h3 class="h5 mb-0">{{ selectedSensorName(monitor) }}</h3>
-            </div>
-
-            <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de grafica">
-              <button
-                v-if="monitor.id !== 'main'"
-                class="btn btn-outline-secondary"
-                type="button"
-                :disabled="index <= 1"
-                @click="moveMonitor(monitor.id, -1)"
-              >
-                Subir
-              </button>
-              <button
-                v-if="monitor.id !== 'main'"
-                class="btn btn-outline-secondary"
-                type="button"
-                :disabled="index >= visibleMonitors.length - 1"
-                @click="moveMonitor(monitor.id, 1)"
-              >
-                Bajar
-              </button>
-              <button
-                v-if="monitor.id !== 'main'"
-                class="btn btn-outline-danger"
-                type="button"
-                @click="removeMonitor(monitor.id)"
-              >
-                Eliminar
-              </button>
-            </div>
-          </div>
-
-          <div class="row g-2 mb-3">
-            <div class="col-12 col-md-6">
-              <label class="form-label small text-muted" :for="`device-${monitor.id}`">Dispositivo</label>
-              <select
-                :id="`device-${monitor.id}`"
-                v-model="monitor.device_id"
-                class="form-select"
-                @change="handleDeviceChange(monitor)"
-              >
-                <option value="">Seleccione un dispositivo</option>
-                <option v-for="device in devices" :key="device.id" :value="device.id">
-                  {{ device.name }}
-                </option>
-              </select>
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label small text-muted" :for="`sensor-${monitor.id}`">Sensor</label>
-              <select
-                :id="`sensor-${monitor.id}`"
-                v-model="monitor.sensor_id"
-                class="form-select"
-                :disabled="availableSensors(monitor).length === 0"
-                @change="handleSensorChange(monitor)"
-              >
-                <option value="">Seleccione un sensor</option>
-                <option v-for="sensor in availableSensors(monitor)" :key="sensor.id" :value="sensor.id">
-                  {{ sensor.name }}{{ sensor.unit ? ` (${sensor.unit})` : '' }}
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <div class="monitor-card__meta">
-            <!-- Stage 6 graph-only: the public graph bootstrap intentionally does NOT expose sensor
-                 operational status, so no Activo/Sin-estado badge is rendered (it would always read
-                 "Sin estado" and imply a device-health claim the graph contract doesn't own). -->
-            <span>{{ pointCount(monitor) }} puntos</span>
-            <span v-if="latestPoint(monitor)">
-              Ultimo: {{ formatNumber(latestPoint(monitor).value) }} {{ selectedSensor(monitor)?.unit || '' }}
-            </span>
-          </div>
-
-          <div class="monitor-chart">
-            <SensorReadingChart
-              v-bind="chartViewModel(monitor)"
-              :loading="loadingByMonitor[monitor.id]"
-              :error="readErrorByMonitor[monitor.id]"
-            />
-          </div>
-        </article>
+        <MonitorCard
+          :monitor="monitor"
+          :index="index"
+          :total-monitors="visibleMonitors.length"
+          :devices="devices"
+          :sensor-options="availableSensors(monitor)"
+          :selected-sensor="selectedSensor(monitor)"
+          :selected-sensor-name="selectedSensorName(monitor)"
+          :point-count="pointCount(monitor)"
+          :latest-point="latestPoint(monitor)"
+          :chart-view-model="chartViewModel(monitor)"
+          :loading="loadingByMonitor[monitor.id]"
+          :error="readErrorByMonitor[monitor.id]"
+          @move="moveMonitor"
+          @remove="removeMonitor"
+          @device-change="handleDeviceChange"
+          @sensor-change="handleSensorChange"
+        />
       </div>
     </div>
   </section>
@@ -134,16 +65,14 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
-import { getDashboardPreferences, updateDashboardPreferences } from '@/api/dashboard';
 import BaseAlert from '@/components/base/BaseAlert.vue';
-import SensorReadingChart from '@/components/charts/SensorReadingChart.vue';
 import { buildSensorChartViewModel } from '@/components/charts/sensorChartViewModel';
 import { composeGraphSeries } from '@/components/charts/graphSeriesProjection';
+import MonitorCard from '@/components/dashboard/MonitorCard.vue';
+import { useMonitorLayout } from '@/composables/useMonitorLayout';
 import { RECOVERY_WINDOW_MS, useSensorRealtime } from '@/realtime/useSensorRealtime';
 import { useGraphSeriesQueryStore } from '@/stores/graphSeriesQuery';
 import { useSensorReadingsStore } from '@/stores/sensorReadings';
-import { useAuthStore } from '@/stores/auth';
-import { formatNumber } from '@/utils/formatters';
 
 // PLAN.md Stage 6.2 — cutover from component-local polling to the shared live sensor
 // projection + historical graph query layer. This board is the guest-capable "Lab Blue" graph
@@ -166,8 +95,6 @@ const props = defineProps({
   }
 });
 
-const LOCAL_STORAGE_KEY = 'iot-platform-v2.dashboard_layout';
-const authStore = useAuthStore();
 const sensorReadingsStore = useSensorReadingsStore();
 const graphSeriesQueryStore = useGraphSeriesQueryStore();
 
@@ -184,9 +111,6 @@ const readErrorByMonitor = reactive({});
 // from/to). Mirrors loadingByMonitor/readErrorByMonitor; kept out of the persisted layout on purpose.
 const queryByMonitor = reactive({});
 const realtimeEnabled = ref(true);
-const restoring = ref(false);
-
-let persistTimer = null;
 // monitor.id -> { realtime: ReturnType<useSensorRealtime>, sensorId }. Not reactive state —
 // mirrors channelRegistry.js's own module-scope bookkeeping convention; these are subscription
 // handles, not data to render.
@@ -329,13 +253,17 @@ async function loadHistory(monitor) {
   loadingByMonitor[monitor.id] = false;
 }
 
-function handleDeviceChange(monitor) {
+function handleDeviceChange(monitor, deviceId) {
+  monitor.device_id = normalizeId(deviceId);
   const firstSensor = availableSensors(monitor)[0];
   monitor.sensor_id = firstSensor ? normalizeId(firstSensor.id) : '';
   handleSensorChange(monitor);
 }
 
-async function handleSensorChange(monitor) {
+async function handleSensorChange(monitor, sensorId) {
+  if (sensorId !== undefined) {
+    monitor.sensor_id = normalizeId(sensorId);
+  }
   // Subscribe FIRST, then load history: history no longer touches the live store, so a live event
   // arriving mid-fetch lands in the shared tail and simply merges (dedup by id at compose time).
   syncRealtime(monitor);
@@ -381,20 +309,6 @@ function moveMonitor(monitorId, direction) {
   schedulePersist();
 }
 
-function currentLayout() {
-  return {
-    main: {
-      device_id: mainMonitor.device_id || null,
-      sensor_id: mainMonitor.sensor_id || null
-    },
-    monitors: monitors.value.map((monitor) => ({
-      id: monitor.id,
-      device_id: monitor.device_id || null,
-      sensor_id: monitor.sensor_id || null
-    }))
-  };
-}
-
 function sanitizeMonitor(monitor, fallback = firstSelectableSensor()) {
   const deviceId = normalizeId(monitor?.device_id ?? fallback.device_id);
   const device = props.devices.find((item) => Number(item.id) === Number(deviceId));
@@ -411,81 +325,22 @@ function sanitizeMonitor(monitor, fallback = firstSelectableSensor()) {
   return fallback;
 }
 
-function readLocalLayout() {
-  try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadSavedLayout() {
-  if (authStore.isAuthenticated) {
-    try {
-      const response = await getDashboardPreferences();
-
-      return response.data?.layout || null;
-    } catch {
-      return readLocalLayout();
-    }
-  }
-
-  return readLocalLayout();
-}
-
-async function persistPreferences() {
-  const layout = currentLayout();
-
-  if (authStore.isAuthenticated) {
-    try {
-      await updateDashboardPreferences({ layout });
-      return;
-    } catch {
-      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(layout));
-      return;
-    }
-  }
-
-  window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(layout));
-}
-
-function schedulePersist() {
-  if (restoring.value) {
-    return;
-  }
-
-  window.clearTimeout(persistTimer);
-  persistTimer = window.setTimeout(persistPreferences, 350);
-}
+const { restoring, restoreLayout: restoreSavedLayout, schedulePersist, cleanup: cleanupLayout } = useMonitorLayout(
+  mainMonitor,
+  monitors,
+  firstSelectableSensor,
+  sanitizeMonitor
+);
 
 async function restoreLayout() {
   if (props.devices.length === 0) {
     return;
   }
 
-  restoring.value = true;
-
-  const savedLayout = await loadSavedLayout();
-  const defaultSelection = firstSelectableSensor();
-  const mainSelection = sanitizeMonitor(savedLayout?.main, defaultSelection);
-
-  mainMonitor.device_id = mainSelection.device_id;
-  mainMonitor.sensor_id = mainSelection.sensor_id;
-  monitors.value = Array.isArray(savedLayout?.monitors)
-    ? savedLayout.monitors
-      .filter((monitor) => monitor?.id)
-      .map((monitor) => ({
-        id: monitor.id,
-        ...sanitizeMonitor(monitor, defaultSelection)
-      }))
-    : [];
+  await restoreSavedLayout(props.devices);
 
   visibleMonitors.value.forEach(syncRealtime);
   await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
-  restoring.value = false;
-  schedulePersist();
 }
 
 watch(realtimeEnabled, (enabled) => {
@@ -501,6 +356,6 @@ onMounted(restoreLayout);
 
 onBeforeUnmount(() => {
   teardownAllRealtime();
-  window.clearTimeout(persistTimer);
+  cleanupLayout();
 });
 </script>

@@ -43,7 +43,7 @@ async function runSnapshot(store, generation) {
     if (generation !== recoveryGeneration) {
       return;
     }
-    store.applySnapshot(paginatedItems(response));
+    store.applySnapshot(paginatedItems(response), { authoritative: true });
   } catch {
     // Lean V1: snapshot failure leaves whatever realtime already produced in place; the
     // channel stays subscribed so the next DeviceStatusUpdated still applies.

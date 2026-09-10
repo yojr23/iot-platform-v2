@@ -44,7 +44,7 @@ export const useDeviceStatusesStore = defineStore('deviceStatuses', {
 
     // Seeds from an authenticated device metadata snapshot (e.g. GET /devices). event_sequence
     // is seeded at 0 so any real DeviceStatusUpdated (sequence >= 1) always wins over it.
-    applySnapshot(devices) {
+    applySnapshot(devices, { authoritative = false } = {}) {
       if (!Array.isArray(devices)) {
         return;
       }
@@ -57,7 +57,8 @@ export const useDeviceStatusesStore = defineStore('deviceStatuses', {
         }
 
         // Metadata snapshots have no event cursor and may predate a sequenced realtime fact.
-        if (Number(next[id]?.event_sequence) > 0) {
+        const current = next[id];
+        if (!authoritative && Number(current?.event_sequence) > 0) {
           return;
         }
 
@@ -65,8 +66,10 @@ export const useDeviceStatusesStore = defineStore('deviceStatuses', {
           status: Boolean(device.status),
           is_active: Boolean(device.is_active),
           changed_at: device.updated_at || device.last_communication || null,
-          event_sequence: 0,
-          source: 'snapshot'
+          // The recovery snapshot is current truth but has no outbox cursor. Keep the last
+          // known cursor so a buffered older websocket event cannot regress recovered state.
+          event_sequence: authoritative ? Number(current?.event_sequence || 0) : 0,
+          source: authoritative ? 'recovery' : 'snapshot'
         };
       });
       this.byDevice = next;

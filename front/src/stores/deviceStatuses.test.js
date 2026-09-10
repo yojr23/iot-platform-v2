@@ -70,6 +70,20 @@ describe('deviceStatuses sequence guard', () => {
     });
   });
 
+  it('lets an authoritative recovery snapshot repair a stale sequenced realtime state', () => {
+    const store = useDeviceStatusesStore();
+
+    store.applyStatusEvent({ device_id: 1, event_sequence: 12, status: true, is_active: true });
+    store.applySnapshot([{ id: 1, status: false, is_active: false }], { authoritative: true });
+
+    expect(store.statusFor(1)).toMatchObject({
+      status: false,
+      is_active: false,
+      event_sequence: 12,
+      source: 'recovery'
+    });
+  });
+
   it('clear() resets the projection for logout', () => {
     const store = useDeviceStatusesStore();
 

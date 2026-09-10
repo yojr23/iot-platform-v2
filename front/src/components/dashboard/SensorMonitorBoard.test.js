@@ -32,8 +32,16 @@ vi.mock('@/realtime/useSensorRealtime', () => ({
   RECOVERY_WINDOW_MS: 5 * 60 * 1000
 }));
 
+vi.mock('@/components/dashboard/MonitorCard.vue', () => ({
+  default: {
+    props: ['monitor'],
+    template: '<button data-testid="monitor-card-device-change" @click="$emit(\'deviceChange\', monitor, \'2\')">change</button>'
+  }
+}));
+
 const devices = [
-  { id: 1, name: 'Device A', sensors: [{ id: 10, name: 'Sensor A', unit: 'C' }] }
+  { id: 1, name: 'Device A', sensors: [{ id: 10, name: 'Sensor A', unit: 'C' }] },
+  { id: 2, name: 'Device B', sensors: [{ id: 20, name: 'Sensor B', unit: 'C' }] }
 ];
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -92,5 +100,16 @@ describe('SensorMonitorBoard polling removal', () => {
 
     expect(unsubscribeSensor).toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('uses the extracted MonitorCard selection event to load the first sensor of the selected device', async () => {
+    const { el, unmount } = await mountBoard();
+    fetchWindow.mockClear();
+
+    el.querySelector('[data-testid="monitor-card-device-change"]').click();
+    await flush();
+
+    expect(fetchWindow).toHaveBeenCalledWith('20', expect.objectContaining({ scope: 'public' }));
+    unmount();
   });
 });
