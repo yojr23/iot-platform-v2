@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            UserSeeder::class,
             DeviceTypeSeeder::class,
             SensorTypeSeeder::class,
             SystemSettingsSeeder::class,

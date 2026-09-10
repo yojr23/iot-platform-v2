@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpdateAlertConfigRequest;
+use App\Http\Requests\Api\UpdateGeneralConfigRequest;
 use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -56,6 +57,38 @@ class ConfigController extends Controller
 
         return response()->json([
             'alert_sound_enabled' => SystemSetting::get('alert_sound_enabled', true),
+            'app_url' => SystemSetting::get('app_url', config('app.url')),
+        ]);
+    }
+
+    /**
+     * C4 (front_rebuild_plan/MAIN_PARITY_GAPS_PLAN.md): read-only environment/runtime info for the
+     * admin config screen. Matches the `{ data: {...} }` envelope already used by updateGeneral()
+     * above; no writes, no new service — plain framework introspection (PHP_VERSION, app()->version(),
+     * app()->environment(), config('database.default')).
+     */
+    public function systemInfo(): JsonResponse
+    {
+        $startTime = microtime(true);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Config systemInfo request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'php_version' => PHP_VERSION,
+                'laravel_version' => app()->version(),
+                'environment' => app()->environment(),
+                'db_driver' => config('database.default'),
+            ],
         ]);
     }
 
@@ -125,6 +158,60 @@ class ConfigController extends Controller
 
             return response()->json([
                 'error' => 'Error updating alert config',
+                'message' => 'Se produjo un error inesperado actualizando la configuracion.',
+            ], 500);
+        }
+    }
+
+    public function updateGeneral(UpdateGeneralConfigRequest $request): JsonResponse
+    {
+        $startTime = microtime(true);
+
+        $validated = $request->validated();
+
+        try {
+            SystemSetting::set('app_name', $validated['app_name'], 'string', 'general');
+            SystemSetting::set('app_url', $validated['app_url'], 'string', 'general');
+            SystemSetting::clearCache();
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Config updateGeneral success', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'payload_keys' => array_keys($validated),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'app_name' => $validated['app_name'],
+                    'app_url' => $validated['app_url'],
+                ],
+                'message' => 'Configuración general actualizada.',
+            ]);
+        } catch (QueryException $e) {
+            Log::error('Config updateGeneral database error', [
+                'ip' => $request->ip(),
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible actualizar la configuracion general.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('Config updateGeneral unexpected error', [
+                'ip' => $request->ip(),
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error updating general config',
                 'message' => 'Se produjo un error inesperado actualizando la configuracion.',
             ], 500);
         }

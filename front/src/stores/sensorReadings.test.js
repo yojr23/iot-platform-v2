@@ -42,6 +42,23 @@ describe('sensorReadings live projection store', () => {
     expect(store.readingsFor(7)).toHaveLength(0);
   });
 
+  it('rejects a reading timestamped more than 60s in the future (device clock drift)', () => {
+    const store = useSensorReadingsStore();
+    const future = new Date(Date.now() + 61_000).toISOString();
+
+    store.mergeReading(7, { id: 1, value: 10, reading_time: future });
+
+    expect(store.readingsFor(7)).toHaveLength(0);
+  });
+
+  it('accepts a normal, non-future-dated reading', () => {
+    const store = useSensorReadingsStore();
+
+    store.mergeReading(7, { id: 1, value: 10, reading_time: new Date().toISOString() });
+
+    expect(store.readingsFor(7)).toHaveLength(1);
+  });
+
   it('sorts readings sharing a timestamp by numeric-aware id', () => {
     const store = useSensorReadingsStore();
 

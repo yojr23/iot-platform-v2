@@ -1,10 +1,10 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
         <p class="section-kicker text-primary mb-2">Alertas</p>
-        <h1 class="h3 mb-1">Alerta {{ id }}</h1>
-        <p class="text-muted mb-0">Contexto completo de sensor, dispositivo, valor y estado.</p>
+        <h1 class="lab-resource-title">Alerta {{ id }}</h1>
+        <p class="lab-resource-description">Contexto completo de sensor, dispositivo, valor y estado.</p>
       </div>
       <RouterLink class="btn btn-outline-secondary" to="/alerts">Volver</RouterLink>
     </div>

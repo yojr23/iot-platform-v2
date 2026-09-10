@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+  <div class="d-flex flex-column flex-md-row justify-content-between gap-3 lab-resource-filters">
     <div class="btn-group" role="group" aria-label="Filtro de alertas">
       <button
         v-for="option in options"
@@ -7,13 +7,14 @@
         type="button"
         class="btn btn-sm"
         :class="modelValue === option.value ? 'btn-primary' : 'btn-outline-primary'"
+        :aria-pressed="modelValue === option.value"
         @click="$emit('update:modelValue', option.value)"
       >
         {{ option.label }}
       </button>
     </div>
 
-    <div class="d-flex gap-2">
+    <div class="lab-resource-actions">
       <button class="btn btn-sm btn-outline-secondary" type="button" :disabled="loading" @click="$emit('refresh')">
         Actualizar
       </button>

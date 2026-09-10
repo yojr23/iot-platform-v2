@@ -12,10 +12,16 @@ import { defineStore } from 'pinia';
 // store only owns the data they feed it.
 const MAX_POINTS = 60;
 
+// front_rebuild_plan/MAIN_PARITY_GAPS_PLAN.md S2 — device clock skew guard, ported from main.
+// One tolerance, one place: every consumer of this store (live merge AND historical hydrate)
+// benefits instead of each realtime composable re-implementing its own drift check.
+const CLOCK_DRIFT_TOLERANCE_MS = 60_000;
+
 // Gate 6 hardening: reject rather than invent. A reading with no real id (id/reading_id both
 // absent) is dropped — never synthesized from timestamp+value, which would defeat the id-based
-// dedup that makes replayed/overlapping events idempotent. Unparsable timestamp or non-finite
-// value are dropped too. Returns null for a rejected reading.
+// dedup that makes replayed/overlapping events idempotent. Unparsable timestamp, a timestamp
+// more than CLOCK_DRIFT_TOLERANCE_MS in the future, or a non-finite value are dropped too.
+// Returns null for a rejected reading.
 function normalizeReading(reading) {
   const id = reading.id ?? reading.reading_id;
 
@@ -24,8 +30,13 @@ function normalizeReading(reading) {
   }
 
   const reading_time = reading.reading_time || reading.created_at || reading.timestamp;
+  const timestamp = Date.parse(reading_time);
 
-  if (Number.isNaN(Date.parse(reading_time))) {
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+
+  if (timestamp - Date.now() > CLOCK_DRIFT_TOLERANCE_MS) {
     return null;
   }
 

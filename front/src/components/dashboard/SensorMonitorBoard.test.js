@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/dashboard', () => ({
   getDashboardPreferences: vi.fn(() => Promise.resolve({ data: { layout: null } })),
-  updateDashboardPreferences: vi.fn(() => Promise.resolve({}))
+  updateDashboardPreferences: vi.fn(() => Promise.resolve({})),
+  getDashboardMetrics: vi.fn(() => Promise.resolve({ data: { total_devices: 2, active_devices: 1, active_alerts: 0 } }))
 }));
 
 const fetchWindow = vi.fn(() => Promise.resolve({ points: [], stats: { min: null, max: null, mean: null, count: 0 } }));

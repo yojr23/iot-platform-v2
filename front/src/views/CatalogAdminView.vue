@@ -70,7 +70,8 @@
                       <button
                         class="btn btn-outline-danger"
                         type="button"
-                        :disabled="deletingId === item.id"
+                        :disabled="deletingId === item.id || inUse(item)"
+                        :title="inUse(item) ? `No se puede eliminar: tiene ${item[config.usageKey]} asociados` : ''"
                         @click="remove(item)"
                       >
                         Eliminar
@@ -125,6 +126,7 @@ const catalogConfigs = {
     create: createLab,
     update: updateLab,
     remove: deleteLab,
+    usageKey: 'devices_count',
     fields: [
       { name: 'name', label: 'Nombre' },
       { name: 'area', label: 'Area' },
@@ -145,6 +147,7 @@ const catalogConfigs = {
     create: createSensorType,
     update: updateSensorType,
     remove: deleteSensorType,
+    usageKey: 'sensors_count',
     fields: [
       { name: 'name', label: 'Nombre' },
       { name: 'unit', label: 'Unidad' },
@@ -166,6 +169,7 @@ const catalogConfigs = {
     create: createDeviceType,
     update: updateDeviceType,
     remove: deleteDeviceType,
+    usageKey: 'devices_count',
     fields: [
       { name: 'name', label: 'Nombre' },
       { name: 'description', label: 'Descripcion', type: 'textarea', required: false }
@@ -195,6 +199,10 @@ function resetForm() {
   config.value.fields.forEach((field) => {
     form[field.name] = '';
   });
+}
+
+function inUse(item) {
+  return Number(item[config.value.usageKey]) > 0;
 }
 
 function valueFor(item, key) {

@@ -95,6 +95,8 @@
 .lab-sidebar nav {
     display: grid;
     gap: 6px;
+    min-height: 0;
+    overflow-y: auto;
 }
 .lab-sidebar nav a {
     display: flex;

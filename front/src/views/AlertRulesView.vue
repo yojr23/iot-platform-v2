@@ -1,11 +1,11 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <h1 class="h3 mb-1">Reglas de alerta</h1>
-        <p class="text-muted mb-0">CRUD de reglas usando la API JSON.</p>
+        <h1 class="lab-resource-title">Reglas de alerta</h1>
+        <p class="lab-resource-description">Configura los límites y las condiciones que generan alertas.</p>
       </div>
-      <div class="d-flex gap-2">
+      <div class="lab-resource-actions">
         <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
         <button class="btn btn-primary" type="button" :disabled="metadataLoading" @click="openCreate">Nueva regla</button>
       </div>
@@ -13,6 +13,21 @@
 
     <BaseAlert v-if="error" variant="danger" :message="error" />
     <BaseAlert v-if="success" variant="success" :message="success" />
+
+    <div class="lab-resource-filters">
+      <label class="form-label" for="device_filter">Dispositivo</label>
+      <select
+        id="device_filter"
+        v-model="selectedDeviceId"
+        class="form-select"
+        aria-label="Filtrar reglas por dispositivo"
+        @change="load"
+      >
+        <option value="">Todos</option>
+        <option v-for="device in metadata.devices" :key="device.id" :value="device.id">{{ device.name }}</option>
+      </select>
+    </div>
+
     <LoadingSpinner v-if="loading" label="Cargando reglas..." />
 
     <AlertRuleList
@@ -66,6 +81,7 @@ const formError = ref('');
 const validationErrors = ref({});
 const modalOpen = ref(false);
 const selectedRule = ref(null);
+const selectedDeviceId = ref('');
 const metadata = ref({
   sensor_types: [],
   devices: [],
@@ -78,7 +94,11 @@ async function load() {
   success.value = '';
 
   try {
-    const response = await getAlertRules({ per_page: 50 });
+    const params = { per_page: 50 };
+    if (selectedDeviceId.value) {
+      params.device_id = selectedDeviceId.value;
+    }
+    const response = await getAlertRules(params);
     rules.value = paginatedItems(response);
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las reglas de alerta.');

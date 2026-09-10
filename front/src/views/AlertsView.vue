@@ -1,9 +1,9 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <h1 class="h3 mb-1">Alertas</h1>
-        <p class="text-muted mb-0">Historial, estado activo y acciones de resolucion.</p>
+        <h1 class="lab-resource-title">Alertas</h1>
+        <p class="lab-resource-description">Revisa los eventos de tus sensores y gestiona las alertas pendientes.</p>
       </div>
     </div>
 

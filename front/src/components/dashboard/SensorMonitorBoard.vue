@@ -31,6 +31,21 @@
                 </button>
             </div>
         </div>
+        <div class="lab-summary-row">
+            <div
+                v-for="c in summaryCards"
+                :key="c.key"
+                class="lab-card lab-summary-card"
+            >
+                <span class="lab-summary-label">{{ c.label }}</span>
+                <strong class="lab-spark-value">{{
+                    c.value ?? (metricsLoading ? "…" : "—")
+                }}</strong>
+            </div>
+        </div>
+        <p v-if="metricsError" role="alert" class="lab-notice">
+            {{ metricsError }}
+        </p>
         <p v-if="message" role="alert" class="lab-notice">{{ message }}</p>
         <div class="lab-workspace-grid">
             <div class="lab-primary">
@@ -137,8 +152,25 @@
                             </button>
                         </div>
                     </div>
+                    <div class="lab-realtime-row">
+                        <button
+                            type="button"
+                            class="lab-button lab-realtime-toggle"
+                            :class="{ active: realtimeEnabled }"
+                            :aria-pressed="realtimeEnabled"
+                            @click="toggleRealtime"
+                        >
+                            <span
+                                class="lab-dot"
+                                :class="{ off: !realtimeEnabled }"
+                                aria-hidden="true"
+                            /><span>{{
+                                realtimeEnabled ? "Tiempo real" : "Pausado"
+                            }}</span>
+                        </button>
+                    </div>
                     <SensorReadingChart
-                        v-bind="viewModel"
+                        v-bind="displayViewModel"
                         :loading="history[selected.id]?.loading"
                         :error="activeError"
                     />
@@ -501,12 +533,13 @@
     </div>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, ref, toRef, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from "vue";
 import { useRouter, onBeforeRouteLeave } from "vue-router";
 import I from "./lab/LabIcon.vue";
 import SensorReadingChart from "@/components/charts/SensorReadingChart.vue";
 import { useLabWorkspace, ranges } from "@/composables/useLabWorkspace";
 import { useAlertsStore } from "@/stores/alerts";
+import { getDashboardMetrics } from "@/api/dashboard";
 const props = defineProps({ devices: { type: Array, default: () => [] } });
 const router = useRouter(),
     alerts = useAlertsStore();
@@ -549,6 +582,78 @@ const selectedSensor = computed(() => sensor(selected.value)),
 const critical = computed(() =>
     alerts.activeAlerts.find((a) => a.alert_rule?.severity === "danger"),
 );
+// C1: summary cards. Authenticated users get the authoritative system-wide
+// counts from GET /dashboard/metrics (mount-time snapshot, no polling refresh
+// by design). Alertas activas stays wired to the alerts store instead so it
+// keeps moving as realtime events land, rather than going stale between
+// snapshots. Public visitors have no metrics endpoint access, so device
+// counts fall back to the already-loaded public devices prop.
+const metrics = ref(null),
+    metricsLoading = ref(false),
+    metricsError = ref("");
+async function loadMetrics() {
+    if (!auth.isAuthenticated) return;
+    metricsLoading.value = true;
+    metricsError.value = "";
+    try {
+        metrics.value = (await getDashboardMetrics()).data;
+    } catch {
+        metricsError.value = "No se pudieron cargar las métricas del panel.";
+    } finally {
+        metricsLoading.value = false;
+    }
+}
+onMounted(loadMetrics);
+const summaryCards = computed(() => {
+    if (auth.isAuthenticated) {
+        return [
+            {
+                key: "total",
+                label: "Dispositivos totales",
+                value: metrics.value?.total_devices,
+            },
+            {
+                key: "active",
+                label: "Dispositivos activos",
+                value: metrics.value?.active_devices,
+            },
+            {
+                key: "alerts",
+                label: "Alertas activas",
+                value: alerts.unresolvedCount,
+            },
+        ];
+    }
+    const list = props.devices || [];
+    return [
+        { key: "total", label: "Dispositivos totales", value: list.length },
+        {
+            key: "active",
+            label: "Dispositivos activos",
+            value: list.filter((d) => d.status).length,
+        },
+    ];
+});
+// C2: pause/resume toggle. Component-local buffer in front of the chart —
+// the store/composable keep merging live readings as always, this just
+// stops handing new snapshots to the chart while paused, then catches up
+// immediately on resume. Switching sensor/range is a deliberate action, not
+// a live event, so it always refreshes the display even while paused.
+const realtimeEnabled = ref(true);
+const displayViewModel = ref(viewModel.value);
+watch(viewModel, (v) => {
+    if (realtimeEnabled.value) displayViewModel.value = v;
+});
+watch(
+    () => selected.value?.id,
+    () => {
+        displayViewModel.value = viewModel.value;
+    },
+);
+function toggleRealtime() {
+    realtimeEnabled.value = !realtimeEnabled.value;
+    if (realtimeEnabled.value) displayViewModel.value = viewModel.value;
+}
 const number = (v) =>
     v == null
         ? "—"
@@ -645,3 +750,34 @@ onBeforeRouteLeave(
         window.confirm("Tienes cambios sin guardar. ¿Salir y descartarlos?"),
 );
 </script>
+<style scoped>
+/* Kept local to this component (see file-scope note above) — lab-blue.css
+   already covers .lab-card/.lab-spark-value, this only adds the bits it
+   doesn't have yet: a small responsive grid and the paused dot state. */
+.lab-summary-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.lab-summary-card {
+    padding: 14px;
+}
+.lab-summary-label {
+    display: block;
+    font-size: 11px;
+    color: var(--sinoa-text-muted);
+    margin-bottom: 6px;
+}
+.lab-realtime-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+.lab-realtime-toggle {
+    min-height: 44px;
+}
+.lab-realtime-toggle .lab-dot.off {
+    background: #94a3b8;
+}
+</style>

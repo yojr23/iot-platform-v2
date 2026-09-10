@@ -1,11 +1,11 @@
 <template>
-  <section>
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <h1 class="h3 mb-1">Dispositivos</h1>
-        <p class="text-muted mb-0">Vista de lectura con estado y sensores asociados.</p>
+        <h1 class="lab-resource-title">Dispositivos</h1>
+        <p class="lab-resource-description">Consulta el estado de tus equipos y sus sensores asociados.</p>
       </div>
-      <div class="d-flex gap-2">
+      <div class="lab-resource-actions">
         <button v-if="authStore.user?.is_admin" class="btn btn-primary" type="button" @click="openCreate">
           Nuevo dispositivo
         </button>
@@ -15,15 +15,19 @@
 
     <BaseAlert v-if="error" variant="danger" :message="error" />
     <BaseAlert v-if="success" variant="success" :message="success" />
+    <DeviceFilters v-model:search="search" />
     <LoadingSpinner v-if="loading" label="Cargando dispositivos..." />
     <DeviceList
       v-if="!loading"
-      :devices="effectiveDevices"
+      :devices="filteredDevices"
       :updating-id="updatingId"
       @toggle-status="toggleDeviceStatus"
       @edit="openEdit"
       @delete="deleteSelectedDevice"
     />
+    <div v-if="!loading && hasMore" class="text-center mt-3">
+      <BaseButton variant="outline-secondary" :loading="loadingMore" @click="loadMore">Cargar más</BaseButton>
+    </div>
 
     <BaseModal
       :show="showForm"
@@ -90,6 +94,7 @@ import BaseButton from '@/components/base/BaseButton.vue';
 import BaseInput from '@/components/base/BaseInput.vue';
 import BaseModal from '@/components/base/BaseModal.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import DeviceFilters from '@/components/devices/DeviceFilters.vue';
 import DeviceList from '@/components/devices/DeviceList.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
@@ -109,6 +114,12 @@ const saving = ref(false);
 const editingDeviceId = ref(null);
 const validationErrors = ref({});
 const deviceForm = ref(defaultDeviceForm());
+const search = ref('');
+const page = ref(1);
+const lastPage = ref(1);
+const loadingMore = ref(false);
+const hasMore = computed(() => page.value < lastPage.value);
+const DEVICES_PER_PAGE = 50;
 
 function defaultDeviceForm() {
   return {
@@ -122,6 +133,19 @@ function defaultDeviceForm() {
   };
 }
 
+// Reads Laravel's paginate() meta (current_page/last_page) straight off the response body —
+// same body paginatedItems() already reads the `data` array out of, no new util needed.
+function applyDevicesPage(response, { append = false } = {}) {
+  const items = paginatedItems(response);
+  const meta = response?.data ?? {};
+  page.value = meta.current_page ?? page.value;
+  lastPage.value = meta.last_page ?? page.value;
+  devices.value = append ? [...devices.value, ...items] : items;
+  // Gate 8.5: seed the shared status projection from this authenticated device metadata
+  // snapshot; event_sequence 0 so a subsequent realtime DeviceStatusUpdated always wins.
+  deviceStatuses.applySnapshot(items);
+}
+
 async function load() {
   loading.value = true;
   error.value = '';
@@ -129,21 +153,35 @@ async function load() {
   try {
     const shouldLoadCatalogs = Boolean(authStore.user?.is_admin);
     const [devicesResponse, labsResponse, typesResponse] = await Promise.all([
-      getDevices({ per_page: 50 }),
+      getDevices({ per_page: DEVICES_PER_PAGE, page: 1 }),
       shouldLoadCatalogs ? getLabs() : Promise.resolve({ data: [] }),
       shouldLoadCatalogs ? getDeviceTypes() : Promise.resolve({ data: [] })
     ]);
-    const response = devicesResponse;
-    devices.value = paginatedItems(response);
-    // Gate 8.5: seed the shared status projection from this authenticated device metadata
-    // snapshot; event_sequence 0 so a subsequent realtime DeviceStatusUpdated always wins.
-    deviceStatuses.applySnapshot(devices.value);
+    applyDevicesPage(devicesResponse);
     labs.value = asArray(unwrapData(labsResponse));
     deviceTypes.value = asArray(unwrapData(typesResponse));
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los dispositivos.');
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value) {
+    return;
+  }
+
+  loadingMore.value = true;
+  error.value = '';
+
+  try {
+    const response = await getDevices({ per_page: DEVICES_PER_PAGE, page: page.value + 1 });
+    applyDevicesPage(response, { append: true });
+  } catch (requestError) {
+    error.value = getApiErrorMessage(requestError, 'No se pudieron cargar más dispositivos.');
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -155,6 +193,25 @@ function effectiveDevice(device) {
 }
 
 const effectiveDevices = computed(() => devices.value.map(effectiveDevice));
+
+const filteredDevices = computed(() => {
+  const term = search.value.trim().toLowerCase();
+
+  if (!term) {
+    return effectiveDevices.value;
+  }
+
+  return effectiveDevices.value.filter((device) => {
+    const haystack = [
+      device.name,
+      device.serial_number,
+      device.device_type?.name,
+      device.lab?.name
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return haystack.includes(term);
+  });
+});
 
 async function toggleDeviceStatus(device) {
   if (!authStore.user?.is_admin) {

@@ -1,5 +1,8 @@
 <template>
-  <LabShell v-if="isDashboard"><slot /></LabShell>
+  <LabShell v-if="usesLabShell">
+    <slot />
+    <AlertToast v-if="authStore.isAuthenticated" />
+  </LabShell>
   <div v-else class="app-shell">
     <NavBar />
 
@@ -24,7 +27,11 @@ import { computed, onBeforeUnmount, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import LabShell from '@/components/dashboard/lab/LabShell.vue';
 const route = useRoute();
-const isDashboard = computed(() => route?.name === 'dashboard');
+const usesLabShell = computed(() => [
+  'dashboard', 'devices', 'device-detail', 'sensors', 'sensor-detail',
+  'alerts', 'alert-detail', 'alert-rules',
+  'config', 'labs', 'sensor-types', 'device-types', 'users', 'metrics', 'profile'
+].includes(route?.name));
 
 import AlertToast from '@/components/alerts/AlertToast.vue';
 import { useAlertsRealtime } from '@/realtime/useAlertsRealtime';

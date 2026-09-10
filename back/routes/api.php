@@ -148,8 +148,13 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('config')->middleware('admin')->group(function () {
+        // C4 (front_rebuild_plan/MAIN_PARITY_GAPS_PLAN.md): read-only runtime introspection for
+        // the admin config screen, alongside the existing /alerts, /general, /email config routes
+        // in this same admin-gated group. No writes, no new middleware.
+        Route::get('/system-info', [ApiConfigController::class, 'systemInfo'])->middleware('throttle:api-read');
         Route::get('/alerts', [ApiConfigController::class, 'alerts'])->middleware('throttle:api-read');
         Route::put('/alerts', [ApiConfigController::class, 'updateAlerts'])->middleware('throttle:api-write');
+        Route::put('/general', [ApiConfigController::class, 'updateGeneral'])->middleware('throttle:api-write');
         Route::get('/email', [ApiEmailConfigController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/email', [ApiEmailConfigController::class, 'update'])->middleware('throttle:api-write');
         Route::post('/email/test', [ApiEmailConfigController::class, 'test'])->middleware('throttle:api-write');

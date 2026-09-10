@@ -2,7 +2,7 @@
   <BaseModal
     :show="show"
     :title="title"
-    subtitle="Los cambios se guardan mediante la API."
+    subtitle="Define las condiciones que deben generar una alerta."
     @close="$emit('close')"
   >
     <slot />

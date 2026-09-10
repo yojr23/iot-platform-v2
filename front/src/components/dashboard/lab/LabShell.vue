@@ -11,6 +11,7 @@
                     v-for="item in links"
                     :key="item.to"
                     :to="item.to"
+                    :aria-label="item.label"
                     @click="open = false"
                     ><I :name="item.icon" /><span>{{ item.label }}</span
                     ><b
@@ -62,7 +63,8 @@
         <nav class="lab-bottom" aria-label="Navegación móvil">
             <RouterLink to="/dashboard"
                 ><I name="home" /><span>Inicio</span></RouterLink
-            ><a href="#my-charts"><I name="chart" /><span>Gráficas</span></a
+            ><a v-if="route.name === 'dashboard'" href="#my-charts"><I name="chart" /><span>Gráficas</span></a
+            ><RouterLink v-else to="/dashboard"><I name="chart" /><span>Gráficas</span></RouterLink
             ><RouterLink v-if="auth.isAuthenticated" to="/alerts"
                 ><I name="bell" /><span>Alertas</span></RouterLink
             ><RouterLink :to="auth.isAuthenticated ? '/profile' : '/login'"
@@ -81,13 +83,14 @@
 </template>
 <script setup>
 import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useAlertsStore } from "@/stores/alerts";
 import I from "./LabIcon.vue";
 const auth = useAuthStore(),
     alerts = useAlertsStore(),
     router = useRouter(),
+    route = useRoute(),
     open = ref(false);
 const demo = import.meta.env.MODE === "demo";
 const links = computed(() => [
@@ -99,6 +102,16 @@ const links = computed(() => [
               { to: "/alerts", label: "Alertas", icon: "bell" },
           ]
         : []),
+    ...(auth.user?.is_admin
+        ? [
+              { to: "/alert-rules", label: "Reglas de alerta", icon: "bell" },
+              { to: "/labs", label: "Catálogos", icon: "device" },
+              { to: "/users", label: "Usuarios", icon: "user" },
+              { to: "/metrics", label: "Métricas", icon: "chart" },
+              { to: "/config", label: "Configuración", icon: "grip" },
+          ]
+        : []),
+    ...(auth.isAuthenticated ? [{ to: "/profile", label: "Mi cuenta", icon: "user" }] : []),
 ]);
 async function logout() {
     await auth.logout();

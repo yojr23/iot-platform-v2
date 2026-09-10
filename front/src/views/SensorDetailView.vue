@@ -1,11 +1,11 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <h1 class="h3 mb-1">{{ sensor?.name || `Sensor ${id}` }}</h1>
-        <p class="text-muted mb-0">Detalle, ultimas lecturas, filtro historico y exportacion.</p>
+        <h1 class="lab-resource-title">{{ sensor?.name || `Sensor ${id}` }}</h1>
+        <p class="lab-resource-description">Consulta las lecturas en tiempo real y explora el historial del sensor.</p>
       </div>
-      <div class="d-flex align-items-center gap-2">
+      <div class="lab-resource-actions">
         <span class="badge" :class="sensorRealtime.isConnected.value ? 'text-bg-success' : 'text-bg-secondary'">
           {{ sensorRealtime.isConnected.value ? 'Tiempo real' : 'API' }}
         </span>
@@ -52,7 +52,7 @@
               <BaseInput v-model="filters.to" label="Hasta" name="readings_to" type="date" />
             </div>
             <div class="col-12 col-md-4">
-              <div class="d-flex gap-2">
+              <div class="lab-resource-actions">
                 <BaseButton type="submit" variant="outline-primary" :loading="filtering">Filtrar</BaseButton>
                 <button class="btn btn-outline-secondary" type="button" @click="resetFilter">Limpiar</button>
                 <button class="btn btn-outline-info" type="button" :disabled="exporting" @click="exportReadings">Exportar</button>

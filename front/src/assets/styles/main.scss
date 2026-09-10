@@ -138,8 +138,7 @@ a {
   text-transform: uppercase;
 }
 
-.dashboard-hero,
-.config-hero {
+.dashboard-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -152,8 +151,7 @@ a {
   box-shadow: 0 20px 42px rgba(29, 78, 216, 0.22);
 }
 
-.dashboard-hero p:not(.section-kicker),
-.config-hero p:not(.section-kicker) {
+.dashboard-hero p:not(.section-kicker) {
   color: rgba(255, 255, 255, 0.86);
 }
 
@@ -220,39 +218,8 @@ a {
   background: #f8fbff;
 }
 
-.admin-action {
-  display: flex;
-  min-height: 7rem;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid rgba(37, 99, 235, 0.16);
-  border-radius: 8px;
-  color: #1d2939;
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.admin-action:hover {
-  color: var(--app-blue-strong);
-  border-color: rgba(37, 99, 235, 0.35);
-  box-shadow: 0 18px 34px rgba(29, 78, 216, 0.12);
-  transform: translateY(-2px);
-}
-
-.admin-action__label {
-  font-weight: 700;
-}
-
-.admin-action__description {
-  color: var(--app-muted);
-  font-size: 0.875rem;
-}
-
 @media (max-width: 991.98px) {
   .dashboard-hero,
-  .config-hero,
   .monitor-toolbar {
     align-items: stretch;
     flex-direction: column;

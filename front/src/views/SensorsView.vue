@@ -1,11 +1,11 @@
 <template>
-  <section>
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <h1 class="h3 mb-1">Sensores</h1>
-        <p class="text-muted mb-0">Listado operativo con filtro local y acceso al detalle.</p>
+        <h1 class="lab-resource-title">Sensores</h1>
+        <p class="lab-resource-description">Explora tus sensores, consulta sus lecturas y gestiona su configuración.</p>
       </div>
-      <div class="d-flex gap-2">
+      <div class="lab-resource-actions">
         <button v-if="authStore.user?.is_admin" class="btn btn-primary" type="button" @click="openCreate">
           Nuevo sensor
         </button>
@@ -78,6 +78,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { getSensorTypes } from '@/api/catalogs';
 import { getDevices } from '@/api/devices';
@@ -94,6 +95,7 @@ import { useAuthStore } from '@/stores/auth';
 import { asArray, paginatedItems, validationMessage } from '@/utils/formatters';
 
 const authStore = useAuthStore();
+const route = useRoute();
 const sensors = ref([]);
 const devices = ref([]);
 const sensorTypes = ref([]);
@@ -257,5 +259,15 @@ function fieldError(field) {
   return validationMessage(validationErrors.value, field);
 }
 
-onMounted(load);
+onMounted(async () => {
+  await load();
+
+  // D5 (sensor side): honor a `?device_id=` preselect from a device-detail "add sensor" link.
+  const deviceId = route.query.device_id;
+
+  if (deviceId && authStore.user?.is_admin) {
+    openCreate();
+    sensorForm.value.device_id = Number(deviceId);
+  }
+});
 </script>

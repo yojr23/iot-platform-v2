@@ -154,6 +154,8 @@ class DeviceApiController extends Controller
                 $query->where('reading_time', '<=', now())
                     ->orderBy('reading_time', 'desc')
                     ->limit(100);
+            }, 'statusLogs' => function ($query) {
+                $query->orderByDesc('changed_at')->limit(20);
             }]);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
@@ -499,8 +501,14 @@ class DeviceApiController extends Controller
         $startTime = microtime(true);
 
         try {
+            // D4 (front_rebuild_plan/MAIN_PARITY_GAPS_PLAN.md): eager-loads the new
+            // Sensor::latestReading() "has one of many" relation so SensorResource's
+            // `latest_reading` is populated per sensor in a single extra query (no N+1). Deliberately
+            // NOT `sensors.readings` with a raw `->limit(1)` constraint — that limit would apply once
+            // across all matched sensor_ids combined (per Eloquent eager-load semantics), not per
+            // sensor, so only one sensor on a multi-sensor device would get a reading.
             $sensors = $device->sensors()
-                ->with(['device', 'sensorType'])
+                ->with(['device', 'sensorType', 'latestReading'])
                 ->orderBy('name')
                 ->get();
 

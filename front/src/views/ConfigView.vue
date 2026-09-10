@@ -1,12 +1,16 @@
 <template>
-  <section>
-    <div class="config-hero mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <p class="section-kicker mb-2">Panel administrativo</p>
-        <h1 class="h3 mb-1">Configuracion del sistema</h1>
-        <p class="mb-0">Alertas, correo, parametros generales y accesos de administracion.</p>
+        <h1 class="lab-resource-title">Configuración del sistema</h1>
+        <p class="lab-resource-description">Alertas, correo, parámetros generales y accesos de administración.</p>
       </div>
-      <RouterLink class="btn btn-light" to="/dashboard">Volver al dashboard</RouterLink>
+      <div class="lab-resource-actions">
+        <span class="badge rounded-pill" :class="isAdmin ? 'text-bg-primary' : 'text-bg-secondary'">
+          {{ isAdmin ? 'Administrador' : 'Solo lectura' }}
+        </span>
+        <RouterLink class="btn btn-outline-secondary" to="/dashboard">Volver al dashboard</RouterLink>
+      </div>
     </div>
 
     <BaseAlert v-if="error" variant="danger" :message="error" />
@@ -16,34 +20,33 @@
     <div v-if="!loading" class="row g-3">
       <div class="col-12">
         <div class="content-panel p-3">
-          <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
-            <div>
-              <h2 class="h5 mb-1">Configuracion general</h2>
-              <p class="text-muted small mb-0">Valores visibles del frontend y referencia de entorno.</p>
-            </div>
-            <span class="badge rounded-pill" :class="isAdmin ? 'text-bg-primary' : 'text-bg-secondary'">
-              {{ isAdmin ? 'Administrador' : 'Solo lectura' }}
-            </span>
-          </div>
+          <h2 class="h5 mb-1">Configuración general</h2>
+          <p class="text-muted small mb-3">Valores visibles del frontend y referencia de entorno.</p>
 
-          <div class="row g-3">
-            <div class="col-12 col-lg-6">
-              <BaseInput
-                :model-value="publicConfig.app_name || 'iot-platform-v2'"
-                label="Nombre de la aplicacion"
-                name="app_name"
-                disabled
-              />
+          <form @submit.prevent="saveGeneralConfig">
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                <BaseInput
+                  v-model="generalForm.app_name"
+                  label="Nombre de la aplicacion"
+                  name="app_name"
+                  :disabled="!isAdmin"
+                  :error="fieldError(generalErrors, 'app_name')"
+                />
+              </div>
+              <div class="col-12 col-lg-6">
+                <BaseInput
+                  v-model="generalForm.app_url"
+                  label="URL de la aplicacion"
+                  name="app_url"
+                  :disabled="!isAdmin"
+                  :error="fieldError(generalErrors, 'app_url')"
+                />
+              </div>
             </div>
-            <div class="col-12 col-lg-6">
-              <BaseInput
-                :model-value="publicConfig.app_url || appUrl"
-                label="URL de la aplicacion"
-                name="app_url"
-                disabled
-              />
-            </div>
-          </div>
+
+            <BaseButton v-if="isAdmin" type="submit" class="mt-3" :loading="savingGeneral">Guardar general</BaseButton>
+          </form>
         </div>
       </div>
 
@@ -103,6 +106,12 @@
             <strong>{{ emailForm.password_configured ? 'si' : 'no' }}</strong>.
           </div>
 
+          <div class="alert alert-light border small">
+            Si usas Gmail como servidor SMTP, Google exige una
+            <strong>contrasena de aplicacion</strong> en lugar de la contrasena normal de la cuenta.
+            <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noopener">Como generar una contrasena de aplicacion</a>.
+          </div>
+
           <form @submit.prevent="saveEmailConfig">
             <div class="row g-3">
               <div class="col-12 col-lg-6">
@@ -157,15 +166,31 @@
 
       <div class="col-12">
         <div class="content-panel p-3">
-          <h2 class="h5 mb-3">Acciones de administracion</h2>
+          <h2 class="h5 mb-3">Acciones de administración</h2>
           <div class="row g-3">
             <div v-for="action in adminActions" :key="action.label" class="col-12 col-md-6 col-xl-4">
-              <RouterLink class="admin-action" :to="action.href">
-                <span class="admin-action__label">{{ action.label }}</span>
-                <span class="admin-action__description">{{ action.description }}</span>
+              <RouterLink :to="action.href" class="content-panel p-3 d-block h-100 text-decoration-none">
+                <div class="fw-semibold">{{ action.label }}</div>
+                <p class="text-muted small mb-0">{{ action.description }}</p>
               </RouterLink>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div v-if="systemInfo" class="col-12 col-xl-6">
+        <div class="content-panel p-3">
+          <h2 class="h5 mb-3">Informacion del sistema</h2>
+          <dl class="mb-0">
+            <dt>Version de PHP</dt>
+            <dd>{{ systemInfo.php_version || '-' }}</dd>
+            <dt>Version de Laravel</dt>
+            <dd>{{ systemInfo.laravel_version || '-' }}</dd>
+            <dt>Entorno</dt>
+            <dd>{{ systemInfo.environment || '-' }}</dd>
+            <dt>Motor de base de datos</dt>
+            <dd>{{ systemInfo.db_driver || '-' }}</dd>
+          </dl>
         </div>
       </div>
 
@@ -186,9 +211,11 @@ import {
   getAlertConfig,
   getEmailConfig,
   getRuntimeConfig,
+  getSystemInfo,
   testEmailConfig,
   updateAlertConfig,
-  updateEmailConfig
+  updateEmailConfig,
+  updateGeneralConfig
 } from '@/api/config';
 import { getApiErrorMessage, getValidationErrors, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
@@ -200,12 +227,15 @@ import { validationMessage } from '@/utils/formatters';
 
 const authStore = useAuthStore();
 const publicConfig = ref({});
+const systemInfo = ref(null);
 const loading = ref(false);
+const savingGeneral = ref(false);
 const savingAlerts = ref(false);
 const savingEmail = ref(false);
 const testingEmail = ref(false);
 const error = ref('');
 const success = ref('');
+const generalErrors = ref({});
 const alertErrors = ref({});
 const emailErrors = ref({});
 const testEmail = ref('');
@@ -249,6 +279,11 @@ const adminActions = computed(() => [
   }
 ]);
 
+const generalForm = reactive({
+  app_name: '',
+  app_url: ''
+});
+
 const alertForm = reactive({
   mail_enabled: false,
   alert_sound_enabled: false,
@@ -277,6 +312,8 @@ async function load() {
   try {
     const runtimeResponse = await getRuntimeConfig();
     publicConfig.value = unwrapData(runtimeResponse) || {};
+    generalForm.app_name = publicConfig.value.app_name || 'iot-platform-v2';
+    generalForm.app_url = publicConfig.value.app_url || appUrl;
 
     try {
       const alertResponse = await getAlertConfig();
@@ -326,6 +363,29 @@ function emailPayload() {
   }
 
   return payload;
+}
+
+async function saveGeneralConfig() {
+  savingGeneral.value = true;
+  error.value = '';
+  success.value = '';
+  generalErrors.value = {};
+
+  try {
+    const response = await updateGeneralConfig({
+      app_name: generalForm.app_name,
+      app_url: generalForm.app_url
+    });
+    const data = unwrapData(response) || {};
+    Object.assign(publicConfig.value, data);
+    Object.assign(generalForm, data);
+    success.value = response.data?.message || 'Configuracion general actualizada.';
+  } catch (requestError) {
+    generalErrors.value = getValidationErrors(requestError);
+    error.value = getApiErrorMessage(requestError, 'No se pudo guardar la configuracion general.');
+  } finally {
+    savingGeneral.value = false;
+  }
 }
 
 async function saveAlertConfig() {
@@ -383,5 +443,17 @@ function fieldError(errors, field) {
   return validationMessage(errors, field);
 }
 
-onMounted(load);
+async function loadSystemInfo() {
+  try {
+    const response = await getSystemInfo();
+    systemInfo.value = unwrapData(response) || null;
+  } catch {
+    systemInfo.value = null;
+  }
+}
+
+onMounted(() => {
+  load();
+  loadSystemInfo();
+});
 </script>

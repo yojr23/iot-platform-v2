@@ -13,6 +13,7 @@
             <th>Dispositivo</th>
             <th>Laboratorio</th>
             <th>Estado</th>
+            <th>Última lectura</th>
             <th class="text-end">Acciones</th>
           </tr>
         </thead>
@@ -26,6 +27,13 @@
               <span class="badge" :class="sensor.status ? 'text-bg-success' : 'text-bg-secondary'">
                 {{ statusLabel(sensor.status) }}
               </span>
+            </td>
+            <td>
+              <span v-if="latestReadingFor(sensor.id)">
+                {{ formatNumber(latestReadingFor(sensor.id).value) }} {{ sensor.unit || '' }}
+                <span class="text-muted small d-block">{{ formatDate(latestReadingFor(sensor.id).reading_time) }}</span>
+              </span>
+              <span v-else class="text-muted">-</span>
             </td>
             <td class="text-end">
               <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de sensor">
@@ -57,12 +65,17 @@
 </template>
 
 <script setup>
-import { statusLabel } from '@/utils/formatters';
+import { onBeforeUnmount, watch } from 'vue';
+
+import { useSensorRealtime } from '@/realtime/useSensorRealtime';
+import { useSensorReadingsStore } from '@/stores/sensorReadings';
 import { useAuthStore } from '@/stores/auth';
+import { formatDate, formatNumber, statusLabel } from '@/utils/formatters';
 
 const authStore = useAuthStore();
+const readingsStore = useSensorReadingsStore();
 
-defineProps({
+const props = defineProps({
   sensors: {
     type: Array,
     default: () => []
@@ -70,4 +83,48 @@ defineProps({
 });
 
 defineEmits(['edit', 'delete', 'export']);
+
+function latestReadingFor(sensorId) {
+  return readingsStore.latestFor(sensorId);
+}
+
+// S1: live-patch each rendered row's last reading through the EXISTING shared realtime path
+// (one useSensorRealtime instance per visible sensor, each backed by the ref-counted channel
+// registry on top of the single Echo connection — no polling, no second connection).
+const subscriptions = new Map(); // sensorId -> unsubscribeSensor()
+
+function subscribeToSensor(sensorId) {
+  if (subscriptions.has(sensorId)) {
+    return;
+  }
+
+  const realtime = useSensorRealtime(() => sensorId, (reading) => {
+    readingsStore.mergeReading(sensorId, reading);
+  });
+  realtime.subscribeSensor();
+  subscriptions.set(sensorId, realtime.unsubscribeSensor);
+}
+
+function unsubscribeFromSensor(sensorId) {
+  subscriptions.get(sensorId)?.();
+  subscriptions.delete(sensorId);
+}
+
+watch(
+  () => props.sensors.map((sensor) => sensor.id),
+  (ids) => {
+    const idSet = new Set(ids);
+
+    [...subscriptions.keys()]
+      .filter((id) => !idSet.has(id))
+      .forEach(unsubscribeFromSensor);
+
+    ids.forEach(subscribeToSensor);
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  [...subscriptions.keys()].forEach(unsubscribeFromSensor);
+});
 </script>

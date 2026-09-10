@@ -1,16 +1,17 @@
 <template>
-  <div class="row g-2 mb-3">
+  <div class="row g-2 lab-resource-filters">
     <div class="col-12 col-lg-8">
       <input
         class="form-control"
         :value="search"
         type="search"
+        aria-label="Buscar sensores"
         placeholder="Buscar por nombre, tipo o dispositivo"
         @input="$emit('update:search', $event.target.value)"
       />
     </div>
     <div class="col-12 col-lg-4">
-      <select class="form-select" :value="status" @change="$emit('update:status', $event.target.value)">
+      <select class="form-select" aria-label="Estado del sensor" :value="status" @change="$emit('update:status', $event.target.value)">
         <option value="all">Todos los estados</option>
         <option value="active">Activos</option>
         <option value="inactive">Inactivos</option>
