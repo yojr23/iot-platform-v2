@@ -4,6 +4,7 @@ namespace App\Services\Ingestion;
 
 use App\Jobs\RelayDomainOutboxJob;
 use App\Models\DomainEventOutbox;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 4.1/4.2 — the one place a transition owner writes a durable domain fact.
@@ -25,6 +26,14 @@ class DomainEventRecorder
      */
     public function record(string $eventType, string $aggregateType, int|string $aggregateId, array $payload): DomainEventOutbox
     {
+        Log::info('DomainEventRecorder:record entry', [
+            'event_type' => $eventType,
+            'aggregate_type' => $aggregateType,
+            'aggregate_id' => $aggregateId,
+        ]);
+
+        $startTime = microtime(true);
+
         $outbox = DomainEventOutbox::create([
             'event_type' => $eventType,
             'aggregate_type' => $aggregateType,
@@ -33,10 +42,18 @@ class DomainEventRecorder
             'status' => 'pending',
         ]);
 
-        // Caller is expected to be inside a DB transaction (resolve/resolveAll/changeStatus all
-        // wrap this call); afterCommit() only fires once that transaction actually commits, so a
-        // rolled-back mutation never leaves a stray outbox row.
         RelayDomainOutboxJob::dispatch()->afterCommit();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('DomainEventRecorder:record completed', [
+            'outbox_id' => $outbox->id,
+            'event_type' => $eventType,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('DomainEventRecorder:record slow operation', ['duration_ms' => $durationMs, 'table' => 'domain_event_outbox']);
+        }
 
         return $outbox;
     }

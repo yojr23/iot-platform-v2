@@ -15,11 +15,26 @@ class EmailConfigController extends Controller
 {
     public function show(): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('EmailConfig show request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json($this->safeMailSettings());
     }
 
     public function update(UpdateEmailConfigRequest $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $validated = $request->validated();
 
         $settings = [
@@ -43,6 +58,19 @@ class EmailConfigController extends Controller
 
         SystemSetting::clearCache();
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('EmailConfig update success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'payload_keys' => array_keys($validated),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json($this->safeMailSettings() + [
             'message' => 'Configuracion de email actualizada correctamente.',
         ]);
@@ -50,6 +78,8 @@ class EmailConfigController extends Controller
 
     public function test(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $validated = $request->validate([
             'test_email' => ['required', 'email'],
         ]);
@@ -62,12 +92,33 @@ class EmailConfigController extends Controller
                     ->subject('Email de Prueba - SINOA');
             });
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('EmailConfig test success', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json([
                 'message' => 'Email de prueba enviado correctamente.',
             ]);
         } catch (Throwable $e) {
-            Log::warning('API email test failed', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('API email test failed', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
                 'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([

@@ -10,6 +10,7 @@ use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +26,15 @@ class AuthApiController extends Controller
 
     public function login(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+        ];
+
         $validated = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
@@ -34,12 +44,28 @@ class AuthApiController extends Controller
         $user = User::where('email', $validated['email'])->first();
 
         if (! $user || ! Hash::check($validated['password'], $user->password)) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::warning('Auth login failed: invalid credentials', $context + [
+                'email' => $validated['email'],
+                'success' => false,
+                'duration_ms' => $durationMs,
+            ]);
+
             throw ValidationException::withMessages([
                 'email' => ['Credenciales inválidas.'],
             ]);
         }
 
         if (! $user->hasVerifiedEmail()) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::warning('Auth login failed: email not verified', $context + [
+                'user_id' => $user->id,
+                'success' => false,
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json([
                 'message' => 'Email no verificado.',
             ], 403);
@@ -49,11 +75,28 @@ class AuthApiController extends Controller
         $abilities = $user->is_admin ? ['*'] : ['read'];
         $plainTextToken = $user->createToken($tokenName, $abilities)->plainTextToken;
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth login success', $context + [
+            'user_id' => $user->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json($this->tokenResponse($user, $plainTextToken));
     }
 
     public function register(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+        ];
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => [
@@ -83,6 +126,14 @@ class AuthApiController extends Controller
         $tokenName = $validated['device_name'] ?? 'spa-client';
         $plainTextToken = $user->createToken($tokenName, ['read'])->plainTextToken;
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth register success', $context + [
+            'user_id' => $user->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json($this->tokenResponse($user, $plainTextToken) + [
             'message' => 'Usuario registrado correctamente. Verifica tu correo electrónico.',
         ], 201);
@@ -90,6 +141,8 @@ class AuthApiController extends Controller
 
     public function forgotPassword(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $validated = $request->validate([
             'email' => ['required', 'email'],
         ]);
@@ -99,10 +152,32 @@ class AuthApiController extends Controller
         ]);
 
         if ($status !== Password::RESET_LINK_SENT) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::warning('Auth forgotPassword failed', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'status' => $status,
+                'duration_ms' => $durationMs,
+            ]);
+
             throw ValidationException::withMessages([
                 'email' => [trans($status)],
             ]);
         }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth forgotPassword success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'message' => trans($status),
@@ -111,6 +186,8 @@ class AuthApiController extends Controller
 
     public function resetPassword(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $validated = $request->validate([
             'token' => ['required', 'string'],
             'email' => ['required', 'email'],
@@ -130,10 +207,32 @@ class AuthApiController extends Controller
         );
 
         if ($status !== Password::PASSWORD_RESET) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::warning('Auth resetPassword failed', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'status' => $status,
+                'duration_ms' => $durationMs,
+            ]);
+
             throw ValidationException::withMessages([
                 'email' => [trans($status)],
             ]);
         }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth resetPassword success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'message' => trans($status),
@@ -142,9 +241,22 @@ class AuthApiController extends Controller
 
     public function verifyEmail(Request $request, string $id, string $hash): JsonResponse
     {
+        $startTime = microtime(true);
+
         $user = User::findOrFail($id);
 
         if (! hash_equals($hash, sha1($user->getEmailForVerification()))) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::warning('Auth verifyEmail failed: invalid link', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => $id,
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json([
                 'message' => 'Enlace de verificación inválido.',
             ], 403);
@@ -155,6 +267,18 @@ class AuthApiController extends Controller
             event(new Verified($user));
         }
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth verifyEmail success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => $user->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'message' => 'Email verificado correctamente.',
         ]);
@@ -162,16 +286,41 @@ class AuthApiController extends Controller
 
     public function resendVerificationEmail(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         /** @var User $user */
         $user = $request->user();
 
         if ($user->hasVerifiedEmail()) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Auth resendVerificationEmail: already verified', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => $user->id,
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json([
                 'message' => 'El email ya está verificado.',
             ], 409);
         }
 
         $user->sendEmailVerificationNotification();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth resendVerificationEmail success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => $user->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'message' => 'Email de verificación reenviado correctamente.',
@@ -180,6 +329,19 @@ class AuthApiController extends Controller
 
     public function me(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth me request', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'user' => $this->userPayload($request->user()),
         ]);
@@ -187,11 +349,25 @@ class AuthApiController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $token = $request->user()?->currentAccessToken();
 
         if ($token) {
             $token->delete();
         }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Auth logout success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'message' => 'Sesión API cerrada correctamente.',

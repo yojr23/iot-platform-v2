@@ -15,6 +15,7 @@ class SensorReadingProjectionService
     public function append(SensorReading $reading): void
     {
         try {
+            $startTime = microtime(true);
             $payload = json_encode($this->format($reading), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
             $key = $this->key($reading->sensor_id);
 
@@ -22,10 +23,23 @@ class SensorReadingProjectionService
                 $pipe->lpush($key, $payload);
                 $pipe->ltrim($key, 0, self::CACHE_LIMIT - 1);
             });
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            Log::info('SensorReadingProjectionService:append completed', [
+                'sensor_id' => $reading->sensor_id,
+                'reading_id' => $reading->id,
+                'key' => $key,
+                'duration_ms' => $durationMs,
+            ]);
+
+            if ($durationMs > 100) {
+                Log::warning('SensorReadingProjectionService:append slow Redis pipeline', ['duration_ms' => $durationMs, 'key' => $key]);
+            }
         } catch (Throwable $e) {
-            Log::warning('Redis cache update skipped for latest readings', [
+            Log::error('Redis cache update skipped for latest readings', [
                 'sensor_id' => $reading->sensor_id,
                 'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
             ]);
         }
     }
@@ -36,9 +50,20 @@ class SensorReadingProjectionService
     public function latest(int $sensorId, int $limit): ?Collection
     {
         try {
-            $rawEntries = Redis::lrange($this->key($sensorId), 0, $limit - 1);
+            $startTime = microtime(true);
+            $key = $this->key($sensorId);
+            $rawEntries = Redis::lrange($key, 0, $limit - 1);
+
+            $cacheHit = is_array($rawEntries) && $rawEntries !== [];
+            Log::info('SensorReadingProjectionService:latest cache check', [
+                'sensor_id' => $sensorId,
+                'cache_hit' => $cacheHit,
+                'key' => $key,
+            ]);
 
             if (! is_array($rawEntries) || $rawEntries === []) {
+                $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+                Log::info('SensorReadingProjectionService:latest completed (empty)', ['sensor_id' => $sensorId, 'duration_ms' => $durationMs]);
                 return collect();
             }
 
@@ -61,11 +86,25 @@ class SensorReadingProjectionService
                 ];
             });
 
-            return $readings->contains(null) ? null : $readings->values();
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            $result = $readings->contains(null) ? null : $readings->values();
+
+            Log::info('SensorReadingProjectionService:latest completed', [
+                'sensor_id' => $sensorId,
+                'count' => $result?->count() ?? 0,
+                'duration_ms' => $durationMs,
+            ]);
+
+            if ($durationMs > 100) {
+                Log::warning('SensorReadingProjectionService:latest slow Redis lookup', ['duration_ms' => $durationMs, 'key' => $key]);
+            }
+
+            return $result;
         } catch (Throwable $e) {
             Log::warning('Redis lookup failed for latest sensor readings', [
                 'sensor_id' => $sensorId,
                 'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
             ]);
 
             return null;
@@ -78,6 +117,7 @@ class SensorReadingProjectionService
     public function warm(int $sensorId, Collection $readings): void
     {
         try {
+            $startTime = microtime(true);
             $serialized = $readings
                 ->map(fn (SensorReading|array $reading): string => json_encode(
                     $this->format($reading),
@@ -96,10 +136,23 @@ class SensorReadingProjectionService
 
                 $pipe->ltrim($key, 0, self::CACHE_LIMIT - 1);
             });
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            Log::info('SensorReadingProjectionService:warm completed', [
+                'sensor_id' => $sensorId,
+                'readings_count' => count($serialized),
+                'key' => $key,
+                'duration_ms' => $durationMs,
+            ]);
+
+            if ($durationMs > 100) {
+                Log::warning('SensorReadingProjectionService:warm slow Redis pipeline', ['duration_ms' => $durationMs, 'key' => $key]);
+            }
         } catch (Throwable $e) {
-            Log::warning('Redis cache warm-up skipped for latest readings', [
+            Log::error('Redis cache warm-up skipped for latest readings', [
                 'sensor_id' => $sensorId,
                 'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
             ]);
         }
     }

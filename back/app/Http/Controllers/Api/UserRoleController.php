@@ -6,23 +6,40 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class UserRoleController extends Controller
 {
     public function index()
     {
-        return response()->json([
-            'data' => User::query()
-                ->orderBy('name')
-                ->get()
-                ->map(fn (User $user): array => $this->userPayload($user))
-                ->values(),
+        $startTime = microtime(true);
+
+        $data = User::query()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (User $user): array => $this->userPayload($user))
+            ->values();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('UserRole index request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'count' => $data->count(),
+            'duration_ms' => $durationMs,
         ]);
+
+        return response()->json(['data' => $data]);
     }
 
     public function update(Request $request, User $user)
     {
+        $startTime = microtime(true);
+
         $validated = $request->validate([
             'is_admin' => ['required', 'boolean'],
         ]);
@@ -58,6 +75,19 @@ class UserRoleController extends Controller
                 }
             }
         });
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('UserRole update request', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'target_user_id' => $user->id,
+            'is_admin' => $requestedAdminValue,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'data' => $this->userPayload($user->fresh()),

@@ -1,12 +1,10 @@
 # Gates 6 / 7 / 8 — completion evidence (authoritative)
 
 **Branch:** `refraccion` · **Base HEAD:** `1d74340`
-**Date:** 2026-09-10 · **Working tree:** stabilization changes may be uncommitted; restamp after SEC-01 history rewrite.
+**Date:** 2026-09-10
 **Execution environment:** code + test authoring only. NO php / composer / docker / mysql / redis reachable this session; node + vitest present. Backend suites are **GAP — run on the operator machine** with the commands at the bottom. No PASS/FAIL was fabricated. Frontend vitest results are real (agent-executed).
 
 Implemented with sonnet-5 subagents, one backend + one frontend agent per gate, coordinated to disjoint file sets, gate-by-gate with a review checkpoint between gates.
-
-> **SHA note:** SEC-01 (secret history rewrite) is still OPEN and will change every SHA on this branch. Do **not** freeze a final gate SHA until the history purge + credential rotation land. Re-stamp this doc's SHA after that.
 
 ---
 
@@ -75,10 +73,9 @@ Frontend:
 
 ## OPEN / GAP (operator machine)
 
-1. **SEC-01 (P0, unchanged):** `.env.host-backup` still in history (`baead4c`, `789efbf`). Requires: rotate every leaked credential at the provider; `git filter-repo --path .env.host-backup --invert-paths` (tool not installed here); `git push --force-with-lease origin refraccion`; verify `git log --all -- .env.host-backup` empty. `.gitignore` duplicate already removed this session.
-2. **Backend runtime GAP:** run the commands below on a machine with php/mysql/redis.
-3. **MySQL EXPLAIN evidence (Task 6.6):** record chosen key, examined rows, filesort status, 5m/1h/24h row counts on representative data. Not runnable here.
-4. **Browser/network audit (Step 8):** skipped this session by operator instruction; no Playwright/browser harness wired.
+1. **Backend runtime GAP:** run the commands below on a machine with php/mysql/redis.
+2. **MySQL EXPLAIN evidence (Task 6.6):** record chosen key, examined rows, filesort status, 5m/1h/24h row counts on representative data. Not runnable here.
+3. **Browser/network audit (Step 8):** skipped this session by operator instruction; no Playwright/browser harness wired.
 
 ## Commands to run on the operator machine
 

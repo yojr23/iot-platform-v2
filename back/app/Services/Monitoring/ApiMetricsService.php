@@ -5,6 +5,7 @@ namespace App\Services\Monitoring;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Throwable;
 
@@ -39,13 +40,27 @@ class ApiMetricsService
             if ($durationInt > $currentMax) {
                 Cache::put($maxKey, $durationInt, now()->addSeconds(self::TTL_SECONDS));
             }
-        } catch (Throwable) {
-            // La instrumentación nunca debe romper la request principal.
+
+            Log::info('ApiMetricsService:record completed', [
+                'endpoint' => $endpoint,
+                'status' => $status,
+                'duration_ms' => $durationMs,
+                'is_error' => $isError,
+            ]);
+        } catch (Throwable $e) {
+            Log::error('ApiMetricsService:record failed', [
+                'endpoint' => $request->path(),
+                'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
+            ]);
         }
     }
 
     public function snapshot(): array
     {
+        Log::info('ApiMetricsService:snapshot entry');
+
+        $startTime = microtime(true);
         $now = now();
         $minutes = [];
         $requestsTotal = 0;
@@ -72,6 +87,17 @@ class ApiMetricsService
         }
 
         $overallAvg = $requestsTotal > 0 ? round($durationTotal / $requestsTotal, 2) : 0.0;
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('ApiMetricsService:snapshot completed', [
+            'requests_total' => $requestsTotal,
+            'errors_total' => $errorsTotal,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('ApiMetricsService:snapshot slow execution', ['duration_ms' => $durationMs]);
+        }
 
         return [
             'window_minutes' => self::WINDOW_MINUTES,

@@ -4,6 +4,7 @@ namespace App\Services\Monitoring;
 
 use App\Models\Sensor;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 6.0 — sole owner of the public-graph visibility decision.
@@ -24,11 +25,17 @@ final class PublicGraphVisibility
 {
     public function isPublic(Sensor $sensor): bool
     {
-        return $sensor->public_monitoring_enabled === true;
+        $result = $sensor->public_monitoring_enabled === true;
+        Log::info('PublicGraphVisibility:isPublic check', [
+            'sensor_id' => $sensor->id,
+            'is_public' => $result,
+        ]);
+        return $result;
     }
 
     public function publicSensorsQuery(): Builder
     {
+        Log::info('PublicGraphVisibility:publicSensorsQuery entry');
         return Sensor::query()->where('public_monitoring_enabled', true);
     }
 
@@ -37,7 +44,11 @@ final class PublicGraphVisibility
      */
     public function requirePublic(Sensor $sensor): Sensor
     {
-        abort_unless($this->isPublic($sensor), 404);
+        $isPublic = $this->isPublic($sensor);
+        if (! $isPublic) {
+            Log::warning('PublicGraphVisibility:requirePublic aborting 404', ['sensor_id' => $sensor->id]);
+        }
+        abort_unless($isPublic, 404);
 
         return $sensor;
     }

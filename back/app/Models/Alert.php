@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use App\Mail\DangerAlertMail;
 use App\Models\SystemSetting;
+use Throwable;
 
 class Alert extends Model
 {
@@ -117,7 +118,7 @@ class Alert extends Model
 
             Log::info('Correo de alerta de peligro enviado exitosamente a: ' . $recipient);
             return true;
-        } catch (\Exception $e) {
+        } catch (Throwable $e) {
             Log::error('Error enviando email de alerta: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
             return false;

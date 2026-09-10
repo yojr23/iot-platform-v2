@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Models\Alert;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 7.5 (G0D row B3): `alert.triggered` no longer broadcasts synchronously here.
@@ -30,6 +31,12 @@ class AlertObserver
 {
     public function created(Alert $alert): void
     {
+        Log::info('AlertObserver: created', [
+            'alert_id' => $alert->id,
+            'severity' => $alert->severity,
+            'device_id' => $alert->device_id,
+        ]);
+
         $this->clearDashboardAlertCaches();
         SendDangerAlertEmailJob::dispatch($alert->id)->afterCommit();
     }
@@ -42,6 +49,11 @@ class AlertObserver
         // competes with that new outbox write (PLAN.md 4.3: observers must not double-cover a
         // transition a new owner already handles).
         if ($alert->isDirty(['resolved', 'resolved_at'])) {
+            Log::info('AlertObserver: resolved', [
+                'alert_id' => $alert->id,
+                'resolved' => $alert->resolved,
+                'resolved_at' => $alert->resolved_at,
+            ]);
             $this->clearDashboardAlertCaches();
         }
     }

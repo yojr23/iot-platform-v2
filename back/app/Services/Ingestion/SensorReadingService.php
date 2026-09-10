@@ -7,6 +7,7 @@ use App\Models\SensorReading;
 use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SensorReadingService
 {
@@ -18,7 +19,14 @@ class SensorReadingService
 
     public function createReading(Sensor $sensor, float $value, DateTimeInterface|string|null $readingTime = null): SensorReading
     {
-        return DB::transaction(function () use ($sensor, $value, $readingTime): SensorReading {
+        Log::info('SensorReadingService:createReading entry', [
+            'sensor_id' => $sensor->id,
+            'value' => $value,
+        ]);
+
+        $startTime = microtime(true);
+
+        $result = DB::transaction(function () use ($sensor, $value, $readingTime): SensorReading {
             $reading = $sensor->readings()->create([
                 'value' => $value,
                 'reading_time' => $this->normalizeReadingTime($readingTime),
@@ -42,6 +50,19 @@ class SensorReadingService
 
             return $reading;
         });
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('SensorReadingService:createReading completed', [
+            'reading_id' => $result->id,
+            'sensor_id' => $sensor->id,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('SensorReadingService:createReading slow transaction', ['duration_ms' => $durationMs, 'sensor_id' => $sensor->id]);
+        }
+
+        return $result;
     }
 
     /**

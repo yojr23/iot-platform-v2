@@ -38,6 +38,9 @@ class DomainOutboxRelay
      */
     public function relayPending(int $limit = 100): array
     {
+        Log::info('DomainOutboxRelay:relayPending entry', ['limit' => $limit]);
+
+        $startTime = microtime(true);
         $claimed = $this->claimBatch($limit);
 
         $published = 0;
@@ -51,11 +54,20 @@ class DomainOutboxRelay
             }
         }
 
-        return [
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        $result = [
             'claimed' => $claimed->count(),
             'published' => $published,
             'failed' => $failed,
         ];
+
+        Log::info('DomainOutboxRelay:relayPending completed', array_merge($result, ['duration_ms' => $durationMs]));
+
+        if ($durationMs > 100) {
+            Log::warning('DomainOutboxRelay:relayPending slow execution', ['duration_ms' => $durationMs]);
+        }
+
+        return $result;
     }
 
     private function claimBatch(int $limit): Collection

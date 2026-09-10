@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DeviceType;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ConfigController extends Controller
 {
@@ -15,6 +16,8 @@ class ConfigController extends Controller
 
     public function index()
     {
+        $startTime = microtime(true);
+
         $settings = [
             'app_name' => SystemSetting::get('app_name', config('app.name')),
             'app_url' => SystemSetting::get('app_url', config('app.url')),
@@ -30,6 +33,17 @@ class ConfigController extends Controller
             ->orderBy('name')
             ->get();
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Config index request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return view('config.index_config', [
             'settings' => $settings,
             'deviceTypes' => $deviceTypes,
@@ -39,6 +53,8 @@ class ConfigController extends Controller
 
     public function update(Request $request)
     {
+        $startTime = microtime(true);
+
         $validated = $request->validate([
             'app_name' => 'required|string|max:255',
             'app_url' => 'required|url',
@@ -71,6 +87,19 @@ class ConfigController extends Controller
         config([
             'app.name' => $validated['app_name'],
             'app.url' => $validated['app_url'],
+        ]);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Config update request', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'payload_keys' => array_keys($validated),
+            'success' => true,
+            'duration_ms' => $durationMs,
         ]);
 
         return back()->with('success', 'Configuración actualizada correctamente');

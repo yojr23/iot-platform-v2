@@ -5,23 +5,55 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\DeviceType;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class DeviceTypeController extends Controller
 {
     public function index()
     {
+        $startTime = microtime(true);
+
+        $result = DeviceType::query()
+            ->withCount('devices')
+            ->orderBy('name')
+            ->get();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('DeviceType index request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'count' => $result->count(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
-            'data' => DeviceType::query()
-                ->withCount('devices')
-                ->orderBy('name')
-                ->get(),
+            'data' => $result,
         ]);
     }
 
     public function store(Request $request)
     {
+        $startTime = microtime(true);
+
         $deviceType = DeviceType::create($this->validated($request));
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('DeviceType store success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_type_id' => $deviceType->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'data' => $deviceType->loadCount('devices'),
@@ -31,12 +63,41 @@ class DeviceTypeController extends Controller
 
     public function show(DeviceType $deviceType)
     {
+        $startTime = microtime(true);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('DeviceType show request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_type_id' => $deviceType->id,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json(['data' => $deviceType->loadCount('devices')]);
     }
 
     public function update(Request $request, DeviceType $deviceType)
     {
+        $startTime = microtime(true);
+
         $deviceType->update($this->validated($request, $deviceType));
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('DeviceType update success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_type_id' => $deviceType->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'data' => $deviceType->refresh()->loadCount('devices'),
@@ -46,13 +107,40 @@ class DeviceTypeController extends Controller
 
     public function destroy(DeviceType $deviceType)
     {
+        $startTime = microtime(true);
+
         if ($deviceType->devices()->exists()) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::warning('DeviceType destroy blocked: in use', [
+                'ip' => request()->ip(),
+                'method' => request()->method(),
+                'path' => request()->path(),
+                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'device_type_id' => $deviceType->id,
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json([
                 'message' => 'No se puede eliminar el tipo de dispositivo porque está siendo usado por dispositivos existentes.',
             ], 409);
         }
 
         $deviceType->delete();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('DeviceType destroy success', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_type_id' => $deviceType->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json(['message' => 'Tipo de dispositivo eliminado correctamente.']);
     }

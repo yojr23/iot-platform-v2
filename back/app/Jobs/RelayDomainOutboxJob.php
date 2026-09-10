@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 4.1 / docs/implementation/adr-g1.md ADR-1 — domain-outbox counterpart of
@@ -24,6 +25,21 @@ class RelayDomainOutboxJob implements ShouldQueue
 
     public function handle(DomainOutboxRelay $relay): void
     {
+        $startTime = microtime(true);
+        Log::info('RelayDomainOutboxJob: processing');
+
         $relay->relayPending();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('RelayDomainOutboxJob: completed', ['duration_ms' => $durationMs]);
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('RelayDomainOutboxJob: failed', [
+            'exception' => $exception->getMessage(),
+            'file' => $exception->getFile(),
+            'line' => $exception->getLine(),
+        ]);
     }
 }

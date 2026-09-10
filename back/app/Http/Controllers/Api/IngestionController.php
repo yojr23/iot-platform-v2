@@ -9,6 +9,7 @@ use App\Models\RawEventOutbox;
 use App\Models\RawSensorEvent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 3.1 / docs/implementation/adr-g1.md ADR-1 (transactional outbox).
@@ -26,8 +27,22 @@ class IngestionController extends Controller
 {
     public function store(StoreRawIngestionEventRequest $request): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+        ];
+
         $validated = $request->validated();
         $nodeId = data_get($validated, 'payload.device.node_id');
+
+        Log::info('Ingestion store request received', $context + [
+            'payload_keys' => array_keys($validated['payload'] ?? []),
+        ]);
 
         $event = DB::transaction(function () use ($validated, $nodeId): RawSensorEvent {
             $event = RawSensorEvent::create([
@@ -52,6 +67,14 @@ class IngestionController extends Controller
         // outage — the row is not stranded: `ingestion:relay-outbox`'s durable discovery loop
         // claims lease-expired/pending rows independently of this hint ever firing.
         RelayRawOutboxJob::dispatch()->afterCommit();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Ingestion store success', $context + [
+            'event_id' => $event->id,
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json([
             'message' => 'Raw sensor event stored successfully',

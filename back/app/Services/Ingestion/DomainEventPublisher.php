@@ -20,13 +20,15 @@ class DomainEventPublisher
 {
     public function publish(DomainEventOutbox $outbox): bool
     {
+        Log::info('DomainEventPublisher:publish entry', [
+            'outbox_id' => $outbox->id,
+            'event_type' => $outbox->event_type,
+        ]);
+
+        $startTime = microtime(true);
         $streamName = (string) config('app.domain_events_stream', 'iot.domain-events');
         $occurredAt = $outbox->created_at?->toIso8601String() ?? now()->toIso8601String();
 
-        // Versioned durable contract (PLAN.md golden rule "no unversioned durable events"), same
-        // envelope shape as RawSensorEventPublisher. `event_id` is the outbox row's own DB id
-        // (mirrors the raw pipeline using `raw_sensor_events.id` as the dedup key) — the consumer
-        // resolves the business row by it and dedupes via `delivered_at` on that same row.
         $fields = [
             'event_id' => (string) $outbox->id,
             'event_type' => (string) $outbox->event_type,
@@ -48,13 +50,29 @@ class DomainEventPublisher
         try {
             Redis::command('xadd', $args);
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            Log::info('DomainEventPublisher:publish completed', [
+                'outbox_id' => $outbox->id,
+                'event_type' => $outbox->event_type,
+                'stream' => $streamName,
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
+            if ($durationMs > 100) {
+                Log::warning('DomainEventPublisher:publish slow Redis XADD', ['duration_ms' => $durationMs, 'stream' => $streamName]);
+            }
+
             return true;
         } catch (Throwable $e) {
-            Log::error('Domain event publish failed', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            Log::error('DomainEventPublisher:publish failed', [
                 'outbox_id' => $outbox->id,
                 'event_type' => $outbox->event_type,
                 'stream' => $streamName,
                 'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
+                'duration_ms' => $durationMs,
             ]);
 
             return false;

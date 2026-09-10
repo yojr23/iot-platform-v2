@@ -6,11 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpdateAlertConfigRequest;
 use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class ConfigController extends Controller
 {
     public function publicConfig(): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Config publicConfig request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'app_name' => SystemSetting::get('app_name', config('app.name')),
             'alert_sound_enabled' => SystemSetting::get('alert_sound_enabled', true),
@@ -25,6 +39,19 @@ class ConfigController extends Controller
 
     public function runtime(): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Config runtime request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'alert_sound_enabled' => SystemSetting::get('alert_sound_enabled', true),
         ]);
@@ -32,11 +59,26 @@ class ConfigController extends Controller
 
     public function alerts(): JsonResponse
     {
+        $startTime = microtime(true);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Config alerts request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json($this->alertSettings());
     }
 
     public function updateAlerts(UpdateAlertConfigRequest $request): JsonResponse
     {
+        $startTime = microtime(true);
+
         $validated = $request->validated();
 
         SystemSetting::set('mail_enabled', (int) $validated['mail_enabled'], 'boolean', 'mail');
@@ -45,6 +87,19 @@ class ConfigController extends Controller
         SystemSetting::set('sensor_update_interval', $validated['sensor_update_interval'], 'integer', 'alerts');
         SystemSetting::set('danger_email_rate_limit_seconds', $validated['danger_email_rate_limit_seconds'], 'integer', 'alerts');
         SystemSetting::clearCache();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Config updateAlerts success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'payload_keys' => array_keys($validated),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return response()->json($this->alertSettings() + [
             'message' => 'Configuracion de alertas actualizada correctamente.',

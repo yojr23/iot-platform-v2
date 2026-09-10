@@ -6,6 +6,7 @@ use App\Models\Sensor;
 use App\Models\SensorReading;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 6.0/6.3 — bounded DB-backed graph series for an already-authorized public sensor.
@@ -45,18 +46,18 @@ final class PublicGraphSeriesService
      */
     public function series(Sensor $sensor, CarbonImmutable $fromUtc, CarbonImmutable $toUtc): array
     {
+        Log::info('PublicGraphSeriesService:series entry', [
+            'sensor_id' => $sensor->id,
+            'from' => $fromUtc->toIso8601String(),
+            'to' => $toUtc->toIso8601String(),
+        ]);
+
+        $startTime = microtime(true);
         $appTimezone = config('app.timezone');
 
-        // Mirror SensorReadingService::normalizeReadingTime()'s storage convention exactly:
-        // comparing raw UTC digits against the naive APP_TIMEZONE column would silently shift the
-        // window by the Bogota offset instead of rejecting or matching correctly.
         $fromLocal = $fromUtc->setTimezone($appTimezone)->format('Y-m-d H:i:s');
         $toLocal = $toUtc->setTimezone($appTimezone)->format('Y-m-d H:i:s');
 
-        // Fetch one MORE than the ceiling so we can DETECT truncation instead of hiding it.
-        // Wide legitimate windows (e.g. 24h @ 2s) exceed the raw ceiling, so we can't 422-reject
-        // them until server-side aggregation exists — but we must never present a truncated sample
-        // as if it were the complete window (PLAN.md: bounded query + NO silent truncation).
         /** @var Collection<int, SensorReading> $fetched */
         $fetched = $sensor->readings()
             ->where('reading_time', '>=', $fromLocal)
@@ -69,6 +70,22 @@ final class PublicGraphSeriesService
 
         $truncated = $fetched->count() > self::SAMPLE_LIMIT;
         $readings = $truncated ? $fetched->take(self::SAMPLE_LIMIT) : $fetched;
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('PublicGraphSeriesService:series completed', [
+            'sensor_id' => $sensor->id,
+            'fetched_count' => $fetched->count(),
+            'truncated' => $truncated,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('PublicGraphSeriesService:series slow query', [
+                'duration_ms' => $durationMs,
+                'table' => 'sensor_readings',
+                'sensor_id' => $sensor->id,
+            ]);
+        }
 
         return [
             'window' => [

@@ -9,6 +9,7 @@ use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Services\DashboardMetricsService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -18,14 +19,43 @@ class DashboardController extends Controller
 
     public function metrics(): JsonResponse
     {
-        return response()->json($this->dashboardPayload());
+        $startTime = microtime(true);
+
+        $result = $this->dashboardPayload();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Dashboard metrics request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
+
+        return response()->json($result);
     }
 
     public function publicData(): JsonResponse
     {
-        return response()->json($this->dashboardPayload() + [
+        $startTime = microtime(true);
+
+        $result = $this->dashboardPayload() + [
             'devices' => $this->publicDevices(),
+        ];
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Dashboard publicData request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'duration_ms' => $durationMs,
         ]);
+
+        return response()->json($result);
     }
 
     /**

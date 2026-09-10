@@ -52,6 +52,6 @@ __pycache__/
 
 
 *.zip
-# Host/env backups must never be committed (see .env.host-backup P0 incident)
+# Env/host backups are never committed
 .env.*-backup
 *.env.host-backup

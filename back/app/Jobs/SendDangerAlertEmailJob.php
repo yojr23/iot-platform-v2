@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 8.2 — takes the danger-alert email off the synchronous
@@ -40,12 +41,38 @@ class SendDangerAlertEmailJob implements ShouldQueue
 
     public function handle(NotificationService $notificationService): void
     {
+        $startTime = microtime(true);
+        Log::info('SendDangerAlertEmailJob: processing', [
+            'alert_id' => $this->alertId,
+        ]);
+
         $alert = Alert::query()->find($this->alertId);
 
         if (! $alert) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            Log::warning('SendDangerAlertEmailJob: alert not found', [
+                'alert_id' => $this->alertId,
+                'duration_ms' => $durationMs,
+            ]);
             return;
         }
 
         $notificationService->notifyDangerAlertByEmail($alert);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('SendDangerAlertEmailJob: completed', [
+            'alert_id' => $this->alertId,
+            'duration_ms' => $durationMs,
+        ]);
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('SendDangerAlertEmailJob: failed', [
+            'alert_id' => $this->alertId,
+            'exception' => $exception->getMessage(),
+            'file' => $exception->getFile(),
+            'line' => $exception->getLine(),
+        ]);
     }
 }

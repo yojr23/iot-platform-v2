@@ -15,14 +15,15 @@ class RawSensorEventPublisher
      */
     public function publish(RawSensorEvent $event): bool
     {
+        Log::info('RawSensorEventPublisher:publish entry', [
+            'event_id' => $event->id,
+            'node_id' => $event->node_id,
+        ]);
+
+        $startTime = microtime(true);
         $streamName = (string) config('app.ingestion_raw_events_stream', 'iot.raw-events');
         $receivedAt = $event->received_at?->toIso8601String();
 
-        // Versioned durable contract for iot.raw-events (PLAN.md Golden Rule "no unversioned durable
-        // events"; matches the G1 spike envelope). event_id stays the DB receipt id — the consumer
-        // resolves the business row by it — while source_event_id carries the producer's stable
-        // dedup key. Additive fields only; a consumer written against the old flat shape still reads
-        // event_id/node_id/topic/received_at/status unchanged.
         $fields = [
             'event_id' => (string) $event->id,
             'event_type' => 'raw.sensor.received',
@@ -45,12 +46,28 @@ class RawSensorEventPublisher
 
         try {
             Redis::command('xadd', $args);
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            Log::info('RawSensorEventPublisher:publish completed', [
+                'event_id' => $event->id,
+                'stream' => $streamName,
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
+            if ($durationMs > 100) {
+                Log::warning('RawSensorEventPublisher:publish slow Redis XADD', ['duration_ms' => $durationMs, 'stream' => $streamName]);
+            }
+
             return true;
         } catch (Throwable $e) {
-            Log::error('Raw sensor event publish failed', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            Log::error('RawSensorEventPublisher:publish failed', [
                 'event_id' => $event->id,
                 'stream' => $streamName,
                 'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
+                'duration_ms' => $durationMs,
             ]);
 
             return false;

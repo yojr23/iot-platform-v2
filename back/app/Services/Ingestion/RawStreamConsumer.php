@@ -72,6 +72,13 @@ class RawStreamConsumer
      */
     public function runOnce(string $consumerName, int $batch, int $blockMs, int $claimIdleMs = 30000): array
     {
+        Log::info('RawStreamConsumer:runOnce entry', [
+            'consumer' => $consumerName,
+            'batch' => $batch,
+            'block_ms' => $blockMs,
+        ]);
+
+        $startTime = microtime(true);
         $this->ensureGroup();
 
         $stats = ['acked' => 0, 'dlq' => 0, 'pending' => 0];
@@ -82,6 +89,13 @@ class RawStreamConsumer
 
         foreach ($this->readBatch($consumerName, $batch, $blockMs) as [$id, $fields]) {
             $stats[$this->handleMessage($id, $fields)]++;
+        }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('RawStreamConsumer:runOnce completed', array_merge($stats, ['duration_ms' => $durationMs]));
+
+        if ($durationMs > 100) {
+            Log::warning('RawStreamConsumer:runOnce slow execution', ['duration_ms' => $durationMs]);
         }
 
         return $stats;
@@ -275,7 +289,11 @@ class RawStreamConsumer
     {
         try {
             $reply = $this->raw($this->connection, ['XPENDING', $this->stream, $this->group, $id, $id, 1]);
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            Log::warning('RawStreamConsumer:deliveryCount XPENDING failed', [
+                'stream_id' => $id,
+                'exception' => $e->getMessage(),
+            ]);
             return 1;
         }
 

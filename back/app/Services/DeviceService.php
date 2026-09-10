@@ -32,20 +32,25 @@ class DeviceService
 
     public function createDevice(array $data)
     {
-        try {
-            $device = Device::create($data);
+        Log::info('DeviceService:createDevice entry', ['serial_number' => $data['serial_number'] ?? null, 'name' => $data['name'] ?? null]);
 
-            // Registrar el estado inicial
+        $startTime = microtime(true);
 
-            $device->statusLogs()->create([
-                'status' => $data['status'] ?? true,
-                'changed_at' => now(),
-            ]);
-            return $device;
-        } catch (\Exception $e) {
-            Log::error('DeviceService Error: ' . $e->getMessage());
-            return null;
+        $device = Device::create($data);
+
+        $device->statusLogs()->create([
+            'status' => $data['status'] ?? true,
+            'changed_at' => now(),
+        ]);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('DeviceService:createDevice completed', ['device_id' => $device->id, 'duration_ms' => $durationMs]);
+
+        if ($durationMs > 100) {
+            Log::warning('DeviceService:createDevice slow query', ['duration_ms' => $durationMs, 'table' => 'devices']);
         }
+
+        return $device;
     }
 
     /**
@@ -55,11 +60,23 @@ class DeviceService
      */
     public function changeStatus(Device $device, bool $newStatus): Device
     {
+        Log::info('DeviceService:changeStatus entry', [
+            'device_id' => $device->id,
+            'new_status' => $newStatus,
+        ]);
+
+        $startTime = microtime(true);
+
         DB::transaction(function () use ($device, $newStatus): void {
             $lockedDevice = Device::query()->lockForUpdate()->findOrFail($device->id);
             $previousStatus = (bool) $lockedDevice->status;
 
             if ($previousStatus === $newStatus) {
+                Log::info('DeviceService:changeStatus no-op (same status)', [
+                    'device_id' => $device->id,
+                    'current_status' => $previousStatus,
+                    'requested_status' => $newStatus,
+                ]);
                 return;
             }
 
@@ -75,9 +92,6 @@ class DeviceService
                 'changed_at' => $changedAt,
             ]);
 
-            // Gate 8: capture the fact as an immutable payload of scalars at write time — the
-            // consumer must never re-read the (mutable, possibly already-changed-again) Device row
-            // to learn what this particular transition was.
             $this->recorderInstance()->record('device.status.changed', 'device', $lockedDevice->id, [
                 'device_id' => $lockedDevice->id,
                 'status' => (bool) $lockedDevice->status,
@@ -85,6 +99,17 @@ class DeviceService
                 'changed_at' => $changedAt->toIso8601String(),
             ]);
         });
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('DeviceService:changeStatus completed', [
+            'device_id' => $device->id,
+            'new_status' => $newStatus,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('DeviceService:changeStatus slow transaction', ['duration_ms' => $durationMs, 'device_id' => $device->id]);
+        }
 
         return $device->refresh();
     }

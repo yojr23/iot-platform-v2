@@ -8,6 +8,7 @@ use App\Models\SensorType;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SensorController extends Controller
 {
@@ -40,6 +41,8 @@ class SensorController extends Controller
 
     public function store(Request $request)
     {
+        $startTime = microtime(true);
+
         // Validación mejorada
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -71,12 +74,37 @@ class SensorController extends Controller
             $sensor->sensorType()->associate($validated['sensor_type_id']);
             
             $sensor->save();
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Sensor store success', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'sensor_id' => $sensor->id,
+                'payload_keys' => array_keys($validated),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
             
             return redirect()->route('sensors.index')
                 ->with('success', 'Sensor creado exitosamente!');
                 
-        } catch (\Exception $e) {
-            Log::error('Error al crear sensor: ' . $e->getMessage());
+        } catch (Throwable $e) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Sensor store error', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
+            ]);
+
             return back()->withInput()
                 ->with('error', 'Error al crear el sensor: ' . $e->getMessage());
         }
@@ -91,6 +119,8 @@ class SensorController extends Controller
 
     public function update(Request $request, Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'min_range' => 'required|numeric',
@@ -104,10 +134,36 @@ class SensorController extends Controller
             $sensor->sensorType->save();
             $sensor->save();
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Sensor update success', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'sensor_id' => $sensor->id,
+                'payload_keys' => array_keys($validated),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return redirect()->route('sensors.index')
                 ->with('success', 'Sensor actualizado exitosamente');
-        } catch (\Exception $e) {
-            Log::error('Error al actualizar sensor: ' . $e->getMessage());
+        } catch (Throwable $e) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Sensor update error', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'sensor_id' => $sensor->id,
+                'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
+            ]);
+
             return back()->withInput()
                 ->with('error', 'Error al actualizar el sensor. Por favor intente nuevamente.');
         }
@@ -115,12 +171,40 @@ class SensorController extends Controller
 
     public function destroy(Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         try {
             $sensor->delete();
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Sensor destroy success', [
+                'ip' => request()->ip(),
+                'method' => request()->method(),
+                'path' => request()->path(),
+                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'sensor_id' => $sensor->id,
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return redirect()->route('sensors.index')
                 ->with('success', 'Sensor eliminado exitosamente');
-        } catch (\Exception $e) {
-            Log::error('Error al eliminar sensor: ' . $e->getMessage());
+        } catch (Throwable $e) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Sensor destroy error', [
+                'ip' => request()->ip(),
+                'method' => request()->method(),
+                'path' => request()->path(),
+                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'sensor_id' => $sensor->id,
+                'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
+            ]);
+
             return back()->with('error', 'Error al eliminar el sensor. Por favor intente nuevamente.');
         }
     }
@@ -141,6 +225,8 @@ class SensorController extends Controller
 
     public function downloadReadings(Sensor $sensor)
 {
+    $startTime = microtime(true);
+
     try {
         // Obtener todas las lecturas del sensor
         $readings = $sensor->readings()
@@ -169,13 +255,39 @@ class SensorController extends Controller
         // Generar el nombre del archivo
         $fileName = 'sensor_' . $sensor->id . '_readings_' . date('Y-m-d_His') . '.json';
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Sensor downloadReadings success', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'sensor_id' => $sensor->id,
+            'readings_count' => $readings->count(),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
+
         // Retornar la respuesta como descarga
         return response()->json($data)
             ->header('Content-Disposition', 'attachment; filename=' . $fileName)
             ->header('Content-Type', 'application/json');
 
-    } catch (\Exception $e) {
-        Log::error('Error al descargar lecturas del sensor: ' . $e->getMessage());
+    } catch (Throwable $e) {
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::error('Sensor downloadReadings error', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'sensor_id' => $sensor->id,
+            'exception' => $e->getMessage(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return back()->with('error', 'Error al descargar los datos del sensor.');
     }
 }
@@ -191,6 +303,8 @@ class SensorController extends Controller
 
 public function getReadingsByDateRange(Request $request, Sensor $sensor)
 {
+    $startTime = microtime(true);
+
     try {
         $validated = $request->validate([
             'startDate' => ['required', 'date_format:Y-m-d'],
@@ -206,6 +320,20 @@ public function getReadingsByDateRange(Request $request, Sensor $sensor)
 
         $readings = $query->get();
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Sensor getReadingsByDateRange success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'sensor_id' => $sensor->id,
+            'readings_count' => $readings->count(),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'success' => true,
             'readings' => $readings,
@@ -214,8 +342,20 @@ public function getReadingsByDateRange(Request $request, Sensor $sensor)
             ]
         ]);
 
-    } catch (\Exception $e) {
-        Log::error('Error al filtrar lecturas: ' . $e->getMessage());
+    } catch (Throwable $e) {
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::error('Sensor getReadingsByDateRange error', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'sensor_id' => $sensor->id,
+            'exception' => $e->getMessage(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'success' => false,
             'message' => 'Error al obtener las lecturas'
@@ -225,14 +365,38 @@ public function getReadingsByDateRange(Request $request, Sensor $sensor)
 
 public function getByDevice(Device $device)
 {
+    $startTime = microtime(true);
+
     try {
         $sensors = $device->sensors()->get();
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Sensor getByDevice success', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_id' => $device->id,
+            'count' => $sensors->count(),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json($sensors);
-    } catch (\Exception $e) {
-        Log::error('Error al obtener sensores por dispositivo', [
+    } catch (Throwable $e) {
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::error('Sensor getByDevice error', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
             'device_id' => $device->id,
             'exception' => $e->getMessage(),
+            'duration_ms' => $durationMs,
         ]);
 
         return response()->json(['error' => 'No fue posible obtener sensores del dispositivo.'], 500);

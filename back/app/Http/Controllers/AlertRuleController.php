@@ -19,16 +19,31 @@ class AlertRuleController extends Controller
 
     public function create()
     {
+        $startTime = microtime(true);
+
         $sensorTypes = SensorType::all();
         $alertRules = AlertRule::with(['sensorType', 'device', 'sensor'])->get();
         $devices = Device::all();
         $sensors = Sensor::with(['device', 'sensorType'])->get();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('AlertRule create form request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'duration_ms' => $durationMs,
+        ]);
         
         return view('alerts.rules.create', compact('sensorTypes', 'alertRules', 'devices', 'sensors'));
     }
 
     public function store(Request $request)
     {
+        $startTime = microtime(true);
+
         try {
             $validated = $request->validate([
                 'sensor_type_id' => 'required|exists:sensor_types,id',
@@ -82,28 +97,82 @@ class AlertRuleController extends Controller
 
             AlertRule::create($validated);
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('AlertRule store success', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'payload_keys' => array_keys($validated),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return redirect()->route('alert-rules.create')->with('success', 'Regla de alerta creada correctamente');
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('Error al crear regla de alerta: ' . $e->getMessage());
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('AlertRule store error', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
+            ]);
+
             return redirect()->back()->with('error', 'Error al crear la regla de alerta')->withInput();
         }
     }
 
     public function destroy(AlertRule $alertRule)
     {
+        $startTime = microtime(true);
+
         try {
             $alertRule->delete();
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('AlertRule destroy success', [
+                'ip' => request()->ip(),
+                'method' => request()->method(),
+                'path' => request()->path(),
+                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'alert_rule_id' => $alertRule->id,
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return redirect()->back()->with('success', 'Regla de alerta eliminada correctamente');
         } catch (\Exception $e) {
-            Log::error('Error al eliminar regla de alerta: ' . $e->getMessage());
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('AlertRule destroy error', [
+                'ip' => request()->ip(),
+                'method' => request()->method(),
+                'path' => request()->path(),
+                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'alert_rule_id' => $alertRule->id,
+                'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
+            ]);
+
             return redirect()->back()->with('error', 'Error al eliminar la regla de alerta');
         }
     }
 
     public function index(Request $request)
     {
+        $startTime = microtime(true);
+
         $deviceId = $request->query('device_id');
         $devices = Device::all();
 
@@ -112,6 +181,19 @@ class AlertRuleController extends Controller
                 $query->where('device_id', $deviceId);
             })
             ->get();
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('AlertRule index request', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'count' => $alertRules->count(),
+            'device_id' => $deviceId,
+            'duration_ms' => $durationMs,
+        ]);
 
         return view('alerts.rules.index', compact('alertRules', 'devices'));
     }

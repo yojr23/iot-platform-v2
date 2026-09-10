@@ -12,11 +12,16 @@ class NotificationService
 {
     public function broadcastNewAlert(Alert $alert): void
     {
+        Log::info('NotificationService:broadcastNewAlert entry', ['alert_id' => $alert->id]);
         event(new NewAlertTriggered($alert));
+        Log::info('NotificationService:broadcastNewAlert completed', ['alert_id' => $alert->id]);
     }
 
     public function notifyDangerAlertByEmail(Alert $alert): bool
     {
+        Log::info('NotificationService:notifyDangerAlertByEmail entry', ['alert_id' => $alert->id]);
+
+        $startTime = microtime(true);
         $alert->loadMissing('alertRule', 'sensorReading.sensor.sensorType', 'sensorReading.sensor.device.lab');
 
         $severity = strtolower($alert->alertRule->severity ?? '');
@@ -85,6 +90,8 @@ class NotificationService
 
         $emailSent = Alert::sendDangerAlertEmail($alertDetails);
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
         if (! $emailSent) {
             // PLAN.md Stage 8.2 / audit.md §13: the rate-limit key above is a "reservation", not a
             // record of an actual send. Acquiring it before the send meant a failed/unavailable
@@ -95,9 +102,20 @@ class NotificationService
                 Cache::forget($rateLimitKey);
             }
 
-            Log::warning('NotificationService: fallo de envío de correo danger', [
+            Log::warning('NotificationService:fallo de envío de correo danger', [
                 'alert_id' => $alert->id,
+                'duration_ms' => $durationMs,
             ]);
+        }
+
+        Log::info('NotificationService:notifyDangerAlertByEmail completed', [
+            'alert_id' => $alert->id,
+            'email_sent' => $emailSent,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('NotificationService:notifyDangerAlertByEmail slow execution', ['duration_ms' => $durationMs]);
         }
 
         return $emailSent;

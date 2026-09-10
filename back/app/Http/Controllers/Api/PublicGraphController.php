@@ -9,6 +9,7 @@ use App\Services\Monitoring\PublicGraphVisibility;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -31,6 +32,8 @@ class PublicGraphController extends Controller
 
     public function bootstrap(PublicGraphVisibility $visibility): JsonResponse
     {
+        $startTime = microtime(true);
+
         $sensors = $visibility->publicSensorsQuery()
             ->with(['sensorType', 'device'])
             ->orderBy('device_id')
@@ -56,6 +59,17 @@ class PublicGraphController extends Controller
             })
             ->values();
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('PublicGraph bootstrap request', [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'sensor_count' => $sensors->count(),
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'version' => 1,
             'default_sensor_id' => $sensors->first()?->id,
@@ -69,11 +83,26 @@ class PublicGraphController extends Controller
         PublicGraphVisibility $visibility,
         PublicGraphSeriesService $service,
     ): JsonResponse {
+        $startTime = microtime(true);
+
         $visibility->requirePublic($sensor);
 
         [$from, $to] = $this->validatedWindow($request);
 
-        return response()->json($service->series($sensor, $from, $to));
+        $result = $service->series($sensor, $from, $to);
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('PublicGraph series request', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'sensor_id' => $sensor->id,
+            'duration_ms' => $durationMs,
+        ]);
+
+        return response()->json($result);
     }
 
     /**

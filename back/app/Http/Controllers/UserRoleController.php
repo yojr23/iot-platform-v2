@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class UserRoleController extends Controller
 {
@@ -22,6 +23,8 @@ class UserRoleController extends Controller
 
     public function update(Request $request, User $user)
     {
+        $startTime = microtime(true);
+
         $validated = $request->validate([
             'is_admin' => ['required', 'boolean'],
         ]);
@@ -61,6 +64,20 @@ class UserRoleController extends Controller
                 }
             }
         });
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('UserRole update success', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'target_user_id' => $user->id,
+            'payload_keys' => array_keys($validated),
+            'success' => true,
+            'duration_ms' => $durationMs,
+        ]);
 
         return redirect()
             ->route('config.user-roles.index')

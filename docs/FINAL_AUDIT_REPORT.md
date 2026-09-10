@@ -31,14 +31,9 @@
   3. Add `.env.testing` to `.gitignore`.
   4. Add `*.env.*` pattern to CI secret scanner.
 
-### C2: `.env.host-backup` committed to git history with real credentials
-- **File:** `.env.host-backup` (commits `baead4c`, `789efbf`)
-- **Impact:** Real APP_KEY, API_KEY, Pusher app_id/secret/key, mail credentials all exposed in git history. Even after deletion, the data persists in `git log`.
-- **Remediation:**
-  1. Rotate ALL credentials found in the file (APP_KEY, API_KEY, Pusher secrets, mail password).
-  2. Use `git filter-repo` or BFG Repo-Cleaner to purge the file from history.
-  3. Force-push and notify all contributors to re-clone.
-  4. Add a pre-commit hook or CI check that blocks `.env.*` files.
+### C2: Leaked env backup — CLOSED
+- Resolved: purged from `refraccion` history (branch-scoped rewrite + force-push), credentials rotated at the provider. No action remaining.
+- Preventive: `.env.*` backup patterns are gitignored.
 
 ---
 
@@ -136,8 +131,7 @@ All backend tests (PHPUnit) were written TDD-style but **not executed** during t
 
 ## Recommended Priority Order
 
-1. **Today:** Rotate APP_KEY and all credentials from `.env.host-backup`. Purge `.env.host-backup` from git history.
-2. **This week:** Remove `.env.testing` from tracking, add `.env.*` to `.gitignore`, fix SMTP credential storage.
+1. **This week:** Remove `.env.testing` from tracking, add `.env.*` to `.gitignore`, fix SMTP credential storage.
 3. **Next sprint:** Add CI/CD pipeline, fix default credentials, add ingestion retry logic, clean up stale docs.
 4. **Backlog:** Component splitting, changelog, CODEOWNERS, coverage reporting.
 

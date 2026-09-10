@@ -40,12 +40,19 @@ class RawReadingNormalizer
      */
     public function normalize(RawSensorEvent $event): array
     {
+        Log::info('RawReadingNormalizer:normalize entry', [
+            'raw_sensor_event_id' => $event->id,
+            'node_id' => $event->node_id,
+        ]);
+
+        $startTime = microtime(true);
         $nodeId = $event->node_id;
         $device = $nodeId !== null && $nodeId !== ''
             ? Device::query()->where('serial_number', $nodeId)->first()
             : null;
 
         if (! $device) {
+            Log::warning('RawReadingNormalizer:normalize no device found', ['node_id' => $nodeId]);
             throw new RuntimeException("RawReadingNormalizer: no device found for node_id [{$nodeId}]");
         }
 
@@ -58,11 +65,9 @@ class RawReadingNormalizer
         foreach ($sensorsPayload as $key => $entry) {
             $value = data_get($entry, 'value');
 
-            // Strict validation at the trust boundary (PLAN.md instructions): reject and log
-            // rather than silently accepting a non-numeric/malformed sensor value.
             if (! is_numeric($value)) {
                 $skipped[] = (string) $key;
-                Log::warning('RawReadingNormalizer: rejected non-numeric sensor value', [
+                Log::warning('RawReadingNormalizer:rejected non-numeric sensor value', [
                     'raw_sensor_event_id' => $event->id,
                     'sensor_key' => $key,
                     'value' => $value,
@@ -78,7 +83,7 @@ class RawReadingNormalizer
 
             if (! $sensor) {
                 $skipped[] = (string) $key;
-                Log::warning('RawReadingNormalizer: no sensor mapped for payload key', [
+                Log::warning('RawReadingNormalizer:no sensor mapped for payload key', [
                     'raw_sensor_event_id' => $event->id,
                     'device_id' => $device->id,
                     'sensor_key' => $key,
@@ -90,6 +95,18 @@ class RawReadingNormalizer
             $this->readingService->createReading($sensor, (float) $value, $readingTime);
 
             $created++;
+        }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('RawReadingNormalizer:normalize completed', [
+            'raw_sensor_event_id' => $event->id,
+            'created' => $created,
+            'skipped' => count($skipped),
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('RawReadingNormalizer:normalize slow execution', ['duration_ms' => $durationMs, 'raw_sensor_event_id' => $event->id]);
         }
 
         return ['created' => $created, 'skipped' => $skipped];

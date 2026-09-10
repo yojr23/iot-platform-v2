@@ -8,6 +8,7 @@ use App\Models\SensorReading;
 use App\Services\Ingestion\DomainEventRecorder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 7.5, G0D row B1 — AlertService remains the sole rule-evaluation/creation owner
@@ -32,9 +33,13 @@ class AlertService
      */
     public function triggeredRulesForReading(SensorReading $reading): Collection
     {
+        Log::info('AlertService:triggeredRulesForReading entry', ['reading_id' => $reading->id, 'sensor_id' => $reading->sensor_id]);
+
+        $startTime = microtime(true);
         $sensor = $reading->sensor()->with(['device.lab'])->first();
 
         if (! $sensor) {
+            Log::info('AlertService:triggeredRulesForReading no sensor found', ['reading_id' => $reading->id]);
             return collect();
         }
 
@@ -54,7 +59,9 @@ class AlertService
             })
             ->get();
 
-        return $alertRules
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        $result = $alertRules
             ->filter(function ($alertRule) use ($reading) {
                 $minDefined = is_numeric($alertRule->min_value);
                 $maxDefined = is_numeric($alertRule->max_value);
@@ -65,6 +72,19 @@ class AlertService
                 return $belowMin || $aboveMax;
             })
             ->values();
+
+        Log::info('AlertService:triggeredRulesForReading completed', [
+            'reading_id' => $reading->id,
+            'triggered_count' => $result->count(),
+            'candidate_rules' => $alertRules->count(),
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('AlertService:triggeredRulesForReading slow query', ['duration_ms' => $durationMs, 'table' => 'alert_rules']);
+        }
+
+        return $result;
     }
 
     /**
@@ -72,7 +92,11 @@ class AlertService
      */
     public function createAlertsForReading(SensorReading $reading): Collection
     {
+        Log::info('AlertService:createAlertsForReading entry', ['reading_id' => $reading->id]);
+
+        $startTime = microtime(true);
         $triggeredRules = $this->triggeredRulesForReading($reading);
+        $alertsCreated = 0;
 
         foreach ($triggeredRules as $alertRule) {
             $alreadyExists = Alert::where('sensor_reading_id', $reading->id)
@@ -80,10 +104,14 @@ class AlertService
                 ->exists();
 
             if ($alreadyExists) {
+                Log::info('AlertService:createAlertsForReading duplicate skipped', [
+                    'reading_id' => $reading->id,
+                    'alert_rule_id' => $alertRule->id,
+                ]);
                 continue;
             }
 
-            DB::transaction(function () use ($reading, $alertRule): void {
+            DB::transaction(function () use ($reading, $alertRule) use (&$alertsCreated): void {
                 $alert = Alert::create([
                     'sensor_reading_id' => $reading->id,
                     'alert_rule_id' => $alertRule->id,
@@ -93,7 +121,21 @@ class AlertService
                 $this->recorder->record('alert.triggered', 'alert', $alert->id, [
                     'alert_id' => $alert->id,
                 ]);
+
+                $alertsCreated++;
             });
+        }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('AlertService:createAlertsForReading completed', [
+            'reading_id' => $reading->id,
+            'triggered_rules' => $triggeredRules->count(),
+            'alerts_created' => $alertsCreated,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('AlertService:createAlertsForReading slow execution', ['duration_ms' => $durationMs]);
         }
 
         return $triggeredRules;
@@ -101,16 +143,43 @@ class AlertService
 
     public function getActiveAlertsCount(): int
     {
-        return Alert::active()->count();
+        Log::info('AlertService:getActiveAlertsCount entry');
+
+        $startTime = microtime(true);
+        $count = Alert::active()->count();
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('AlertService:getActiveAlertsCount completed', ['count' => $count, 'duration_ms' => $durationMs]);
+
+        if ($durationMs > 100) {
+            Log::warning('AlertService:getActiveAlertsCount slow query', ['duration_ms' => $durationMs, 'table' => 'alerts']);
+        }
+
+        return $count;
     }
 
     public function getActiveAlertsList(int $limit = 10): Collection
     {
-        return Alert::withContext()
+        Log::info('AlertService:getActiveAlertsList entry', ['limit' => $limit]);
+
+        $startTime = microtime(true);
+        $result = Alert::withContext()
             ->active()
             ->orderByDesc('created_at')
             ->limit($limit)
             ->get();
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('AlertService:getActiveAlertsList completed', [
+            'count' => $result->count(),
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('AlertService:getActiveAlertsList slow query', ['duration_ms' => $durationMs, 'table' => 'alerts']);
+        }
+
+        return $result;
     }
 }
 

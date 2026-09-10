@@ -42,6 +42,9 @@ class RawOutboxRelay
      */
     public function relayPending(int $limit = 100): array
     {
+        Log::info('RawOutboxRelay:relayPending entry', ['limit' => $limit]);
+
+        $startTime = microtime(true);
         $claimed = $this->claimBatch($limit);
 
         $published = 0;
@@ -55,11 +58,20 @@ class RawOutboxRelay
             }
         }
 
-        return [
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        $result = [
             'claimed' => $claimed->count(),
             'published' => $published,
             'failed' => $failed,
         ];
+
+        Log::info('RawOutboxRelay:relayPending completed', array_merge($result, ['duration_ms' => $durationMs]));
+
+        if ($durationMs > 100) {
+            Log::warning('RawOutboxRelay:relayPending slow execution', ['duration_ms' => $durationMs]);
+        }
+
+        return $result;
     }
 
     /**

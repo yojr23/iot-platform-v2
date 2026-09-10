@@ -5,6 +5,7 @@ namespace App\Services\Alerts;
 use App\Models\Alert;
 use App\Services\Ingestion\DomainEventRecorder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * PLAN.md Stage 4.2/4.3, G0D row B4 — the single alert *lifecycle transition* owner (resolve /
@@ -30,9 +31,23 @@ class AlertLifecycleService
 
     public function resolve(Alert $alert): Alert
     {
+        Log::info('AlertLifecycleService:resolve entry', ['alert_id' => $alert->id]);
+
+        $startTime = microtime(true);
+
         DB::transaction(function () use ($alert): void {
             $this->resolveWithinTransaction($alert);
         });
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('AlertLifecycleService:resolve completed', [
+            'alert_id' => $alert->id,
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('AlertLifecycleService:resolve slow transaction', ['duration_ms' => $durationMs, 'alert_id' => $alert->id]);
+        }
 
         return $alert;
     }
@@ -45,8 +60,13 @@ class AlertLifecycleService
      */
     public function resolveAll(int $chunkSize = 100): int
     {
+        Log::info('AlertLifecycleService:resolveAll entry', ['chunk_size' => $chunkSize]);
+
+        $startTime = microtime(true);
         $ids = Alert::active()->orderBy('id')->pluck('id');
         $resolvedCount = 0;
+
+        Log::info('AlertLifecycleService:resolveAll found active alerts', ['count' => $ids->count()]);
 
         foreach ($ids->chunk($chunkSize) as $chunk) {
             $resolvedCount += DB::transaction(function () use ($chunk): int {
@@ -59,8 +79,6 @@ class AlertLifecycleService
 
                 foreach ($alerts as $alert) {
                     if ($alert->resolved) {
-                        // Already resolved by a concurrent request between the pluck() above and
-                        // this lock — skip rather than emit a duplicate alert.resolved fact.
                         continue;
                     }
 
@@ -70,6 +88,17 @@ class AlertLifecycleService
 
                 return $count;
             });
+        }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('AlertLifecycleService:resolveAll completed', [
+            'resolved_count' => $resolvedCount,
+            'total_active' => $ids->count(),
+            'duration_ms' => $durationMs,
+        ]);
+
+        if ($durationMs > 100) {
+            Log::warning('AlertLifecycleService:resolveAll slow execution', ['duration_ms' => $durationMs]);
         }
 
         return $resolvedCount;

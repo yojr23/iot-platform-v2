@@ -24,15 +24,24 @@ class DeviceApiController extends Controller
     }
     public function index(Request $request)
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+        ];
+
         $requestedPerPage = $request->query('per_page', 50);
         $perPage = (int) $requestedPerPage;
         $perPage = max(1, min($perPage, 100));
 
         if ((string) $requestedPerPage !== (string) $perPage) {
-            Log::warning('Device list requested with unexpected per_page value; clamped to safe range', [
+            Log::warning('Device list requested with unexpected per_page value; clamped to safe range', $context + [
                 'requested_per_page' => $requestedPerPage,
                 'effective_per_page' => $perPage,
-                'ip' => $request->ip(),
             ]);
         }
 
@@ -41,22 +50,27 @@ class DeviceApiController extends Controller
                 ->orderBy('id')
                 ->paginate($perPage);
 
-            Log::info('Device list fetched', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device list fetched', $context + [
                 'count' => $devices->count(),
                 'total' => $devices->total(),
                 'per_page' => $devices->perPage(),
                 'page' => $devices->currentPage(),
-                'ip' => $request->ip(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json($devices->through(
                 fn (Device $device): array => (new DeviceResource($device))->resolve($request)
             ));
         } catch (QueryException $e) {
-            Log::error('Database error while listing devices', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Database error while listing devices', $context + [
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -64,8 +78,11 @@ class DeviceApiController extends Controller
                 'message' => 'No fue posible consultar dispositivos.',
             ], 500);
         } catch (Throwable $e) {
-            Log::error('Unexpected error while listing devices', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Unexpected error while listing devices', $context + [
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -75,12 +92,10 @@ class DeviceApiController extends Controller
         }
     }
 
-    /**
-     * Bounded cursor snapshot for lifecycle recovery. The latest durable outbox ID is the
-     * authoritative sequence watermark, so delayed broadcasts cannot regress recovered state.
-     */
     public function statusSnapshot(Request $request)
     {
+        $startTime = microtime(true);
+
         $perPage = max(1, min((int) $request->query('per_page', 100), 100));
         $cursor = max(0, (int) $request->query('cursor', 0));
 
@@ -102,6 +117,19 @@ class DeviceApiController extends Controller
         $hasMore = $devices->count() > $perPage;
         $items = $devices->take($perPage)->values();
 
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('Device statusSnapshot request', [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'count' => $items->count(),
+            'has_more' => $hasMore,
+            'duration_ms' => $durationMs,
+        ]);
+
         return response()->json([
             'data' => DeviceStatusSnapshotResource::collection($items)->resolve($request),
             'next_cursor' => $hasMore ? $items->last()?->id : null,
@@ -110,6 +138,17 @@ class DeviceApiController extends Controller
 
     public function show(Request $request, Device $device)
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_id' => $device->id,
+        ];
+
         try {
             $device->load(['deviceType', 'lab', 'sensors.sensorType', 'sensors.readings' => function ($query) {
                 $query->where('reading_time', '<=', now())
@@ -117,19 +156,22 @@ class DeviceApiController extends Controller
                     ->limit(100);
             }]);
 
-            Log::info('Device detail fetched', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device detail fetched', $context + [
                 'sensor_count' => $device->sensors->count(),
-                'ip' => $request->ip(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json((new DeviceResource($device))->resolve($request));
         } catch (QueryException $e) {
-            Log::error('Database error while fetching device detail', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Database error while fetching device detail', $context + [
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -137,9 +179,11 @@ class DeviceApiController extends Controller
                 'message' => 'No fue posible consultar el dispositivo.',
             ], 500);
         } catch (Throwable $e) {
-            Log::error('Unexpected error while fetching device detail', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Unexpected error while fetching device detail', $context + [
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -151,6 +195,16 @@ class DeviceApiController extends Controller
 
     public function store(Request $request)
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+        ];
+
         $validated = $this->validatedDevicePayload($request);
         $status = array_key_exists('status', $validated) ? (bool) $validated['status'] : true;
 
@@ -167,15 +221,27 @@ class DeviceApiController extends Controller
 
             $device->load(['deviceType', 'lab', 'sensors.sensorType']);
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device store success', $context + [
+                'device_id' => $device->id,
+                'payload_keys' => array_keys($validated),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return (new DeviceResource($device))
                 ->additional(['message' => 'Dispositivo creado correctamente.'])
                 ->response()
                 ->setStatusCode(201);
         } catch (QueryException $e) {
-            Log::error('Database error while creating device', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Database error while creating device', $context + [
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -183,8 +249,11 @@ class DeviceApiController extends Controller
                 'message' => 'No fue posible crear el dispositivo.',
             ], 500);
         } catch (Throwable $e) {
-            Log::error('Unexpected error while creating device', [
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Unexpected error while creating device', $context + [
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -196,6 +265,17 @@ class DeviceApiController extends Controller
 
     public function update(Request $request, Device $device)
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_id' => $device->id,
+        ];
+
         $validated = $this->validatedDevicePayload($request, $device);
 
         // PLAN.md Stage 4.2/G0D row B5: status is a distinct transition, not a plain attribute —
@@ -215,14 +295,24 @@ class DeviceApiController extends Controller
 
             $device->refresh()->load(['deviceType', 'lab', 'sensors.sensorType']);
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device update success', $context + [
+                'payload_keys' => array_keys($validated),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return (new DeviceResource($device))
                 ->additional(['message' => 'Dispositivo actualizado correctamente.']);
         } catch (QueryException $e) {
-            Log::error('Database error while updating device', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Database error while updating device', $context + [
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -230,9 +320,11 @@ class DeviceApiController extends Controller
                 'message' => 'No fue posible actualizar el dispositivo.',
             ], 500);
         } catch (Throwable $e) {
-            Log::error('Unexpected error while updating device', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Unexpected error while updating device', $context + [
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -244,7 +336,24 @@ class DeviceApiController extends Controller
 
     public function destroy(Device $device)
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => request()->ip(),
+            'method' => request()->method(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_id' => $device->id,
+        ];
+
         if ($device->sensors()->exists()) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::warning('Device destroy blocked: has sensors', $context + [
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json([
                 'message' => 'No se puede eliminar el dispositivo porque tiene sensores asociados.',
             ], 409);
@@ -254,13 +363,22 @@ class DeviceApiController extends Controller
             $device->statusLogs()->delete();
             $device->delete();
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device destroy success', $context + [
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json(['message' => 'Dispositivo eliminado correctamente.']);
         } catch (QueryException $e) {
-            Log::error('Database error while deleting device', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Database error while deleting device', $context + [
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -268,9 +386,11 @@ class DeviceApiController extends Controller
                 'message' => 'No fue posible eliminar el dispositivo.',
             ], 500);
         } catch (Throwable $e) {
-            Log::error('Unexpected error while deleting device', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Unexpected error while deleting device', $context + [
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -282,18 +402,26 @@ class DeviceApiController extends Controller
 
     public function updateStatus(Request $request, Device $device)
     {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => $request->ip(),
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_id' => $device->id,
+        ];
+
         $payload = $request->all();
         $unexpectedFields = $this->detectUnexpectedFields($payload, ['status']);
 
-        Log::info('Device status update requested', [
-            'device_id' => $device->id,
-            'ip' => $request->ip(),
+        Log::info('Device status update requested', $context + [
             'payload_keys' => array_keys($payload),
         ]);
 
         if ($unexpectedFields !== []) {
-            Log::warning('Device status payload contains unexpected fields', [
-                'device_id' => $device->id,
+            Log::warning('Device status payload contains unexpected fields', $context + [
                 'unexpected_fields' => $unexpectedFields,
                 'payload' => $payload,
             ]);
@@ -304,8 +432,7 @@ class DeviceApiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            Log::warning('Device status update validation failed', [
-                'device_id' => $device->id,
+            Log::warning('Device status update validation failed', $context + [
                 'errors' => $validator->errors()->toArray(),
                 'payload' => $payload,
             ]);
@@ -325,10 +452,13 @@ class DeviceApiController extends Controller
 
             $device->refresh();
 
-            Log::info('Device status updated successfully', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device status updated successfully', $context + [
                 'status' => $device->status,
                 'is_active' => $device->is_active,
+                'success' => true,
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -336,11 +466,13 @@ class DeviceApiController extends Controller
                 'device' => (new DeviceResource($device))->resolve($request),
             ]);
         } catch (QueryException $e) {
-            Log::error('Database error while updating device status', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Database error while updating device status', $context + [
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -348,9 +480,11 @@ class DeviceApiController extends Controller
                 'message' => 'No fue posible actualizar estado del dispositivo.',
             ], 500);
         } catch (Throwable $e) {
-            Log::error('Unexpected error while updating device status', [
-                'device_id' => $device->id,
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Unexpected error while updating device status', $context + [
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([
@@ -362,19 +496,42 @@ class DeviceApiController extends Controller
 
     public function sensors(Request $request, Device $device)
     {
+        $startTime = microtime(true);
+
         try {
             $sensors = $device->sensors()
                 ->with(['device', 'sensorType'])
                 ->orderBy('name')
                 ->get();
 
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device sensors request', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'device_id' => $device->id,
+                'count' => $sensors->count(),
+                'duration_ms' => $durationMs,
+            ]);
+
             return response()->json(
                 SensorResource::collection($sensors)->resolve($request)
             );
         } catch (Throwable $e) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
             Log::error('Unexpected error while fetching device sensors', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
                 'device_id' => $device->id,
                 'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
             ]);
 
             return response()->json([

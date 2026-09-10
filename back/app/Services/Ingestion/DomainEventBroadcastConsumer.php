@@ -68,6 +68,13 @@ class DomainEventBroadcastConsumer
      */
     public function runOnce(string $consumerName, int $batch, int $blockMs, int $claimIdleMs = 30000): array
     {
+        Log::info('DomainEventBroadcastConsumer:runOnce entry', [
+            'consumer' => $consumerName,
+            'batch' => $batch,
+            'block_ms' => $blockMs,
+        ]);
+
+        $startTime = microtime(true);
         $this->ensureGroup();
 
         $stats = ['acked' => 0, 'dlq' => 0, 'pending' => 0];
@@ -78,6 +85,13 @@ class DomainEventBroadcastConsumer
 
         foreach ($this->readBatch($consumerName, $batch, $blockMs) as [$id, $fields]) {
             $stats[$this->handleMessage($id, $fields)]++;
+        }
+
+        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('DomainEventBroadcastConsumer:runOnce completed', array_merge($stats, ['duration_ms' => $durationMs]));
+
+        if ($durationMs > 100) {
+            Log::warning('DomainEventBroadcastConsumer:runOnce slow execution', ['duration_ms' => $durationMs]);
         }
 
         return $stats;
@@ -248,7 +262,7 @@ class DomainEventBroadcastConsumer
             ->find($alertId);
 
         if (! $alert) {
-            Log::info('DomainEventBroadcastConsumer: alert.triggered target no longer exists', [
+            Log::warning('DomainEventBroadcastConsumer: alert.triggered target no longer exists', [
                 'outbox_id' => $outbox->id,
                 'alert_id' => $alertId,
             ]);
@@ -269,7 +283,7 @@ class DomainEventBroadcastConsumer
             // Alert was deleted after resolution — nothing meaningful left to broadcast, but the
             // outbox row is still marked delivered (this is a legitimate terminal outcome, not a
             // retryable failure).
-            Log::info('DomainEventBroadcastConsumer: alert.resolved target no longer exists', [
+            Log::warning('DomainEventBroadcastConsumer: alert.resolved target no longer exists', [
                 'outbox_id' => $outbox->id,
                 'alert_id' => $alertId,
             ]);
@@ -304,7 +318,7 @@ class DomainEventBroadcastConsumer
             ->find($readingId);
 
         if (! $reading) {
-            Log::info('DomainEventBroadcastConsumer: sensor.reading.created target no longer exists', [
+            Log::warning('DomainEventBroadcastConsumer: sensor.reading.created target no longer exists', [
                 'outbox_id' => $outbox->id,
                 'reading_id' => $readingId,
             ]);
@@ -350,7 +364,11 @@ class DomainEventBroadcastConsumer
     {
         try {
             $reply = $this->raw($this->connection, ['XPENDING', $this->stream, $this->group, $id, $id, 1]);
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            Log::warning('DomainEventBroadcastConsumer:deliveryCount XPENDING failed', [
+                'stream_id' => $id,
+                'exception' => $e->getMessage(),
+            ]);
             return 1;
         }
 

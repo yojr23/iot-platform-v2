@@ -26,6 +26,8 @@ class SensorApiController extends Controller
 
     public function store(Request $request, Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         $context = $this->buildContext($request, $sensor);
         $payload = $request->all();
         $this->extractProvidedApiKey($request, $payload);
@@ -118,6 +120,7 @@ class SensorApiController extends Controller
                 'reading_id' => $reading->id,
                 'value' => $reading->value,
                 'reading_time' => optional($reading->reading_time)->toDateTimeString(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -129,6 +132,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -138,6 +142,7 @@ class SensorApiController extends Controller
         } catch (Throwable $e) {
             Log::error('Unexpected error while saving sensor reading', $context + [
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -157,6 +162,8 @@ class SensorApiController extends Controller
 
     public function readings(Request $request, Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         try {
             $filters = $this->validatedReadingFilters($request);
             $readings = $this->filteredReadingsQuery($sensor, $filters)
@@ -168,6 +175,7 @@ class SensorApiController extends Controller
                 'sensor_id' => $sensor->id,
                 'total' => $readings->total(),
                 'current_page' => $readings->currentPage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -180,6 +188,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -190,6 +199,7 @@ class SensorApiController extends Controller
             Log::error('Error fetching sensor readings', [
                 'sensor_id' => $sensor->id,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -201,6 +211,8 @@ class SensorApiController extends Controller
 
     public function exportReadings(Request $request, Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         try {
             $filters = $this->validatedReadingFilters($request);
             $sensor->load(['sensorType', 'device.lab']);
@@ -237,6 +249,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -247,6 +260,7 @@ class SensorApiController extends Controller
             Log::error('Unexpected error exporting sensor readings', [
                 'sensor_id' => $sensor->id,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -258,6 +272,8 @@ class SensorApiController extends Controller
 
     public function latestReadings(Request $request, Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         try {
             $originalLimit = $request->query('limit', 10);
             $limit = (int) $originalLimit;
@@ -307,6 +323,7 @@ class SensorApiController extends Controller
                 'effective_limit' => $limit,
                 'returned_count' => $readings->count(),
                 'source' => $source,
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json($readings);
@@ -316,6 +333,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -326,6 +344,7 @@ class SensorApiController extends Controller
             Log::error('Error fetching latest sensor readings', [
                 'sensor_id' => $sensor->id,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -337,6 +356,8 @@ class SensorApiController extends Controller
 
     public function allReadings()
     {
+        $startTime = microtime(true);
+
         try {
             $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) {
                 $query->where('reading_time', '<=', now())
@@ -346,6 +367,7 @@ class SensorApiController extends Controller
 
             Log::info('All sensor readings requested', [
                 'sensor_count' => $sensors->count(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -369,6 +391,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -378,6 +401,7 @@ class SensorApiController extends Controller
         } catch (Throwable $e) {
             Log::error('Error fetching all sensor readings', [
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -396,6 +420,8 @@ class SensorApiController extends Controller
 
     public function iotIndex(Request $request)
     {
+        $startTime = microtime(true);
+
         $configuredApiKey = (string) config('app.api_key');
         $providedApiKey = (string) ($request->header('X-Device-Key')
             ?? $request->query('api_key')
@@ -416,6 +442,8 @@ class SensorApiController extends Controller
 
     public function index(Request $request)
     {
+        $startTime = microtime(true);
+
         try {
             $sensors = Sensor::with(['sensorType', 'device.lab'])->get();
 
@@ -427,6 +455,7 @@ class SensorApiController extends Controller
                 Log::info('Sensors listed successfully', [
                     'count' => $sensors->count(),
                     'path' => $request->path(),
+                    'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
                 ]);
             }
 
@@ -436,6 +465,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -445,6 +475,7 @@ class SensorApiController extends Controller
         } catch (Throwable $e) {
             Log::error('Error fetching sensors', [
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -456,6 +487,8 @@ class SensorApiController extends Controller
 
     public function createSensor(Request $request)
     {
+        $startTime = microtime(true);
+
         $validated = $this->validatedSensorPayload($request);
         $device = Device::findOrFail($validated['device_id']);
 
@@ -481,6 +514,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -490,6 +524,7 @@ class SensorApiController extends Controller
         } catch (Throwable $e) {
             Log::error('Unexpected error creating sensor', [
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -501,6 +536,8 @@ class SensorApiController extends Controller
 
     public function updateSensor(Request $request, Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         $validated = $this->validatedSensorPayload($request);
 
         try {
@@ -515,6 +552,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -525,6 +563,7 @@ class SensorApiController extends Controller
             Log::error('Unexpected error updating sensor', [
                 'sensor_id' => $sensor->id,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -536,6 +575,8 @@ class SensorApiController extends Controller
 
     public function destroySensor(Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         if ($sensor->readings()->exists() || $sensor->alertRules()->exists()) {
             return response()->json([
                 'message' => 'No se puede eliminar el sensor porque tiene lecturas o reglas asociadas.',
@@ -552,6 +593,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -562,6 +604,7 @@ class SensorApiController extends Controller
             Log::error('Unexpected error deleting sensor', [
                 'sensor_id' => $sensor->id,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -573,6 +616,8 @@ class SensorApiController extends Controller
 
     public function show(Request $request, Sensor $sensor)
     {
+        $startTime = microtime(true);
+
         try {
             $sensor->load([
                 'sensorType',
@@ -591,6 +636,7 @@ class SensorApiController extends Controller
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
@@ -601,6 +647,7 @@ class SensorApiController extends Controller
             Log::error('Error fetching sensor detail', [
                 'sensor_id' => $sensor->id,
                 'exception' => $e->getMessage(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
