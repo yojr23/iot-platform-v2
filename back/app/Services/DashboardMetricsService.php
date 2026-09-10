@@ -8,6 +8,8 @@ use App\Models\SensorType;
 use App\Services\Alerts\AlertService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
+use Throwable;
 
 class DashboardMetricsService
 {
@@ -25,9 +27,18 @@ class DashboardMetricsService
         $cacheHit = Cache::has($cacheKey);
         Log::info('DashboardMetricsService:getSummaryStats cache check', ['cache_hit' => $cacheHit, 'key' => $cacheKey]);
 
-        $activeAlerts = Cache::remember($cacheKey, 5, function (): int {
-            return $this->alertService->getActiveAlertsCount();
-        });
+        try {
+            $activeAlerts = Cache::remember($cacheKey, 5, function (): int {
+                return $this->alertService->getActiveAlertsCount();
+            });
+        } catch (Throwable $e) {
+            Log::error('DashboardMetricsService: cache read failed, querying DB directly', [
+                'key' => $cacheKey,
+                'exception' => $e->getMessage(),
+            ]);
+
+            $activeAlerts = $this->alertService->getActiveAlertsCount();
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -60,9 +71,18 @@ class DashboardMetricsService
         $cacheHit = Cache::has($cacheKey);
         Log::info('DashboardMetricsService:getActiveAlertsList cache check', ['cache_hit' => $cacheHit, 'key' => $cacheKey]);
 
-        $result = Cache::remember($cacheKey, 5, function () use ($limit) {
-            return $this->alertService->getActiveAlertsList($limit);
-        });
+        try {
+            $result = Cache::remember($cacheKey, 5, function () use ($limit) {
+                return $this->alertService->getActiveAlertsList($limit);
+            });
+        } catch (Throwable $e) {
+            Log::error('DashboardMetricsService: cache read failed for active alerts list, querying DB directly', [
+                'key' => $cacheKey,
+                'exception' => $e->getMessage(),
+            ]);
+
+            $result = $this->alertService->getActiveAlertsList($limit);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         Log::info('DashboardMetricsService:getActiveAlertsList completed', [

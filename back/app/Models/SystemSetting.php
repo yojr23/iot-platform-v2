@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SystemSetting extends Model
 {
@@ -25,10 +27,20 @@ class SystemSetting extends Model
      */
     public static function get(string $key, $default = null)
     {
-        return Cache::remember("system_setting_{$key}", 3600, function () use ($key, $default) {
+        try {
+            return Cache::remember("system_setting_{$key}", 3600, function () use ($key, $default) {
+                $setting = static::where('key', $key)->first();
+                return $setting ? static::castValue($setting->value, $setting->type) : $default;
+            });
+        } catch (Throwable $e) {
+            Log::error('SystemSetting: cache read failed, falling through to DB', [
+                'key' => $key,
+                'exception' => $e->getMessage(),
+            ]);
+
             $setting = static::where('key', $key)->first();
             return $setting ? static::castValue($setting->value, $setting->type) : $default;
-        });
+        }
     }
 
     /**
@@ -48,9 +60,17 @@ class SystemSetting extends Model
         );
 
         // Clear cache
-        Cache::forget("system_setting_{$key}");
-        Cache::forget("system_settings_group_{$group}");
-        Cache::forget('system_settings_groups');
+        try {
+            Cache::forget("system_setting_{$key}");
+            Cache::forget("system_settings_group_{$group}");
+            Cache::forget('system_settings_groups');
+        } catch (Throwable $e) {
+            Log::error('SystemSetting: cache clear failed', [
+                'key' => $key,
+                'group' => $group,
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -58,14 +78,28 @@ class SystemSetting extends Model
      */
     public static function getByGroup(string $group): array
     {
-        return Cache::remember("system_settings_group_{$group}", 3600, function () use ($group) {
+        try {
+            return Cache::remember("system_settings_group_{$group}", 3600, function () use ($group) {
+                return static::where('group', $group)
+                    ->get()
+                    ->mapWithKeys(function ($setting) {
+                        return [$setting->key => static::castValue($setting->value, $setting->type)];
+                    })
+                    ->toArray();
+            });
+        } catch (Throwable $e) {
+            Log::error('SystemSetting: cache read failed for group, falling through to DB', [
+                'group' => $group,
+                'exception' => $e->getMessage(),
+            ]);
+
             return static::where('group', $group)
                 ->get()
                 ->mapWithKeys(function ($setting) {
                     return [$setting->key => static::castValue($setting->value, $setting->type)];
                 })
                 ->toArray();
-        });
+        }
     }
 
     /**
@@ -95,10 +129,16 @@ class SystemSetting extends Model
      */
     public static function clearCache(): void
     {
-        $settings = static::all();
-        foreach ($settings as $setting) {
-            Cache::forget("system_setting_{$setting->key}");
+        try {
+            $settings = static::all();
+            foreach ($settings as $setting) {
+                Cache::forget("system_setting_{$setting->key}");
+            }
+            Cache::forget('system_settings_groups');
+        } catch (Throwable $e) {
+            Log::error('SystemSetting: clearCache failed', [
+                'exception' => $e->getMessage(),
+            ]);
         }
-        Cache::forget('system_settings_groups');
     }
 }

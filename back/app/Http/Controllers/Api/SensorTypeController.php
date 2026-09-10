@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\SensorType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
+use Throwable;
 
 class SensorTypeController extends Controller
 {
@@ -37,7 +39,27 @@ class SensorTypeController extends Controller
     {
         $startTime = microtime(true);
 
-        $sensorType = SensorType::create($this->validated($request));
+        try {
+            $sensorType = SensorType::create($this->validated($request));
+        } catch (QueryException $e) {
+            Log::error('SensorType store database error', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible crear el tipo de sensor.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('SensorType store error', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado creando el tipo de sensor.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -80,7 +102,29 @@ class SensorTypeController extends Controller
     {
         $startTime = microtime(true);
 
-        $sensorType->update($this->validated($request));
+        try {
+            $sensorType->update($this->validated($request));
+        } catch (QueryException $e) {
+            Log::error('SensorType update database error', [
+                'sensor_type_id' => $sensorType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible actualizar el tipo de sensor.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('SensorType update error', [
+                'sensor_type_id' => $sensorType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado actualizando el tipo de sensor.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -110,7 +154,29 @@ class SensorTypeController extends Controller
             ], 409);
         }
 
-        $sensorType->delete();
+        try {
+            $sensorType->delete();
+        } catch (QueryException $e) {
+            Log::error('SensorType destroy database error', [
+                'sensor_type_id' => $sensorType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible eliminar el tipo de sensor.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('SensorType destroy error', [
+                'sensor_type_id' => $sensorType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado eliminando el tipo de sensor.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

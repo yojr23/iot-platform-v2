@@ -8,8 +8,10 @@ use App\Models\Device;
 use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Services\DashboardMetricsService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class DashboardController extends Controller
 {
@@ -34,14 +36,26 @@ class DashboardController extends Controller
             'duration_ms' => $durationMs,
         ]);
 
-        return response()->json($result);
+        $status = $result['status'] ?? 200;
+        unset($result['status']);
+
+        return response()->json($result, $status);
     }
 
     public function publicData(): JsonResponse
     {
         $startTime = microtime(true);
 
-        $result = $this->dashboardPayload() + [
+        $result = $this->dashboardPayload();
+
+        if (isset($result['status'])) {
+            $status = $result['status'];
+            unset($result['status']);
+
+            return response()->json($result, $status);
+        }
+
+        $result += [
             'devices' => $this->publicDevices(),
         ];
 
@@ -63,17 +77,41 @@ class DashboardController extends Controller
      */
     private function dashboardPayload(): array
     {
-        $summary = $this->metrics->getSummaryStats();
+        try {
+            $summary = $this->metrics->getSummaryStats();
 
-        return [
-            'total_devices' => Device::count(),
-            'active_devices' => $summary['activeDevices'],
-            'total_sensors' => Sensor::count(),
-            'active_alerts' => $summary['activeAlerts'],
-            'unresolved_alerts' => Alert::active()->count(),
-            'latest_readings' => $this->latestReadings(),
-            'system_status' => 'ok',
-        ];
+            return [
+                'total_devices' => Device::count(),
+                'active_devices' => $summary['activeDevices'] ?? 0,
+                'total_sensors' => Sensor::count(),
+                'active_alerts' => $summary['activeAlerts'] ?? 0,
+                'unresolved_alerts' => Alert::active()->count(),
+                'latest_readings' => $this->latestReadings(),
+                'system_status' => 'ok',
+            ];
+        } catch (QueryException $e) {
+            Log::error('Dashboard database error', [
+                'sql_state' => $e->errorInfo[0] ?? null,
+                'db_error_code' => $e->errorInfo[1] ?? null,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return [
+                'error' => 'Database error',
+                'message' => 'No fue posible cargar los datos del dashboard.',
+                'status' => 500,
+            ];
+        } catch (Throwable $e) {
+            Log::error('Dashboard unexpected error', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return [
+                'error' => 'Dashboard error',
+                'message' => 'Se produjo un error inesperado cargando el dashboard.',
+                'status' => 500,
+            ];
+        }
     }
 
     private function latestReadings(int $limit = 10)

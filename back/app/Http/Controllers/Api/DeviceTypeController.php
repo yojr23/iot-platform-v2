@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\DeviceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
+use Throwable;
 use Illuminate\Validation\Rule;
 
 class DeviceTypeController extends Controller
@@ -40,7 +42,27 @@ class DeviceTypeController extends Controller
     {
         $startTime = microtime(true);
 
-        $deviceType = DeviceType::create($this->validated($request));
+        try {
+            $deviceType = DeviceType::create($this->validated($request));
+        } catch (QueryException $e) {
+            Log::error('DeviceType store database error', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible crear el tipo de dispositivo.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('DeviceType store error', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado creando el tipo de dispositivo.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -84,7 +106,29 @@ class DeviceTypeController extends Controller
     {
         $startTime = microtime(true);
 
-        $deviceType->update($this->validated($request, $deviceType));
+        try {
+            $deviceType->update($this->validated($request, $deviceType));
+        } catch (QueryException $e) {
+            Log::error('DeviceType update database error', [
+                'device_type_id' => $deviceType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible actualizar el tipo de dispositivo.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('DeviceType update error', [
+                'device_type_id' => $deviceType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado actualizando el tipo de dispositivo.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -127,7 +171,29 @@ class DeviceTypeController extends Controller
             ], 409);
         }
 
-        $deviceType->delete();
+        try {
+            $deviceType->delete();
+        } catch (QueryException $e) {
+            Log::error('DeviceType destroy database error', [
+                'device_type_id' => $deviceType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible eliminar el tipo de dispositivo.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('DeviceType destroy error', [
+                'device_type_id' => $deviceType->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado eliminando el tipo de dispositivo.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

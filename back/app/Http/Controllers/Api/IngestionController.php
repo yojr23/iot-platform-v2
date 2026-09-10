@@ -10,6 +10,7 @@ use App\Models\RawSensorEvent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * PLAN.md Stage 3.1 / docs/implementation/adr-g1.md ADR-1 (transactional outbox).
@@ -44,24 +45,35 @@ class IngestionController extends Controller
             'payload_keys' => array_keys($validated['payload'] ?? []),
         ]);
 
-        $event = DB::transaction(function () use ($validated, $nodeId): RawSensorEvent {
-            $event = RawSensorEvent::create([
-                'topic' => $validated['topic'] ?? null,
-                'source' => $validated['source'] ?? 'ingestion_service',
-                'source_event_id' => $validated['source_event_id'] ?? null,
-                'node_id' => is_string($nodeId) && $nodeId !== '' ? $nodeId : null,
-                'payload' => $validated['payload'],
-                'received_at' => $validated['received_at'] ?? null,
-                'status' => 'received',
+        try {
+            $event = DB::transaction(function () use ($validated, $nodeId): RawSensorEvent {
+                $event = RawSensorEvent::create([
+                    'topic' => $validated['topic'] ?? null,
+                    'source' => $validated['source'] ?? 'ingestion_service',
+                    'source_event_id' => $validated['source_event_id'] ?? null,
+                    'node_id' => is_string($nodeId) && $nodeId !== '' ? $nodeId : null,
+                    'payload' => $validated['payload'],
+                    'received_at' => $validated['received_at'] ?? null,
+                    'status' => 'received',
+                ]);
+
+                RawEventOutbox::create([
+                    'raw_sensor_event_id' => $event->id,
+                    'status' => 'pending',
+                ]);
+
+                return $event;
+            });
+        } catch (Throwable $e) {
+            Log::error('Ingestion store transaction error', $context + [
+                'exception' => $e->getMessage(),
             ]);
 
-            RawEventOutbox::create([
-                'raw_sensor_event_id' => $event->id,
-                'status' => 'pending',
-            ]);
-
-            return $event;
-        });
+            return response()->json([
+                'error' => 'Transaction error',
+                'message' => 'No fue posible almacenar el evento de sensor.',
+            ], 500);
+        }
 
         // Low-latency wake-up hint only (ADR-1). If this dispatch is lost — process crash, queue
         // outage — the row is not stranded: `ingestion:relay-outbox`'s durable discovery loop

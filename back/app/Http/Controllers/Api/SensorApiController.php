@@ -276,16 +276,15 @@ class SensorApiController extends Controller
 
         try {
             $originalLimit = $request->query('limit', 10);
-            $limit = (int) $originalLimit;
-            $limit = max(1, min($limit, 100));
-
-            if ((string) $originalLimit !== (string) $limit) {
-                Log::warning('latestReadings received unexpected limit format/value; clamped to safe range', [
+            $filteredLimit = filter_var($originalLimit, FILTER_VALIDATE_INT);
+            if ($filteredLimit === false || $filteredLimit < 1) {
+                $filteredLimit = 10;
+                Log::warning('latestReadings received invalid limit; using default', [
                     'sensor_id' => $sensor->id,
                     'requested_limit' => $originalLimit,
-                    'effective_limit' => $limit,
                 ]);
             }
+            $limit = max(1, min($filteredLimit, 100));
 
             $source = 'redis';
             $readings = $this->readingProjection->latest($sensor->id, $limit);
@@ -375,7 +374,7 @@ class SensorApiController extends Controller
                     return [
                         'id' => $sensor->id,
                         'name' => $sensor->name,
-                        'unit' => $sensor->sensorType->unit,
+                        'unit' => $sensor->sensorType?->unit ?? '',
                         'color' => $this->getColorForSensor($sensor->id),
                         'readings' => $sensor->readings->map(function ($reading) {
                             return [
@@ -490,7 +489,16 @@ class SensorApiController extends Controller
         $startTime = microtime(true);
 
         $validated = $this->validatedSensorPayload($request);
-        $device = Device::findOrFail($validated['device_id']);
+        $device = Device::find($validated['device_id']);
+
+        if (! $device) {
+            return response()->json([
+                'message' => 'El dispositivo seleccionado no existe.',
+                'errors' => [
+                    'device_id' => ['El dispositivo seleccionado no existe.'],
+                ],
+            ], 422);
+        }
 
         if (! $device->status || ! $device->is_active) {
             return response()->json([

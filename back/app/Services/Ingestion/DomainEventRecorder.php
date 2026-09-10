@@ -42,7 +42,15 @@ class DomainEventRecorder
             'status' => 'pending',
         ]);
 
-        RelayDomainOutboxJob::dispatch()->afterCommit();
+        try {
+            RelayDomainOutboxJob::dispatch()->afterCommit();
+        } catch (\Throwable $e) {
+            Log::warning('DomainEventRecorder: failed to dispatch relay job', [
+                'outbox_id' => $outbox->id,
+                'event_type' => $eventType,
+                'exception' => $e->getMessage(),
+            ]);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         Log::info('DomainEventRecorder:record completed', [

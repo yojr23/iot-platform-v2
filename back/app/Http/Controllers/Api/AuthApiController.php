@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class AuthApiController extends Controller
 {
@@ -115,16 +116,27 @@ class AuthApiController extends Controller
             'device_name' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-        ]);
+        try {
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+            ]);
 
-        event(new Registered($user));
+            event(new Registered($user));
 
-        $tokenName = $validated['device_name'] ?? 'spa-client';
-        $plainTextToken = $user->createToken($tokenName, ['read'])->plainTextToken;
+            $tokenName = $validated['device_name'] ?? 'spa-client';
+            $plainTextToken = $user->createToken($tokenName, ['read'])->plainTextToken;
+        } catch (Throwable $e) {
+            Log::error('Auth register error', $context + [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Registration error',
+                'message' => 'No fue posible registrar el usuario.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

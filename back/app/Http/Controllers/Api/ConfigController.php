@@ -7,6 +7,8 @@ use App\Http\Requests\Api\UpdateAlertConfigRequest;
 use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
+use Throwable;
 
 class ConfigController extends Controller
 {
@@ -81,29 +83,51 @@ class ConfigController extends Controller
 
         $validated = $request->validated();
 
-        SystemSetting::set('mail_enabled', (int) $validated['mail_enabled'], 'boolean', 'mail');
-        SystemSetting::set('alert_sound_enabled', (int) $validated['alert_sound_enabled'], 'boolean', 'alerts');
-        SystemSetting::set('alert_threshold', $validated['alert_threshold'], 'integer', 'alerts');
-        SystemSetting::set('sensor_update_interval', $validated['sensor_update_interval'], 'integer', 'alerts');
-        SystemSetting::set('danger_email_rate_limit_seconds', $validated['danger_email_rate_limit_seconds'], 'integer', 'alerts');
-        SystemSetting::clearCache();
+        try {
+            SystemSetting::set('mail_enabled', (int) $validated['mail_enabled'], 'boolean', 'mail');
+            SystemSetting::set('alert_sound_enabled', (int) $validated['alert_sound_enabled'], 'boolean', 'alerts');
+            SystemSetting::set('alert_threshold', $validated['alert_threshold'], 'integer', 'alerts');
+            SystemSetting::set('sensor_update_interval', $validated['sensor_update_interval'], 'integer', 'alerts');
+            SystemSetting::set('danger_email_rate_limit_seconds', $validated['danger_email_rate_limit_seconds'], 'integer', 'alerts');
+            SystemSetting::clearCache();
 
-        $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
-        Log::info('Config updateAlerts success', [
-            'ip' => $request->ip(),
-            'method' => $request->method(),
-            'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
-            'user_id' => auth()->id(),
-            'payload_keys' => array_keys($validated),
-            'success' => true,
-            'duration_ms' => $durationMs,
-        ]);
+            Log::info('Config updateAlerts success', [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'path' => $request->path(),
+                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'user_id' => auth()->id(),
+                'payload_keys' => array_keys($validated),
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
 
-        return response()->json($this->alertSettings() + [
-            'message' => 'Configuracion de alertas actualizada correctamente.',
-        ]);
+            return response()->json($this->alertSettings() + [
+                'message' => 'Configuracion de alertas actualizada correctamente.',
+            ]);
+        } catch (QueryException $e) {
+            Log::error('Config updateAlerts database error', [
+                'ip' => $request->ip(),
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible actualizar la configuracion de alertas.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('Config updateAlerts unexpected error', [
+                'ip' => $request->ip(),
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error updating alert config',
+                'message' => 'Se produjo un error inesperado actualizando la configuracion.',
+            ], 500);
+        }
     }
 
     /**

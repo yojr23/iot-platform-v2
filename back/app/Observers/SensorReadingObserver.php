@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\SensorReading;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * PLAN.md Stage 4.3 (G0D row B2) scope note: unchanged this stage. `checkForAlert()` still
@@ -23,7 +24,17 @@ class SensorReadingObserver
             'value' => $sensorReading->value,
         ]);
 
-        $triggeredRules = $sensorReading->checkForAlert();
+        try {
+            $triggeredRules = $sensorReading->checkForAlert();
+        } catch (Throwable $e) {
+            Log::error('SensorReadingObserver: checkForAlert failed, reading preserved', [
+                'sensor_reading_id' => $sensorReading->id,
+                'sensor_id' => $sensorReading->sensor_id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return;
+        }
 
         if ($triggeredRules->isEmpty()) {
             Log::debug('SensorReadingObserver: No se activaron reglas de alerta para la lectura', [

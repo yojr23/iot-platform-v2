@@ -31,6 +31,12 @@ class AlertLifecycleService
 
     public function resolve(Alert $alert): Alert
     {
+        if ($alert->resolved) {
+            Log::info('AlertLifecycleService:resolve skipped — already resolved', ['alert_id' => $alert->id]);
+
+            return $alert;
+        }
+
         Log::info('AlertLifecycleService:resolve entry', ['alert_id' => $alert->id]);
 
         $startTime = microtime(true);

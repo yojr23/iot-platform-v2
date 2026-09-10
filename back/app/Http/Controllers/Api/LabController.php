@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Lab;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
+use Throwable;
 
 class LabController extends Controller
 {
@@ -39,7 +41,27 @@ class LabController extends Controller
     {
         $startTime = microtime(true);
 
-        $lab = Lab::create($this->validated($request));
+        try {
+            $lab = Lab::create($this->validated($request));
+        } catch (QueryException $e) {
+            Log::error('Lab store database error', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible crear el laboratorio.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('Lab store error', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado creando el laboratorio.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -83,7 +105,29 @@ class LabController extends Controller
     {
         $startTime = microtime(true);
 
-        $lab->update($this->validated($request));
+        try {
+            $lab->update($this->validated($request));
+        } catch (QueryException $e) {
+            Log::error('Lab update database error', [
+                'lab_id' => $lab->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible actualizar el laboratorio.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('Lab update error', [
+                'lab_id' => $lab->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado actualizando el laboratorio.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -126,7 +170,29 @@ class LabController extends Controller
             ], 409);
         }
 
-        $lab->delete();
+        try {
+            $lab->delete();
+        } catch (QueryException $e) {
+            Log::error('Lab destroy database error', [
+                'lab_id' => $lab->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Database error',
+                'message' => 'No fue posible eliminar el laboratorio.',
+            ], 500);
+        } catch (Throwable $e) {
+            Log::error('Lab destroy error', [
+                'lab_id' => $lab->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Error',
+                'message' => 'Se produjo un error inesperado eliminando el laboratorio.',
+            ], 500);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

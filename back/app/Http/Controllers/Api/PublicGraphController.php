@@ -45,7 +45,11 @@ class PublicGraphController extends Controller
         $devices = $sensors
             ->groupBy('device_id')
             ->map(function ($sensorsForDevice) {
-                $device = $sensorsForDevice->first()->device;
+                $device = $sensorsForDevice->first()->device ?? null;
+
+                if ($device === null) {
+                    return null;
+                }
 
                 return [
                     'id' => $device->id,
@@ -57,6 +61,7 @@ class PublicGraphController extends Controller
                     ])->values()->all(),
                 ];
             })
+            ->filter()
             ->values();
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
