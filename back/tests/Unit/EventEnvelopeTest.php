@@ -101,20 +101,40 @@ class EventEnvelopeTest extends TestCase
     {
         $device = Device::factory()->create();
 
-        $event = new DeviceStatusUpdated($device);
+        $event = new DeviceStatusUpdated(
+            deviceId: $device->id,
+            status: true,
+            isActive: true,
+            changedAt: '2026-01-01T00:00:00+00:00',
+            eventSequence: 7,
+        );
         $data = $event->broadcastWith();
 
         $this->assertSame($device->id, $data['device_id']);
+        $this->assertSame(true, $data['status']);
+        $this->assertSame(true, $data['is_active']);
+        $this->assertSame('2026-01-01T00:00:00+00:00', $data['changed_at']);
+        $this->assertSame(7, $data['event_sequence']);
         $this->assertSame('device.status.changed', $data['event_type']);
         $this->assertSame('device', $data['aggregate_type']);
         $this->assertSame($device->id, $data['aggregate_id']);
-        $this->assertSame('device-status', $event->broadcastOn()->name);
+
+        // Gate 8: moved off the public Channel to a private one — device status is not guest data.
+        $channel = $event->broadcastOn();
+        $this->assertInstanceOf(PrivateChannel::class, $channel);
+        $this->assertSame('private-device-status', $channel->name);
     }
 
     public function test_envelope_helper_nests_payload_and_keeps_metadata(): void
     {
         $device = Device::factory()->create();
-        $event = new DeviceStatusUpdated($device);
+        $event = new DeviceStatusUpdated(
+            deviceId: $device->id,
+            status: true,
+            isActive: true,
+            changedAt: '2026-01-01T00:00:00+00:00',
+            eventSequence: 1,
+        );
 
         $payload = ['foo' => 'bar'];
         $envelope = $event->envelope($payload);

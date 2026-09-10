@@ -4,9 +4,9 @@ namespace App\Services\Ingestion;
 
 use App\Events\AlertResolved;
 use App\Events\DeviceStatusUpdated;
+use App\Events\NewAlertTriggered;
 use App\Events\NewSensorReading;
 use App\Models\Alert;
-use App\Models\Device;
 use App\Models\DomainEventOutbox;
 use App\Models\SensorReading;
 use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
@@ -233,11 +233,30 @@ class DomainEventBroadcastConsumer
     private function broadcastFact(DomainEventOutbox $outbox): void
     {
         match ($outbox->event_type) {
+            'alert.triggered' => $this->broadcastAlertTriggered($outbox),
             'alert.resolved' => $this->broadcastAlertResolved($outbox),
             'device.status.changed' => $this->broadcastDeviceStatusChanged($outbox),
             'sensor.reading.created' => $this->broadcastSensorReadingCreated($outbox),
             default => throw new \RuntimeException("unknown domain event_type [{$outbox->event_type}]"),
         };
+    }
+
+    private function broadcastAlertTriggered(DomainEventOutbox $outbox): void
+    {
+        $alertId = data_get($outbox->payload, 'alert_id');
+        $alert = Alert::query()->with(['sensorReading.sensor.sensorType', 'sensorReading.sensor.device.lab', 'alertRule'])
+            ->find($alertId);
+
+        if (! $alert) {
+            Log::info('DomainEventBroadcastConsumer: alert.triggered target no longer exists', [
+                'outbox_id' => $outbox->id,
+                'alert_id' => $alertId,
+            ]);
+
+            return;
+        }
+
+        event(new NewAlertTriggered($alert));
     }
 
     private function broadcastAlertResolved(DomainEventOutbox $outbox): void
@@ -263,19 +282,18 @@ class DomainEventBroadcastConsumer
 
     private function broadcastDeviceStatusChanged(DomainEventOutbox $outbox): void
     {
-        $deviceId = data_get($outbox->payload, 'device_id');
-        $device = Device::query()->with('lab')->find($deviceId);
+        // Gate 8: the fact is fully self-contained in the outbox payload (captured at write time
+        // by DeviceService::changeStatus()) — no `Device::find()` re-read here. Re-reading the
+        // current row would let a later transition's status leak into an earlier fact's broadcast.
+        $payload = $outbox->payload;
 
-        if (! $device) {
-            Log::info('DomainEventBroadcastConsumer: device.status.changed target no longer exists', [
-                'outbox_id' => $outbox->id,
-                'device_id' => $deviceId,
-            ]);
-
-            return;
-        }
-
-        event(new DeviceStatusUpdated($device));
+        event(new DeviceStatusUpdated(
+            deviceId: (int) data_get($payload, 'device_id'),
+            status: (bool) data_get($payload, 'status'),
+            isActive: (bool) data_get($payload, 'is_active'),
+            changedAt: (string) data_get($payload, 'changed_at'),
+            eventSequence: $outbox->id,
+        ));
     }
 
     private function broadcastSensorReadingCreated(DomainEventOutbox $outbox): void

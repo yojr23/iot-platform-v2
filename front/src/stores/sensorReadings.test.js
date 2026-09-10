@@ -18,6 +18,39 @@ describe('sensorReadings live projection store', () => {
     expect(store.readingsFor(7)[0].value).toBe(99);
   });
 
+  it('rejects a reading with no real id instead of inventing one from timestamp/value', () => {
+    const store = useSensorReadingsStore();
+
+    store.mergeReading(7, { value: 10, reading_time: '2026-01-01T00:00:01Z' });
+
+    expect(store.readingsFor(7)).toHaveLength(0);
+  });
+
+  it('rejects a reading with an unparsable timestamp', () => {
+    const store = useSensorReadingsStore();
+
+    store.mergeReading(7, { id: 1, value: 10, reading_time: 'not-a-date' });
+
+    expect(store.readingsFor(7)).toHaveLength(0);
+  });
+
+  it('rejects a reading whose value is not finite', () => {
+    const store = useSensorReadingsStore();
+
+    store.mergeReading(7, { id: 1, value: 'abc', reading_time: '2026-01-01T00:00:01Z' });
+
+    expect(store.readingsFor(7)).toHaveLength(0);
+  });
+
+  it('sorts readings sharing a timestamp by numeric-aware id', () => {
+    const store = useSensorReadingsStore();
+
+    store.mergeReading(7, { id: 10, value: 10, reading_time: '2026-01-01T00:00:01Z' });
+    store.mergeReading(7, { id: 2, value: 2, reading_time: '2026-01-01T00:00:01Z' });
+
+    expect(store.readingsFor(7).map((reading) => reading.id)).toEqual([2, 10]);
+  });
+
   it('re-orders an out-of-order reading chronologically instead of appending at the tail', () => {
     const store = useSensorReadingsStore();
 

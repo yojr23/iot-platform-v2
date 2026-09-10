@@ -59,6 +59,18 @@ describe('SensorReadingChart', () => {
     unmount();
   });
 
+  it('shows a partial-data notice only when partial is set, never labelling partial stats as full-window', async () => {
+    const full = await renderChart(sampleViewModel);
+    expect(full.el.textContent).not.toContain('Partial data for this window');
+    full.unmount();
+
+    const partial = await renderChart({ ...sampleViewModel, partial: true });
+    const notice = partial.el.querySelector('[role="status"]');
+    expect(notice).toBeTruthy();
+    expect(notice.textContent).toContain('Partial data for this window');
+    partial.unmount();
+  });
+
   it('does not render threshold, staleness, cadence, or quality copy', async () => {
     const { el, unmount } = await renderChart(sampleViewModel);
 

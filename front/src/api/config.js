@@ -1,9 +1,5 @@
 import { apiClient } from './client';
 
-export function getPublicConfig() {
-  return apiClient.get('/config/public');
-}
-
 export function getRuntimeConfig() {
   return apiClient.get('/config/runtime');
 }

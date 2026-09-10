@@ -1,9 +1,5 @@
 import { apiClient } from './client';
 
-export function getPublicDashboardData() {
-  return apiClient.get('/dashboard/public');
-}
-
 export function getDashboardMetrics() {
   return apiClient.get('/dashboard/metrics');
 }

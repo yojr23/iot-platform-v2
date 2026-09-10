@@ -6,7 +6,6 @@ use App\Models\Alert;
 use App\Models\AlertRule;
 use App\Models\Device;
 use App\Models\Sensor;
-use App\Models\SensorReading;
 use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,56 +55,14 @@ class Phase2ApiEndpointsTest extends TestCase
             ]);
     }
 
-    public function test_public_dashboard_payload_supports_sensor_graphs_without_authentication(): void
+    /**
+     * Gate 6 Task 6.1: the anonymous dashboard/public product-data endpoint was removed. Guests
+     * get no operational device/sensor inventory; authenticated callers use /api/dashboard/metrics
+     * (covered above) and public graphs come from /api/public/graph/bootstrap.
+     */
+    public function test_public_dashboard_payload_route_removed_in_gate6(): void
     {
-        $device = Device::factory()->create([
-            'name' => 'Modulo Ambiental',
-            'api_key' => 'device-secret-key',
-            'status' => true,
-            'is_active' => true,
-        ]);
-        $sensor = Sensor::factory()->create([
-            'device_id' => $device->id,
-            'name' => 'Temperatura Principal',
-            'status' => true,
-        ]);
-        SensorReading::factory()->count(3)->create([
-            'sensor_id' => $sensor->id,
-            'reading_time' => now()->subMinutes(2),
-        ]);
-
-        $response = $this->getJson('/api/dashboard/public');
-
-        $response->assertOk()
-            ->assertJsonPath('total_devices', 1)
-            ->assertJsonPath('active_devices', 1)
-            ->assertJsonPath('total_sensors', 1)
-            ->assertJsonPath('devices.0.id', $device->id)
-            ->assertJsonPath('devices.0.name', 'Modulo Ambiental')
-            ->assertJsonPath('devices.0.sensors.0.id', $sensor->id)
-            ->assertJsonPath('devices.0.sensors.0.name', 'Temperatura Principal')
-            ->assertJsonStructure([
-                'total_devices',
-                'active_devices',
-                'total_sensors',
-                'active_alerts',
-                'unresolved_alerts',
-                'latest_readings',
-                'devices' => [
-                    '*' => [
-                        'id',
-                        'name',
-                        'status',
-                        'lab',
-                        'sensors' => [
-                            '*' => ['id', 'name', 'unit', 'status'],
-                        ],
-                    ],
-                ],
-            ]);
-
-        $this->assertStringNotContainsString('device-secret-key', $response->getContent());
-        $this->assertArrayNotHasKey('api_key', $response->json('devices.0'));
+        $this->getJson('/api/dashboard/public')->assertNotFound();
     }
 
     public function test_sensor_show_and_device_sensors_return_json_without_blade(): void
@@ -120,7 +77,9 @@ class Phase2ApiEndpointsTest extends TestCase
             ->assertJsonPath('device.id', $device->id)
             ->assertJsonStructure(['id', 'name', 'status', 'device', 'sensor_type']);
 
-        $this->actingAs($user)->getJson("/api/devices/{$device->id}/sensors")
+        // Gate 6 Task 6.1: the anonymous /devices/{device}/sensors route was removed; the single
+        // authenticated owner is /devices/{device}/sensor-list (same controller action).
+        $this->actingAs($user)->getJson("/api/devices/{$device->id}/sensor-list")
             ->assertOk()
             ->assertJsonCount(1)
             ->assertJsonPath('0.id', $sensor->id);
@@ -220,21 +179,13 @@ class Phase2ApiEndpointsTest extends TestCase
             ->assertJsonPath('sensors.0.id', $sensor->id);
     }
 
-    public function test_public_config_exposes_only_safe_frontend_settings(): void
+    /**
+     * Gate 6 Task 6.1: the anonymous config/public endpoint was removed. The safe-frontend-settings
+     * contract now lives behind auth at /api/config/runtime (covered by the two runtime tests below).
+     */
+    public function test_public_config_route_removed_in_gate6(): void
     {
-        SystemSetting::set('mail_password', 'super-secret-password', 'string', 'mail');
-        SystemSetting::set('alert_sound_enabled', 1, 'boolean', 'alerts');
-        SystemSetting::set('alert_threshold', 7, 'integer', 'alerts');
-
-        $response = $this->getJson('/api/config/public');
-
-        $response->assertOk()
-            ->assertJsonPath('alert_sound_enabled', true)
-            ->assertJsonPath('alert_threshold', 7)
-            ->assertJsonStructure(['app_name', 'alert_sound_enabled', 'alert_threshold', 'sensor_update_interval', 'pusher']);
-
-        $this->assertStringNotContainsString('super-secret-password', $response->getContent());
-        $this->assertArrayNotHasKey('mail_password', $response->json());
+        $this->getJson('/api/config/public')->assertNotFound();
     }
 
     public function test_runtime_config_requires_authentication(): void

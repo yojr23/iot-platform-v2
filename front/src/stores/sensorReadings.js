@@ -12,21 +12,42 @@ import { defineStore } from 'pinia';
 // store only owns the data they feed it.
 const MAX_POINTS = 60;
 
+// Gate 6 hardening: reject rather than invent. A reading with no real id (id/reading_id both
+// absent) is dropped — never synthesized from timestamp+value, which would defeat the id-based
+// dedup that makes replayed/overlapping events idempotent. Unparsable timestamp or non-finite
+// value are dropped too. Returns null for a rejected reading.
 function normalizeReading(reading) {
-  const timestamp = reading.reading_time || reading.created_at || reading.timestamp;
+  const id = reading.id ?? reading.reading_id;
 
-  return {
-    id: reading.id ?? reading.reading_id ?? `${timestamp}-${reading.value}`,
-    value: Number(reading.value),
-    reading_time: timestamp
-  };
+  if (id === null || id === undefined) {
+    return null;
+  }
+
+  const reading_time = reading.reading_time || reading.created_at || reading.timestamp;
+
+  if (Number.isNaN(Date.parse(reading_time))) {
+    return null;
+  }
+
+  const value = Number(reading.value);
+
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  return { id, value, reading_time };
 }
 
 function normalizeReadings(readings) {
   return (Array.isArray(readings) ? readings : [])
     .map(normalizeReading)
-    .filter((reading) => Number.isFinite(reading.value) && reading.reading_time)
-    .sort((a, b) => new Date(a.reading_time).getTime() - new Date(b.reading_time).getTime())
+    .filter((reading) => reading !== null)
+    // Deterministic order: timestamp ascending, then numeric-aware id as a stable tiebreak so two
+    // readings sharing a timestamp always land in the same order regardless of insertion order.
+    .sort((a, b) => (
+      Date.parse(a.reading_time) - Date.parse(b.reading_time)
+      || String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+    ))
     .slice(-MAX_POINTS);
 }
 

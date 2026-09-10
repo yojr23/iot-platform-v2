@@ -18,7 +18,7 @@
     <LoadingSpinner v-if="loading" label="Cargando dispositivos..." />
     <DeviceList
       v-if="!loading"
-      :devices="devices"
+      :devices="effectiveDevices"
       :updating-id="updatingId"
       @toggle-status="toggleDeviceStatus"
       @edit="openEdit"
@@ -80,7 +80,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { getDeviceTypes, getLabs } from '@/api/catalogs';
 import { createDevice, deleteDevice, getDevices, updateDevice, updateDeviceStatus } from '@/api/devices';
@@ -92,9 +92,11 @@ import BaseModal from '@/components/base/BaseModal.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import DeviceList from '@/components/devices/DeviceList.vue';
 import { useAuthStore } from '@/stores/auth';
+import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 import { asArray, paginatedItems, validationMessage } from '@/utils/formatters';
 
 const authStore = useAuthStore();
+const deviceStatuses = useDeviceStatusesStore();
 const devices = ref([]);
 const labs = ref([]);
 const deviceTypes = ref([]);
@@ -133,6 +135,9 @@ async function load() {
     ]);
     const response = devicesResponse;
     devices.value = paginatedItems(response);
+    // Gate 8.5: seed the shared status projection from this authenticated device metadata
+    // snapshot; event_sequence 0 so a subsequent realtime DeviceStatusUpdated always wins.
+    deviceStatuses.applySnapshot(devices.value);
     labs.value = asArray(unwrapData(labsResponse));
     deviceTypes.value = asArray(unwrapData(typesResponse));
   } catch (requestError) {
@@ -141,6 +146,15 @@ async function load() {
     loading.value = false;
   }
 }
+
+// Gate 8.5: overlay the shared realtime/snapshot projection over the metadata list fetched by
+// load() — the projection (not this list) owns the current status/is_active.
+function effectiveDevice(device) {
+  const projected = deviceStatuses.statusFor(device.id);
+  return projected ? { ...device, status: projected.status, is_active: projected.is_active } : device;
+}
+
+const effectiveDevices = computed(() => devices.value.map(effectiveDevice));
 
 async function toggleDeviceStatus(device) {
   if (!authStore.user?.is_admin) {
@@ -151,9 +165,15 @@ async function toggleDeviceStatus(device) {
   error.value = '';
 
   try {
-    await updateDeviceStatus(device.id, { status: !(device.status && device.is_active) });
+    const response = await updateDeviceStatus(device.id, { status: !(device.status && device.is_active) });
+    // Gate 8.5: apply the API's own response into the shared projection instead of a full
+    // await load() — one write path (this response), no redundant list refetch just to learn
+    // the status this same request already returned.
+    const updatedDevice = unwrapData(response)?.device ?? unwrapData(response);
+    if (updatedDevice) {
+      deviceStatuses.applySnapshot([updatedDevice]);
+    }
     success.value = 'Estado del dispositivo actualizado.';
-    await load();
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudo actualizar el estado del dispositivo.');
   } finally {

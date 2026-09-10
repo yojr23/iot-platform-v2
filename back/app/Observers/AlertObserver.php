@@ -4,23 +4,22 @@ namespace App\Observers;
 
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Models\Alert;
-use App\Services\Notifications\NotificationService;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * PLAN.md Stage 4.3 (G0D row B3) scope note: this observer still owns the `alert.triggered`
- * synchronous broadcast on `created()` — that side effect was already a single, non-duplicated
- * one (audit did not flag it as missing, unlike resolve/device-status), so Stage 4 left it as-is
- * rather than widening the change to the reading->alert creation transaction boundary.
+ * PLAN.md Stage 7.5 (G0D row B3): `alert.triggered` no longer broadcasts synchronously here.
+ * `App\Services\Alerts\AlertService::createAlertsForReading()` now writes the `alert.triggered`
+ * domain-outbox row in the same transaction as `Alert::create()` (mirroring
+ * `AlertLifecycleService::resolveWithinTransaction()` for `alert.resolved`), and
+ * `App\Services\Ingestion\DomainEventBroadcastConsumer` is the sole dispatcher of
+ * `NewAlertTriggered`, same as `AlertResolved`. This observer keeps only cache invalidation and the
+ * afterCommit email dispatch — it is no longer a broadcast owner.
  *
- * ponytail: `alert.triggered` is NOT yet routed through the domain outbox / `browser-delivery-v1`
- * consumer the way `alert.resolved` and `device.status.changed` now are (PLAN.md 4.1/4.2/4.4) — it
- * stays `ShouldBroadcastNow` on the request path. Ceiling: this is the one remaining synchronous
- * broadcast in the alert lifecycle. Upgrade path: move `AlertService::createAlertsForReading()`'s
- * `Alert::create()` into a DB transaction that also writes an `alert.triggered` domain-outbox row
- * (mirroring `AlertLifecycleService::resolveWithinTransaction()`), then drop `broadcastNewAlert()`
- * here. Not done as part of Stage 8.2: that stage only owned moving email off the sync path, not
- * the broadcast.
+ * Existing code reused: `NotificationService::notifyDangerAlertByEmail()` behavior is unchanged
+ * (still reached only via `SendDangerAlertEmailJob`, Stage 8.2).
+ * Existing owner retired/delegated: `NotificationService::broadcastNewAlert()` is now dead code from
+ * this observer's perspective — no caller left in the created() path.
+ * Compatibility window: none.
  *
  * PLAN.md Stage 8.2: `notifyDangerAlertByEmail()` no longer runs inline here. It is dispatched via
  * `SendDangerAlertEmailJob` (`afterCommit()`) so an unavailable/slow SMTP destination cannot delay
@@ -29,14 +28,9 @@ use Illuminate\Support\Facades\Cache;
  */
 class AlertObserver
 {
-    public function __construct(private NotificationService $notificationService)
-    {
-    }
-
     public function created(Alert $alert): void
     {
         $this->clearDashboardAlertCaches();
-        $this->notificationService->broadcastNewAlert($alert);
         SendDangerAlertEmailJob::dispatch($alert->id)->afterCommit();
     }
 

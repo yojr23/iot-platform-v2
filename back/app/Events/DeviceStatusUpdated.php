@@ -2,57 +2,69 @@
 
 namespace App\Events;
 
-
 use App\Events\Concerns\HasEventEnvelope;
 use App\Events\Contracts\VersionedDomainEvent;
-use App\Models\Device;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * PLAN.md Stage 4.2/4.4 (audit RC2: this event previously existed but was never dispatched —
- * `DeviceApiController::updateStatus` mutated the device with no `event(...)` call at all).
+ * PLAN.md Stage 4.2/4.4, hardened at Gate 8: `device.status.changed` is an immutable,
+ * sequence-ordered domain fact, not a live read of the mutable `Device` row.
  *
- * Existing code reused: this class's shape (envelope trait, `device-status` channel, payload) is
- * unchanged. Only the broadcast contract moved from `ShouldBroadcast` (queued) to
- * `ShouldBroadcastNow` (direct) to match ADR-4 (`browser-delivery-v1` consumer -> Pusher-compatible
- * broadcaster directly, no extra queue hop) — the async boundary is now the domain-event stream +
- * `DomainEventBroadcastConsumer`, not a second Laravel queue dispatch on top of it.
- * Existing owner retired/delegated: n/a — nothing dispatched this event before.
+ * Existing code reused: envelope trait, `ShouldBroadcastNow` contract, dispatch-only-from-consumer
+ * shape — all unchanged from the Stage 4 version of this class (see git history for the prior
+ * `Device $device`-constructed version). What changed at Gate 8: the constructor now takes the
+ * scalar fields already captured in the outbox payload by `DeviceService::changeStatus()` at write
+ * time (`deviceId`, `status`, `isActive`, `changedAt`, `eventSequence`), instead of a live `Device`
+ * model reloaded by `DomainEventBroadcastConsumer`. Audit finding this closes: two rapid status
+ * transitions could previously both resolve to the *current* (latest) status when the consumer
+ * re-read `Device::find()`, so the first fact's broadcast silently carried the second fact's value.
+ * `eventSequence` is the outbox row id (`DomainEventOutbox::id`), a strictly increasing per-fact
+ * sequence number for the same reason `sensor.reading.created` doesn't need one — device status has
+ * no reading-id equivalent, so the outbox id is the ordering key.
+ * Existing owner retired/delegated: `DomainEventBroadcastConsumer::broadcastDeviceStatusChanged()`
+ * no longer does `Device::find()` to construct this event — see that class for the matching change.
  * Compatibility window: none. Dispatched only from `DomainEventBroadcastConsumer`, never from a
  * controller/service directly.
+ *
+ * Channel: moved from a public `Channel('device-status')` to `PrivateChannel('device-status')`
+ * (Gate 8) — device status, like alerts (Stage 7 / audit.md §12a), is not public/guest data. Any
+ * authenticated user may subscribe (see `routes/channels.php`), matching the `alerts` channel's
+ * authorization shape (no per-device ACL model exists in this app).
  */
 class DeviceStatusUpdated implements ShouldBroadcastNow, VersionedDomainEvent
 {
     use Dispatchable, InteractsWithSockets, SerializesModels, HasEventEnvelope;
 
-    public $device;
-
-    public function __construct(Device $device, ?string $correlationId = null, ?string $causationId = null)
-    {
-        $this->device = $device;
+    public function __construct(
+        public readonly int $deviceId,
+        public readonly bool $status,
+        public readonly bool $isActive,
+        public readonly string $changedAt,
+        public readonly int $eventSequence,
+        ?string $correlationId = null,
+        ?string $causationId = null,
+    ) {
         $this->correlationId = $correlationId;
         $this->causationId = $causationId;
     }
 
-    public function broadcastOn()
+    public function broadcastOn(): PrivateChannel
     {
-        // Backward-compat channel name kept (PLAN.md 2.2/2.3) — public guest dashboard projection.
-        return new Channel('device-status');
+        return new PrivateChannel('device-status');
     }
 
     public function broadcastWith()
     {
         $legacy = [
-            'device_id' => $this->device->id,
-            'status' => $this->device->status,
-            'name' => $this->device->name,
-            'lab_name' => $this->device->lab->name,
+            'device_id' => $this->deviceId,
+            'status' => $this->status,
+            'is_active' => $this->isActive,
+            'changed_at' => $this->changedAt,
+            'event_sequence' => $this->eventSequence,
         ];
 
         // Additive envelope metadata (Stage 2.2) — existing keys unchanged.
@@ -71,6 +83,6 @@ class DeviceStatusUpdated implements ShouldBroadcastNow, VersionedDomainEvent
 
     public function aggregateId(): int|string
     {
-        return $this->device->id;
+        return $this->deviceId;
     }
 }

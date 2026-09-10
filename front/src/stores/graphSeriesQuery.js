@@ -1,31 +1,33 @@
 import { defineStore } from 'pinia';
 
 import { getGraphSeries } from '@/api/graph';
-import { getSensorLatestReadings } from '@/api/sensors';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 
-// PLAN.md Stage 6.2 / pre-Stage-6 correction #6 — historical graph query layer, keyed by
-// (authorizationScope, sensorId, from, to). Owns request identity/cancellation (aborts a superseded
-// in-flight request instead of racing it), the returned source-set statistics, and immutable
-// range hydration (each result records exactly the window it answers).
+// PLAN.md Stage 6.2 / Gate 6 — historical graph query layer. Owns HISTORICAL window results ONLY,
+// window-addressable by the full descriptor (scope, sensorId, from, to, aggregation). Never a live
+// tail: the authenticated latest-reading recovery branch that used to live here moved to
+// useSensorRealtime.js (private recovery belongs with the subscription owner, not the history store).
 //
-// Existing code reused: the 'public' branch is a thin client over `PublicGraphController`'s
-// bounded series contract (agent A) via `getGraphSeries` — no query re-derives min/max/mean
-// from a client-side slice, it stores the server's own `stats` object (PLAN.md 6.3: never
-// re-cap an already-correct source set). The 'authenticated' branch adapts the existing
-// `getSensorLatestReadings` endpoint for sensors that don't have an authenticated graph-series
-// contract yet (private/restricted sensors, e.g. SensorDetailView) — this does NOT create a
-// second latest-reading cache, it is a client-side view over the same endpoint.
+// Existing code reused: the 'public' branch is a thin client over PublicGraphController's bounded
+// series contract via `getGraphSeries` — it stores the server's own `stats`, it never re-derives
+// min/max/mean from a client-side slice.
 //
-// ponytail: an AbortController per query key lives in module scope, not store state —
-// cancellation bookkeeping doesn't belong in Vue/Pinia reactivity, mirroring channelRegistry.js's
-// module-scope refCounts convention.
-const activeControllers = new Map();
+// ponytail: AbortControllers live in module scope, not store state — cancellation bookkeeping isn't
+// Vue/Pinia reactive data, mirroring channelRegistry.js's module-scope refCounts convention.
+// Cancellation is CONSUMER-keyed (one in-flight request per consumer), not query-keyed: a single
+// monitor changing its window aborts its own previous request, while two monitors on the same sensor
+// never cross-cancel. Results stay keyed by the full descriptor so both windows cache independently.
+const activeControllersByConsumer = new Map();
 
-function queryKey(scope, sensorId, from, to) {
+/**
+ * Canonical key owner for a historical graph query. The SAME function backs both the write path
+ * (fetchWindow) and the read path (resultForQuery) so a cached result is always retrievable by the
+ * exact descriptor that produced it.
+ */
+export function buildGraphQueryKey({ scope = 'public', sensorId, from, to, aggregation = 'raw' } = {}) {
   const fromKey = from ? new Date(from).getTime() : 'none';
   const toKey = to ? new Date(to).getTime() : 'none';
-  return `${scope}:${sensorId}:${fromKey}:${toKey}`;
+  return `${scope}:${sensorId}:${fromKey}:${toKey}:${aggregation}`;
 }
 
 function computeStats(values) {
@@ -41,49 +43,39 @@ function computeStats(values) {
   };
 }
 
-function adaptLatestReadings(readings) {
-  const chronological = (Array.isArray(readings) ? readings : []).slice().reverse();
-  const points = chronological.map((reading) => ({
-    timestamp: reading.reading_time || reading.created_at,
-    value: Number(reading.value),
-    reading_id: reading.id ?? reading.reading_id
-  }));
-
-  return { points, stats: computeStats(points.map((point) => point.value)) };
-}
-
 function isCanceled(error) {
   return error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError';
 }
 
 export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
   state: () => ({
-    byQuery: {} // fullKey -> { points, stats, window, scope, sensorId, loading, error }
+    byQuery: {} // buildGraphQueryKey(descriptor) -> { points, stats, truncated, window, scope, sensorId, aggregation, loading, error }
   }),
 
   getters: {
-    resultFor: (state) => (sensorId) => {
-      const entries = Object.values(state.byQuery).filter(r => r.sensorId === sensorId);
-      return entries.length > 0 ? entries[entries.length - 1] : null;
-    }
+    resultForQuery: (state) => (descriptor) => state.byQuery[buildGraphQueryKey(descriptor)] || null
   },
 
   actions: {
     /**
      * @param {number|string} sensorId
-     * @param {{scope?: 'public'|'authenticated', from?: Date|string, to?: Date|string}} options
-     * @returns {Promise<{points: Array, stats: object}|null>} null on cancellation or failure —
-     *   check `resultFor(sensorId).error` to distinguish a real failure from a superseded call.
+     * @param {{scope?: 'public', from?: Date|string, to?: Date|string, aggregation?: string,
+     *          consumerKey?: string}} options — `consumerKey` identifies the caller (e.g. a monitor
+     *          id) so a superseding request from the SAME consumer aborts the previous one. Absent,
+     *          it defaults to the full query key (per-query cancellation, no cross-consumer effect).
+     * @returns {Promise<{points: Array, stats: object, truncated: boolean}|null>} null on
+     *   cancellation or failure — check `resultForQuery(descriptor).error` to distinguish.
      */
-    async fetchWindow(sensorId, { scope = 'public', from, to } = {}) {
+    async fetchWindow(sensorId, { scope = 'public', from, to, aggregation = 'raw', consumerKey } = {}) {
       if (!sensorId) {
         return null;
       }
 
-      const key = queryKey(scope, sensorId, from, to);
-      activeControllers.get(key)?.abort();
+      const key = buildGraphQueryKey({ scope, sensorId, from, to, aggregation });
+      const cancelKey = consumerKey ?? key;
+      activeControllersByConsumer.get(cancelKey)?.abort();
       const controller = new AbortController();
-      activeControllers.set(key, controller);
+      activeControllersByConsumer.set(cancelKey, controller);
 
       this.byQuery = {
         ...this.byQuery,
@@ -91,31 +83,33 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
       };
 
       try {
-        let result;
-
-        if (scope === 'authenticated') {
-          const response = await getSensorLatestReadings(sensorId, { limit: 20, signal: controller.signal });
-          result = adaptLatestReadings(unwrapData(response));
-        } else {
-          const response = await getGraphSeries(sensorId, { from, to, signal: controller.signal });
-          const payload = unwrapData(response) || {};
-          result = {
-            points: Array.isArray(payload.points) ? payload.points : [],
-            stats: payload.stats || computeStats([]),
-            truncated: Boolean(payload.truncated)
-          };
-        }
+        const response = await getGraphSeries(sensorId, { from, to, signal: controller.signal });
+        const payload = unwrapData(response) || {};
+        const result = {
+          points: Array.isArray(payload.points) ? payload.points : [],
+          stats: payload.stats || computeStats([]),
+          truncated: Boolean(payload.truncated)
+        };
 
         this.byQuery = {
           ...this.byQuery,
-          [key]: { points: result.points, stats: result.stats, truncated: result.truncated, window: { from, to }, scope, sensorId, loading: false, error: '' }
+          [key]: {
+            points: result.points,
+            stats: result.stats,
+            truncated: result.truncated,
+            window: { from, to },
+            scope,
+            sensorId,
+            aggregation,
+            loading: false,
+            error: ''
+          }
         };
 
         return result;
       } catch (error) {
         if (isCanceled(error)) {
-          // Superseded by a newer call for the same key — that call already owns byQuery's
-          // next write. Leave this store's state alone rather than racing it with an error.
+          // Superseded by a newer call for the same consumer — that call owns the next write.
           return null;
         }
 
@@ -130,8 +124,8 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
         };
         return null;
       } finally {
-        if (activeControllers.get(key) === controller) {
-          activeControllers.delete(key);
+        if (activeControllersByConsumer.get(cancelKey) === controller) {
+          activeControllersByConsumer.delete(cancelKey);
         }
       }
     },
@@ -147,8 +141,8 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
     },
 
     clearAll() {
-      activeControllers.forEach((controller) => controller.abort());
-      activeControllers.clear();
+      activeControllersByConsumer.forEach((controller) => controller.abort());
+      activeControllersByConsumer.clear();
       this.byQuery = {};
     }
   }

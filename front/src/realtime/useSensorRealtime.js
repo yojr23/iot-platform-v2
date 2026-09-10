@@ -3,7 +3,8 @@ import { ref, unref } from 'vue';
 import { getEcho, onConnectionStateChange, onResync } from './echo';
 import { listenOnChannel } from './channelRegistry';
 import { graphPointToReading } from '@/api/graph';
-import { getStoredToken } from '@/api/client';
+import { getSensorLatestReadings } from '@/api/sensors';
+import { getStoredToken, unwrapData } from '@/api/client';
 import { useGraphSeriesQueryStore } from '@/stores/graphSeriesQuery';
 import { useSensorReadingsStore } from '@/stores/sensorReadings';
 
@@ -65,11 +66,34 @@ export function useSensorRealtime(sensorIdSource, onReading) {
       return;
     }
 
-    const scope = currentPrivateChannel ? 'authenticated' : 'public';
+    // Private/restricted sensors have no anonymous graph-series contract yet — this composable owns
+    // that recovery directly (Gate 6: the public historical query store no longer carries a
+    // latest-tail branch). The consumer's own id-based dedup absorbs overlap with buffered live
+    // events, so no cursor/gap tracking is needed here.
+    if (currentPrivateChannel) {
+      let response;
+
+      try {
+        response = await getSensorLatestReadings(currentSensorId, { limit: 20 });
+      } catch {
+        return;
+      }
+
+      const readings = unwrapData(response);
+      (Array.isArray(readings) ? readings.slice().reverse() : []).forEach((reading) => {
+        onReading?.({ ...normalizeReading(reading), sensor_id: currentSensorId });
+      });
+      return;
+    }
+
     const to = new Date();
     const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
-
-    const result = await useGraphSeriesQueryStore().fetchWindow(currentSensorId, { scope, from, to });
+    const result = await useGraphSeriesQueryStore().fetchWindow(currentSensorId, {
+      scope: 'public',
+      from,
+      to,
+      consumerKey: `snapshot:${currentSensorId}`
+    });
 
     (result?.points || []).forEach((point) => {
       onReading?.(graphPointToReading(point, currentSensorId));

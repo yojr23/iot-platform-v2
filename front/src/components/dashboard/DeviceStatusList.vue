@@ -8,10 +8,7 @@
       <RouterLink v-if="authStore.isAuthenticated" class="btn btn-sm btn-outline-primary" to="/devices">Ver todos</RouterLink>
     </div>
 
-    <BaseAlert v-if="error" variant="warning" :message="error" />
-    <LoadingSpinner v-if="loading" label="Cargando dispositivos..." />
-
-    <div v-if="!loading && visibleDevices.length === 0" class="text-muted small py-3">
+    <div v-if="visibleDevices.length === 0" class="text-muted small py-3">
       No hay dispositivos registrados.
     </div>
 
@@ -40,46 +37,26 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 
-import { getDevices } from '@/api/devices';
-import { getApiErrorMessage } from '@/api/client';
-import BaseAlert from '@/components/base/BaseAlert.vue';
-import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import { useAuthStore } from '@/stores/auth';
-import { paginatedItems } from '@/utils/formatters';
+import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 
+// Gate 8.5: presentation-only. Device metadata always comes from the parent (dashboard's own
+// load()); status is overlaid from the shared realtime projection instead of an independent
+// getDevices() poll on mount.
 const props = defineProps({
   devices: {
     type: Array,
-    default: null
+    default: () => []
   }
 });
 
 const authStore = useAuthStore();
-const devices = ref([]);
-const loading = ref(false);
-const error = ref('');
-const visibleDevices = computed(() => props.devices || devices.value);
+const deviceStatuses = useDeviceStatusesStore();
 
-async function load() {
-  if (props.devices) {
-    devices.value = props.devices;
-    return;
-  }
-
-  loading.value = true;
-  error.value = '';
-
-  try {
-    const response = await getDevices({ per_page: 5 });
-    devices.value = paginatedItems(response);
-  } catch (requestError) {
-    error.value = getApiErrorMessage(requestError, 'No se pudieron cargar dispositivos.');
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(load);
+const visibleDevices = computed(() => props.devices.map((device) => {
+  const projected = deviceStatuses.statusFor(device.id);
+  return projected ? { ...device, status: projected.status, is_active: projected.is_active } : device;
+}));
 </script>

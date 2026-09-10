@@ -87,7 +87,12 @@ export const useAlertsStore = defineStore('alerts', {
     popupEnabled: true,
     loading: false,
     error: null,
-    realtimeReady: false
+    realtimeReady: false,
+    // Gate 7 (7.1): bounded id ledgers so a redelivered triggered/resolved event only ever
+    // mutates unresolvedCount once, even after the alert itself has been evicted from the
+    // bounded activeAlerts/items arrays above.
+    seenTriggeredIds: [],
+    seenResolvedIds: []
   }),
 
   actions: {
@@ -119,6 +124,8 @@ export const useAlertsStore = defineStore('alerts', {
         channel: null,
         error: null
       };
+      this.seenTriggeredIds = [];
+      this.seenResolvedIds = [];
     },
 
     applyActiveSnapshot(alerts, { count, notifyNew = false } = {}) {
@@ -211,14 +218,21 @@ export const useAlertsStore = defineStore('alerts', {
       return response;
     },
 
+    // Gate 7 (7.1): idempotent resolve — a duplicate/redelivered AlertResolved for the same id
+    // (even after the alert was already evicted from activeAlerts/items) is a no-op past the
+    // first application, so unresolvedCount never double-decrements.
     markAlertResolved(alertId) {
-      if (!alertId) return;
       const id = Number(alertId);
+      if (!Number.isFinite(id)) return false;
+      if (this.seenResolvedIds.includes(id)) return false;
+
+      this.seenResolvedIds = [...this.seenResolvedIds, id].slice(-500);
       this.activeAlerts = this.activeAlerts.filter((alert) => Number(alert.id) !== id);
       this.items = this.items.map((alert) => (
         Number(alert.id) === id ? { ...alert, resolved: true, resolved_at: new Date().toISOString() } : alert
       ));
       this.unresolvedCount = Math.max(0, this.unresolvedCount - 1);
+      return true;
     },
 
     async resolveAll() {
@@ -235,10 +249,9 @@ export const useAlertsStore = defineStore('alerts', {
 
     // PLAN.md Stage 5 / ownership F2: this store is now the SOLE realtime alert dedup owner.
     // useAlertsRealtime.js no longer keeps its own seenAlertIds Set — the transport delivers,
-    // this projection dedups. ponytail: wasKnown only scans the bounded activeAlerts (20) /
-    // items (50) arrays, so an id evicted from both before a redelivery would double-count;
-    // acceptable for lean V1 (ADR-2) — upgrade to an unbounded/TTL id ledger here if repeat
-    // redelivery beyond those windows is ever observed.
+    // this projection dedups. Gate 7 (7.1): dedup now uses the bounded seenTriggeredIds ledger
+    // (last 500 ids) instead of scanning activeAlerts/items, so a redelivered id still counts
+    // once even after the alert was evicted from those bounded display arrays.
     addRealtimeAlert(payload) {
       const alert = normalizeRealtimeAlert(payload);
 
@@ -246,16 +259,17 @@ export const useAlertsStore = defineStore('alerts', {
         return null;
       }
 
-      const wasKnown = this.activeAlerts.some((item) => Number(item.id) === Number(alert.id))
-        || this.items.some((item) => Number(item.id) === Number(alert.id));
+      const id = Number(alert.id);
+      const alreadySeen = this.seenTriggeredIds.includes(id);
 
       this.activeAlerts = mergeAlert(this.activeAlerts, alert, 20);
       this.items = mergeAlert(this.items, alert, 50);
 
-      if (wasKnown) {
+      if (alreadySeen) {
         return null;
       }
 
+      this.seenTriggeredIds = [...this.seenTriggeredIds, id].slice(-500);
       this.latestAlert = { ...alert, received_at: Date.now() };
 
       if (!alert.resolved) {

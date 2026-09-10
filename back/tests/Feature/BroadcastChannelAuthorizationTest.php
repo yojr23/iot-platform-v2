@@ -99,6 +99,39 @@ class BroadcastChannelAuthorizationTest extends TestCase
     }
 
     /**
+     * Gate 8: `device-status` moved from a public `Channel` to a `PrivateChannel` — a guest must
+     * now be denied at `/broadcasting/auth`, mirroring the existing `alerts` coverage in
+     * `AlertTransportAuthorizationTest`.
+     */
+    public function test_guest_is_denied_authorization_for_the_private_device_status_channel(): void
+    {
+        $response = $this->postJson('/api/broadcasting/auth', [
+            'channel_name' => 'private-device-status',
+            'socket_id' => '1234.1234',
+        ]);
+
+        $response->assertUnauthorized();
+    }
+
+    /**
+     * Gate 8: any authenticated Sanctum PAT (same shape as the SPA's real auth path — see
+     * `test_sanctum_personal_access_token_can_authorize_a_private_channel` above) may authorize the
+     * private `device-status` channel — no per-device ACL model exists in this app.
+     */
+    public function test_authenticated_sanctum_token_can_authorize_the_private_device_status_channel(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('device-status-test', ['read'])->plainTextToken;
+
+        $response = $this->withToken($token)->postJson('/api/broadcasting/auth', [
+            'channel_name' => 'private-device-status',
+            'socket_id' => '1234.1234',
+        ]);
+
+        $response->assertOk()->assertJsonStructure(['auth']);
+    }
+
+    /**
      * Existing-behavior control: `App.Models.User.{id}` (pre-existing per-user private channel,
      * `routes/channels.php`) still authorizes only the owning user, unaffected by this task's
      * addition of `sensor.{sensorId}`.

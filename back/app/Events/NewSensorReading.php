@@ -63,21 +63,22 @@ class NewSensorReading implements ShouldBroadcastNow, VersionedDomainEvent
 
     public function broadcastWith()
     {
-        $legacy = [
+        // Gate 6 (Task 6.7): minimal public wire payload — identity + value + time only. The
+        // display metadata (sensor_name/sensor_type/unit/device_name/lab_name) that used to ride
+        // on every reading is removed; guests get that once from the public graph bootstrap, so
+        // leaking it per-reading on the public channel was both redundant and an info-disclosure
+        // surface for restricted sensors.
+        $payload = [
             'reading_id' => $this->reading->id,
             'sensor_id' => $this->reading->sensor_id,
-            'value' => $this->reading->value,
-            'reading_time' => $this->reading->reading_time?->toIso8601String(),
-            'sensor_name' => $this->reading->sensor->name,
-            'sensor_type' => $this->reading->sensor->sensorType->name,
-            'unit' => $this->reading->sensor->sensorType->unit,
-            'device_name' => $this->reading->sensor->device->name,
-            'lab_name' => $this->reading->sensor->device->lab->name,
+            'value' => (float) $this->reading->value,
+            'reading_time' => $this->reading->reading_time
+                ?->clone()->setTimezone('UTC')->format('Y-m-d\TH:i:s\Z'),
         ];
 
         // Additive envelope metadata (Stage 2.2) — existing keys unchanged, old consumers
         // tolerate/ignore the new ones (PLAN.md Stage 2 done-when: "additive fields tolerated").
-        return array_merge($legacy, $this->envelopeMetadata());
+        return array_merge($payload, $this->envelopeMetadata());
     }
 
     public function eventType(): string
@@ -93,10 +94,5 @@ class NewSensorReading implements ShouldBroadcastNow, VersionedDomainEvent
     public function aggregateId(): int|string
     {
         return $this->reading->id;
-    }
-
-    public function handle()
-    {
-        $this->reading->checkForAlert();
     }
 }

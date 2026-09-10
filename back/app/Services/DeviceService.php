@@ -62,18 +62,27 @@ class DeviceService
                 return;
             }
 
+            $changedAt = now();
+
             $device->update([
                 'status' => $newStatus,
                 'is_active' => $newStatus,
+                'last_communication' => $changedAt,
             ]);
 
             $device->statusLogs()->create([
                 'status' => $newStatus,
-                'changed_at' => now(),
+                'changed_at' => $changedAt,
             ]);
 
+            // Gate 8: capture the fact as an immutable payload of scalars at write time — the
+            // consumer must never re-read the (mutable, possibly already-changed-again) Device row
+            // to learn what this particular transition was.
             $this->recorderInstance()->record('device.status.changed', 'device', $device->id, [
                 'device_id' => $device->id,
+                'status' => (bool) $device->status,
+                'is_active' => (bool) $device->is_active,
+                'changed_at' => $changedAt->toIso8601String(),
             ]);
         });
 

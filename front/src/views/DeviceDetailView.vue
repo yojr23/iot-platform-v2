@@ -30,8 +30,8 @@
             <dd>{{ formatDate(device?.last_communication) }}</dd>
             <dt>Estado</dt>
             <dd>
-              <span class="badge" :class="device?.status && device?.is_active ? 'text-bg-success' : 'text-bg-secondary'">
-                {{ device?.status && device?.is_active ? 'Activo' : 'Inactivo' }}
+              <span class="badge" :class="effectiveDevice?.status && effectiveDevice?.is_active ? 'text-bg-success' : 'text-bg-secondary'">
+                {{ effectiveDevice?.status && effectiveDevice?.is_active ? 'Activo' : 'Inactivo' }}
               </span>
             </dd>
           </dl>
@@ -84,12 +84,13 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { getDevice, getDeviceSensors } from '@/api/devices';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 import { asArray, formatDate } from '@/utils/formatters';
 
 const props = defineProps({
@@ -99,10 +100,21 @@ const props = defineProps({
   }
 });
 
+const deviceStatuses = useDeviceStatusesStore();
 const device = ref(null);
 const sensors = ref([]);
 const loading = ref(false);
 const error = ref('');
+
+// Gate 8.5: overlay the shared realtime/snapshot projection over the fetched device — the
+// projection (fed by useDeviceStatusRealtime, no polling here) owns the live status.
+const effectiveDevice = computed(() => {
+  if (!device.value) {
+    return null;
+  }
+  const projected = deviceStatuses.statusFor(device.value.id);
+  return projected ? { ...device.value, status: projected.status, is_active: projected.is_active } : device.value;
+});
 
 async function load() {
   loading.value = true;
@@ -114,6 +126,9 @@ async function load() {
       getDeviceSensors(props.id)
     ]);
     device.value = unwrapData(deviceResponse);
+    if (device.value) {
+      deviceStatuses.applySnapshot([device.value]);
+    }
     sensors.value = asArray(unwrapData(sensorsResponse));
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudo cargar el dispositivo.');

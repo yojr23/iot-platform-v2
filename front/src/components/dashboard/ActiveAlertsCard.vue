@@ -34,13 +34,16 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
 
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import { useAlertsStore } from '@/stores/alerts';
 import { severityLabel } from '@/utils/formatters';
 
+// Gate 7 (7.3): presentation only. The alerts store's active-alert projection is populated
+// solely by useAlertsRealtime's subscribe/reconnect snapshot — this card must not fetch on
+// its own or it becomes a second snapshot owner racing the same state.
 const alertsStore = useAlertsStore();
 const loading = computed(() => alertsStore.loading);
 const error = computed(() => alertsStore.error);
@@ -55,12 +58,4 @@ const updateMode = computed(() => (
 function severityClass(severity) {
   return severity === 'danger' ? 'text-bg-danger' : severity === 'warning' ? 'text-bg-warning' : 'text-bg-secondary';
 }
-
-async function load({ silent = false } = {}) {
-  await alertsStore.fetchActiveAlerts({ silent });
-}
-
-onMounted(() => {
-  load();
-});
 </script>

@@ -23,33 +23,29 @@ import { onBeforeUnmount, watch } from 'vue';
 
 import AlertToast from '@/components/alerts/AlertToast.vue';
 import { useAlertsRealtime } from '@/realtime/useAlertsRealtime';
+import { useDeviceStatusRealtime } from '@/realtime/useDeviceStatusRealtime';
 import { useAlertsStore } from '@/stores/alerts';
 import { useAuthStore } from '@/stores/auth';
-import { playAlertSound, unlockAlertSound } from '@/utils/sound';
+import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
+import { unlockAlertSound } from '@/utils/sound';
 
 import NavBar from './NavBar.vue';
 
 const authStore = useAuthStore();
 const alertsStore = useAlertsStore();
+const deviceStatusesStore = useDeviceStatusesStore();
 const { subscribeAlerts, unsubscribeAlerts } = useAlertsRealtime();
+const { subscribeDeviceStatus, unsubscribeDeviceStatus } = useDeviceStatusRealtime();
 let startingGlobalAlerts = false;
 let globalAlertsSubscribed = false;
 let globalAlertsStartupGeneration = 0;
 
-async function refreshActiveAlerts({ notifyNew = false } = {}) {
-  const newAlerts = await alertsStore.fetchActiveAlerts({ silent: true, notifyNew });
-
-  newAlerts.forEach((alert) => {
-    playAlertSound({
-      enabled: alertsStore.soundEnabled,
-      severity: alert?.alert_rule?.severity || alert?.severity
-    });
-  });
-}
-
 // Guest graph mode (unauthenticated visitors) must not touch the alert/config
 // subsystem: no public alert-sound config fetch, no active-alerts fetch, no
 // realtime subscribe, no polling loop. Only authenticated sessions get it.
+// Gate 7 (7.3): useAlertsRealtime.subscribeAlerts() is the SOLE initial/reconnect snapshot
+// owner (it fetches its own snapshot on subscribe/reconnect) — this component must not also
+// fetch active alerts, or two snapshot owners race the same projection.
 async function startGlobalAlerts() {
   if (startingGlobalAlerts) {
     return;
@@ -65,10 +61,6 @@ async function startGlobalAlerts() {
     }
 
     unlockAlertSound();
-    await refreshActiveAlerts();
-    if (startupGeneration !== globalAlertsStartupGeneration || !authStore.isAuthenticated) {
-      return;
-    }
 
     const subscribed = subscribeAlerts();
     if (startupGeneration !== globalAlertsStartupGeneration || !authStore.isAuthenticated) {
@@ -96,20 +88,31 @@ function stopGlobalAlerts() {
   alertsStore.clearAuthorizedState();
 }
 
+// Device-status projection: same auth-gated lifecycle as alerts, but the adapter itself owns
+// the authenticated-only guard and the auth-loss clear (Gate 8.4) — this shell just starts/
+// stops it in step with the session so list/detail/dashboard share one live subscription.
+function stopGlobalDeviceStatus() {
+  unsubscribeDeviceStatus();
+  deviceStatusesStore.clear();
+}
+
 watch(
   () => authStore.isAuthenticated,
   (isAuthenticated) => {
     if (isAuthenticated) {
       startGlobalAlerts();
+      subscribeDeviceStatus();
       return;
     }
 
     stopGlobalAlerts();
+    stopGlobalDeviceStatus();
   },
   { immediate: true }
 );
 
 onBeforeUnmount(() => {
   stopGlobalAlerts();
+  stopGlobalDeviceStatus();
 });
 </script>

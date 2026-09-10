@@ -4,7 +4,11 @@ import { createPinia, setActivePinia } from 'pinia';
 const connectionWatchers = new Set();
 const resyncWatchers = new Set();
 const fetchActiveAlerts = vi.fn();
-const listenOnChannel = vi.fn(() => () => {});
+const channelCallbacks = new Map();
+const listenOnChannel = vi.fn((channelName, eventName, callback) => {
+  channelCallbacks.set(eventName, callback);
+  return () => {};
+});
 
 vi.mock('./echo', () => ({
   disconnectEcho: vi.fn(),
@@ -51,6 +55,7 @@ describe('alert recovery ownership', () => {
     vi.resetModules();
     connectionWatchers.clear();
     resyncWatchers.clear();
+    channelCallbacks.clear();
     fetchActiveAlerts.mockReset();
     listenOnChannel.mockClear();
     setActivePinia(createPinia());
@@ -178,5 +183,92 @@ describe('alert recovery ownership', () => {
     for (const callback of [...resyncWatchers]) callback('auth');
 
     expect(listenOnChannel).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('Gate 7.2 replay-safe recovery buffer (triggered + resolved)', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    channelCallbacks.clear();
+    fetchActiveAlerts.mockReset();
+    listenOnChannel.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  afterEach(async () => {
+    try {
+      const { unsubscribeAlerts } = await import('./useAlertsRealtime');
+      unsubscribeAlerts();
+    } catch {
+      // Some failure paths happen before the module is importable.
+    }
+  });
+
+  it('does not resurrect an alert resolved while the snapshot was in flight', async () => {
+    let resolveSnapshot;
+    fetchActiveAlerts.mockImplementation(() => new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    }));
+
+    const { subscribeAlerts, ALERTS_RESOLVED_EVENT } = await import('./useAlertsRealtime');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const alertsStore = useAlertsStore();
+
+    subscribeAlerts();
+    await vi.waitFor(() => expect(fetchActiveAlerts).toHaveBeenCalledOnce());
+
+    // AlertResolved(50) arrives before the (older) HTTP snapshot response.
+    channelCallbacks.get(ALERTS_RESOLVED_EVENT)({ alert: { id: 50 } });
+
+    // The in-flight snapshot still reports alert 50 as active.
+    resolveSnapshot({ data: { alerts: [{ id: 50 }], count: 1 } });
+    await vi.waitFor(() => expect(alertsStore.realtimeStatus.mode).not.toBe('recovering'));
+
+    expect(alertsStore.activeAlerts.some((alert) => Number(alert.id) === 50)).toBe(false);
+    expect(alertsStore.unresolvedCount).toBe(0);
+  });
+
+  it('keeps the count stable when a trigger and its resolve both arrive during the same recovery', async () => {
+    let resolveSnapshot;
+    fetchActiveAlerts.mockImplementation(() => new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    }));
+
+    const { subscribeAlerts, ALERTS_EVENT, ALERTS_RESOLVED_EVENT } = await import('./useAlertsRealtime');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const alertsStore = useAlertsStore();
+
+    subscribeAlerts();
+    await vi.waitFor(() => expect(fetchActiveAlerts).toHaveBeenCalledOnce());
+
+    channelCallbacks.get(ALERTS_EVENT)({ alert: { id: 60, resolved: false } });
+    channelCallbacks.get(ALERTS_RESOLVED_EVENT)({ alert: { id: 60 } });
+
+    resolveSnapshot({ data: { alerts: [], count: 0 } });
+    await vi.waitFor(() => expect(alertsStore.realtimeStatus.mode).not.toBe('recovering'));
+
+    expect(alertsStore.activeAlerts.some((alert) => Number(alert.id) === 60)).toBe(false);
+    expect(alertsStore.unresolvedCount).toBe(0);
+  });
+
+  it('ignores a duplicate resolve delivered again after recovery has finished', async () => {
+    fetchActiveAlerts.mockResolvedValue({ data: { alerts: [{ id: 70 }], count: 1 } });
+
+    const { subscribeAlerts, ALERTS_RESOLVED_EVENT } = await import('./useAlertsRealtime');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const alertsStore = useAlertsStore();
+
+    subscribeAlerts();
+    await vi.waitFor(() => expect(alertsStore.realtimeStatus.mode).toBe('live'));
+    expect(alertsStore.unresolvedCount).toBe(1);
+
+    channelCallbacks.get(ALERTS_RESOLVED_EVENT)({ alert: { id: 70 } });
+    expect(alertsStore.unresolvedCount).toBe(0);
+
+    // Redelivery of the same resolved event must not double-decrement.
+    channelCallbacks.get(ALERTS_RESOLVED_EVENT)({ alert: { id: 70 } });
+    expect(alertsStore.unresolvedCount).toBe(0);
   });
 });

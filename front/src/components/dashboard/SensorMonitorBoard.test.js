@@ -14,9 +14,9 @@ vi.mock('@/api/dashboard', () => ({
 }));
 
 const fetchWindow = vi.fn(() => Promise.resolve({ points: [], stats: { min: null, max: null, mean: null, count: 0 } }));
-const resultFor = vi.fn(() => ({ points: [], stats: null, loading: false, error: '' }));
+const resultForQuery = vi.fn(() => ({ points: [], stats: null, truncated: false, loading: false, error: '' }));
 vi.mock('@/stores/graphSeriesQuery', () => ({
-  useGraphSeriesQueryStore: () => ({ fetchWindow, resultFor })
+  useGraphSeriesQueryStore: () => ({ fetchWindow, resultForQuery })
 }));
 
 const subscribeSensor = vi.fn();

@@ -46,7 +46,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 
-import { getPublicDashboardData } from '@/api/dashboard';
+import { getDashboardMetrics } from '@/api/dashboard';
 import { getGraphBootstrap } from '@/api/graph';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
@@ -72,10 +72,8 @@ async function load() {
   error.value = '';
 
   try {
-    const [dashboardResponse, bootstrapResponse] = await Promise.all([
-      authStore.isAuthenticated ? getPublicDashboardData() : Promise.resolve({ data: {} }),
-      getGraphBootstrap()
-    ]);
+    const dashboardRequest = authStore.isAuthenticated ? getDashboardMetrics() : Promise.resolve({ data: {} });
+    const [dashboardResponse, bootstrapResponse] = await Promise.all([dashboardRequest, getGraphBootstrap()]);
     const dashboardPayload = unwrapData(dashboardResponse) || {};
     const bootstrapPayload = unwrapData(bootstrapResponse) || {};
 

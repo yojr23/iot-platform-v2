@@ -185,7 +185,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import {
   getAlertConfig,
   getEmailConfig,
-  getPublicConfig,
+  getRuntimeConfig,
   testEmailConfig,
   updateAlertConfig,
   updateEmailConfig
@@ -275,8 +275,8 @@ async function load() {
   error.value = '';
 
   try {
-    const publicResponse = await getPublicConfig();
-    publicConfig.value = unwrapData(publicResponse) || {};
+    const runtimeResponse = await getRuntimeConfig();
+    publicConfig.value = unwrapData(runtimeResponse) || {};
 
     try {
       const alertResponse = await getAlertConfig();

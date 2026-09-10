@@ -5,10 +5,28 @@ namespace App\Services\Alerts;
 use App\Models\Alert;
 use App\Models\AlertRule;
 use App\Models\SensorReading;
+use App\Services\Ingestion\DomainEventRecorder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
+/**
+ * PLAN.md Stage 7.5, G0D row B1 — AlertService remains the sole rule-evaluation/creation owner
+ * (unchanged this stage); it now also owns writing the `alert.triggered` domain-outbox row in the
+ * same transaction as `Alert::create()`, mirroring `AlertLifecycleService::resolveWithinTransaction()`
+ * for `alert.resolved` (Stage 4.2).
+ *
+ * Existing code reused: `DomainEventRecorder` (Stage 4.1) — no second outbox writer.
+ * Existing owner retired/delegated: `AlertObserver::created()` no longer broadcasts
+ * `NewAlertTriggered` synchronously; `DomainEventBroadcastConsumer` is the new sole dispatcher
+ * for that event, reached via this outbox row.
+ * Compatibility window: none — `alert.triggered` and `alert.resolved` now share one delivery path.
+ */
 class AlertService
 {
+    public function __construct(private DomainEventRecorder $recorder)
+    {
+    }
+
     /**
      * Devuelve las reglas que se disparan con una lectura.
      */
@@ -65,11 +83,17 @@ class AlertService
                 continue;
             }
 
-            Alert::create([
-                'sensor_reading_id' => $reading->id,
-                'alert_rule_id' => $alertRule->id,
-                'resolved' => false,
-            ]);
+            DB::transaction(function () use ($reading, $alertRule): void {
+                $alert = Alert::create([
+                    'sensor_reading_id' => $reading->id,
+                    'alert_rule_id' => $alertRule->id,
+                    'resolved' => false,
+                ]);
+
+                $this->recorder->record('alert.triggered', 'alert', $alert->id, [
+                    'alert_id' => $alert->id,
+                ]);
+            });
         }
 
         return $triggeredRules;

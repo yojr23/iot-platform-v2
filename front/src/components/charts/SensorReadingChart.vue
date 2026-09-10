@@ -24,6 +24,8 @@
         </li>
       </ul>
 
+      <p v-if="partial" class="small text-warning" role="status">Partial data for this window. Statistics describe only the returned sample.</p>
+
       <dl class="sensor-chart-stats d-flex flex-wrap gap-3 gap-md-4 mt-3 mb-0 small text-muted-strong">
         <div>
           <dt class="text-muted small mb-0">Minimo</dt>
@@ -95,6 +97,12 @@ const props = defineProps({
   lastObservedAt: {
     type: String,
     default: ''
+  },
+  // When true, the returned points/stats describe only a truncated sample of the window, not the
+  // full window — surfaced with a visible notice so partial stats are never read as full-window.
+  partial: {
+    type: Boolean,
+    default: false
   },
   loading: {
     type: Boolean,

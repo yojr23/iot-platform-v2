@@ -102,7 +102,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     expect(el.querySelector('[data-testid="alert-toast-host"]')).not.toBeNull();
     expect(getRuntimeConfig).toHaveBeenCalledTimes(1);
     expect(getPublicConfig).not.toHaveBeenCalled();
-    expect(getActiveAlerts).toHaveBeenCalledTimes(1);
+    expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(subscribeAlerts).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
 
@@ -125,7 +125,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     await flush();
 
     expect(getRuntimeConfig).toHaveBeenCalledTimes(1);
-    expect(getActiveAlerts).toHaveBeenCalledTimes(1);
+    expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(subscribeAlerts).toHaveBeenCalledTimes(1);
     expect(el.querySelector('[data-testid="alert-toast-host"]')).not.toBeNull();
     expect(vi.getTimerCount()).toBe(0);
@@ -173,7 +173,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     const { unmount } = await mountAppLayout();
 
     expect(getRuntimeConfig).toHaveBeenCalledTimes(1);
-    expect(getActiveAlerts).toHaveBeenCalledTimes(1);
+    expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(subscribeAlerts).toHaveBeenCalledTimes(1);
     expect(unsubscribeAlerts).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -219,7 +219,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     await flush();
     await flush();
 
-    expect(getActiveAlerts).toHaveBeenCalledTimes(1);
+    expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(subscribeAlerts).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
 

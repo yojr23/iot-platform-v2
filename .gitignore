@@ -50,8 +50,6 @@ __pycache__/
 
 # Zip files
 *.zip
-.env.host-backup
 # Host/env backups must never be committed (see .env.host-backup P0 incident)
-.env.host-backup
 .env.*-backup
 *.env.host-backup

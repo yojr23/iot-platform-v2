@@ -8,14 +8,19 @@ use Illuminate\Support\Facades\Broadcast;
 |--------------------------------------------------------------------------
 |
 | Stage 2 public-vs-private decision (PLAN.md 2.3, audit.md open Q#3):
-| `sensor.{id}` and `device-status` (App\Events\NewSensorReading,
-| DeviceStatusUpdated) are plain `Illuminate\Broadcasting\Channel` instances,
-| i.e. PUBLIC channels. `sensor.{id}` is intentionally public where
+| `sensor.{id}` (App\Events\NewSensorReading) is a plain
+| `Illuminate\Broadcasting\Channel` instance, i.e. a PUBLIC channel, where
 | `PublicGraphVisibility` allows it: it backs the guest graph dashboard and
 | carries no device keys/tokens or private user fields. Public channels never
 | hit this file or the `/broadcasting/auth` endpoint, so no entry is required
-| or added for them. Do not convert them to PrivateChannel without a real
+| or added for them. Do not convert it to PrivateChannel without a real
 | non-public field.
+|
+| Gate 8: `device-status` (App\Events\DeviceStatusUpdated) is NOT public —
+| moved from a plain `Channel` to a `PrivateChannel` below, alongside
+| `alerts`. Device status, like alerts, is not guest data (PLAN.md /
+| audit.md §12a). Any authenticated user may subscribe (no per-device ACL
+| model exists in this app, same shape as `alerts` immediately below).
 |
 | Stage 7 (PLAN.md Stage 7, audit.md §12a): `alerts` (App\Events\
 | NewAlertTriggered, App\Events\AlertResolved) is NOT public data — PLAN.md
@@ -58,5 +63,12 @@ Broadcast::channel('sensor.{sensorId}', function ($user, $sensorId) {
 // endpoint (`GET /api/alerts`, `/api/alerts/active`) which is auth:sanctum-only with no
 // per-record ownership check.
 Broadcast::channel('alerts', function ($user) {
+    return true;
+});
+
+// Gate 8: device-status facts are immutable, sequence-ordered, and not public/guest data (see
+// header comment above). Fixed-name private channel, no per-device ACL — same authorization shape
+// as `alerts` above.
+Broadcast::channel('device-status', function ($user) {
     return true;
 });

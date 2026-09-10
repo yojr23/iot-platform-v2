@@ -1,3 +1,5 @@
+> **HISTORICAL / SUPERSEDED (2026-09-10).** This session ran against HEAD `faae3aa` (uncommitted). The Gates 6/7/8 work was redone/completed on HEAD `88de73a` in a later session — see the authoritative record `docs/implementation/gates-6-7-8-evidence.md` and PLAN.md's "CURRENT STATUS" section. Keep this file for history only; where it conflicts with the current source, the current source wins.
+
 # Stage 6/7/8 — session evidence (2026-09-09)
 
 **Branch:** `refraccion` · **HEAD at session start/end:** `faae3aa` (all work below is **uncommitted working-tree** — no commit, no push, per operator instruction).

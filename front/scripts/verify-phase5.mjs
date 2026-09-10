@@ -124,9 +124,13 @@ assertIncludes(alertsStore, 'newAlerts', 'alerts store must return newly discove
 const appLayout = read('src/components/layout/AppLayout.vue');
 assertIncludes(appLayout, 'AlertToast', 'App layout must render AlertToast.');
 assertIncludes(appLayout, 'useAlertsRealtime', 'App layout must subscribe to alerts realtime.');
-assertIncludes(appLayout, 'setInterval', 'App layout must poll active alerts globally as a realtime fallback.');
-assertIncludes(appLayout, 'playAlertSound', 'App layout polling fallback must play alert sounds for new alerts.');
-assertIncludes(appLayout, 'notifyNew: true', 'App layout polling fallback must request new-alert notifications.');
+// Gate 7 (7.3): AppLayout is event-driven, not a polling fallback. useAlertsRealtime owns the
+// sole initial/reconnect snapshot; AppLayout must not run a setInterval poll loop or duplicate
+// its own active-alerts fetch.
+if (appLayout.includes('setInterval')) {
+  console.error('App layout must NOT poll active alerts — useAlertsRealtime owns the snapshot.');
+  process.exit(1);
+}
 
 const alertToast = read('src/components/alerts/AlertToast.vue');
 assertIncludes(alertToast, '<Transition', 'AlertToast must fade in/out with a Vue transition.');
@@ -138,7 +142,12 @@ assertIncludes(navBar, 'realtimeStatus', 'NavBar must expose realtime status.');
 assertIncludes(navBar, 'unresolvedCount', 'NavBar must show unresolved alert count.');
 
 const activeAlertsCard = read('src/components/dashboard/ActiveAlertsCard.vue');
-assertIncludes(activeAlertsCard, 'fetchActiveAlerts', 'ActiveAlertsCard must use alerts store polling/fetch fallback.');
+// Gate 7 (7.3): ActiveAlertsCard is presentation-only over the alerts store; it must not fetch
+// on its own (useAlertsRealtime is the sole snapshot owner) or mount would race a second owner.
+if (activeAlertsCard.includes('fetchActiveAlerts') || activeAlertsCard.includes('onMounted')) {
+  console.error('ActiveAlertsCard must be presentation-only — no fetch/onMounted snapshot fetch.');
+  process.exit(1);
+}
 
 const alertsView = read('src/views/AlertsView.vue');
 assertIncludes(alertsView, 'latestAlert', 'AlertsView must react to latest realtime alert.');

@@ -2,7 +2,7 @@ import { createApp, nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getPublicDashboardData = vi.fn(() => Promise.resolve({
+const getDashboardMetrics = vi.fn(() => Promise.resolve({
   data: {
     total_devices: 3,
     active_devices: 2,
@@ -18,7 +18,7 @@ const getGraphBootstrap = vi.fn(() => Promise.resolve({
 const getActiveAlerts = vi.fn(() => Promise.resolve({ data: { alerts: [], count: 0 } }));
 
 vi.mock('@/api/dashboard', () => ({
-  getPublicDashboardData: (...args) => getPublicDashboardData(...args),
+  getDashboardMetrics: (...args) => getDashboardMetrics(...args),
   getDashboardPreferences: vi.fn(),
   updateDashboardPreferences: vi.fn()
 }));
@@ -92,6 +92,18 @@ describe('DashboardView guest alert containment', () => {
     expect(el.textContent).not.toContain('Alertas activas');
     expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+
+    unmount();
+  });
+
+  it('makes no authenticated dashboard-metrics call as a guest but still bootstraps the public graph', async () => {
+    const { el, unmount } = await mountDashboardView();
+
+    expect(getDashboardMetrics).not.toHaveBeenCalled();
+    expect(getGraphBootstrap).toHaveBeenCalledTimes(1);
+    // Protected widgets are authenticated-only and must be absent from the guest surface.
+    expect(el.querySelector('[data-testid="device-status-list"]')).toBeFalsy();
+    expect(el.querySelector('[data-testid="recent-readings-table"]')).toBeFalsy();
 
     unmount();
   });

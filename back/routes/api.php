@@ -23,14 +23,12 @@ use App\Http\Controllers\Api\SensorTypeController as ApiSensorTypeController;
 use App\Http\Controllers\Api\UserRoleController as ApiUserRoleController;
 
 Route::get('/health', [HealthController::class, 'show'])->middleware('throttle:api-read');
-Route::get('/config/public', [ApiConfigController::class, 'publicConfig'])->middleware('throttle:api-read');
-Route::get('/dashboard/public', [ApiDashboardController::class, 'publicData'])
-    ->middleware('api.metrics')
-    ->middleware('throttle:api-read');
 
-// PLAN.md Stage 6.0 — the only anonymous product-domain surface this stage adds: a minimal
-// public graph bootstrap plus a bounded, visibility-gated series read. Transitional routes above
-// (config/public, dashboard/public) stay reachable until their atomic removal step.
+// PLAN.md Stage 6.0 / Gate 6 — the only anonymous product-domain surface: a minimal public graph
+// bootstrap plus a bounded, visibility-gated series read. The legacy anonymous product-data routes
+// (config/public, dashboard/public) were removed in Gate 6; their controller methods
+// (ApiConfigController::publicConfig, ApiDashboardController::publicData) are now unreferenced by
+// any route (deliberately left in place — method removal is out of Gate 6 scope).
 Route::prefix('public/graph')->group(function () {
     Route::get('/bootstrap', [PublicGraphController::class, 'bootstrap'])
         ->middleware('api.metrics')
@@ -71,14 +69,6 @@ Route::post('/ingestion/events', [IngestionController::class, 'store'])
     ->middleware('api.metrics')
     ->middleware('throttle:api-write');
 
-// Endpoints públicos para visualización del dashboard sin sesión.
-Route::get('/sensors/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])
-    ->middleware('api.metrics')
-    ->middleware('throttle:api-read');
-Route::get('/devices/{device}/sensors', [DeviceApiController::class, 'sensors'])
-    ->middleware('api.metrics')
-    ->middleware('throttle:api-read');
-
 Route::get('/internal/metrics/api-performance', [InternalMetricsController::class, 'apiPerformance'])
     ->middleware('api.metrics')
     ->middleware('auth:sanctum')
@@ -116,6 +106,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [SensorApiController::class, 'createSensor'])->middleware(['admin', 'throttle:api-write']);
         Route::get('/{sensor}/readings/export', [SensorApiController::class, 'exportReadings'])->middleware('throttle:api-read');
         Route::get('/{sensor}/readings', [SensorApiController::class, 'readings'])->middleware('throttle:api-read');
+        // Gate 6: moved out of the anonymous surface — realtime latest-readings is an authorized
+        // read now, same controller action, throttle + api.metrics preserved.
+        Route::get('/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])
+            ->middleware('api.metrics')
+            ->middleware('throttle:api-read');
         Route::get('/{sensor}', [SensorApiController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/{sensor}', [SensorApiController::class, 'updateSensor'])->middleware(['admin', 'throttle:api-write']);
         Route::delete('/{sensor}', [SensorApiController::class, 'destroySensor'])->middleware(['admin', 'throttle:api-write']);

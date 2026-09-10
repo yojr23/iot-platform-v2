@@ -25,5 +25,5 @@ export function updateDeviceStatus(deviceId, payload) {
 }
 
 export function getDeviceSensors(deviceId) {
-  return apiClient.get(`/devices/${deviceId}/sensors`);
+  return apiClient.get(`/devices/${deviceId}/sensor-list`);
 }

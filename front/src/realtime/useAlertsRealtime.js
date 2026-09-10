@@ -39,6 +39,33 @@ function getEventPayload(event) {
   return event?.alert ?? event?.data ?? event;
 }
 
+function getResolvedAlertId(payload) {
+  return payload?.alert?.id ?? payload?.id ?? payload?.alert_id;
+}
+
+// S5-03 / Gate 7 (7.2): buffer a live event (triggered or resolved) while a snapshot GET is
+// in flight, so the eventual older HTTP response can't overwrite/resurrect it. Returns true
+// if the event was buffered (caller must not apply it now); false if the buffer overflowed,
+// in which case recovery is restarted and the caller must also not apply it now.
+function bufferDuringRecovery(kind, payload) {
+  const age = Date.now() - recoveryStartTime;
+  if (recoveryBuffer.length >= MAX_RECOVERY_EVENTS || age >= MAX_RECOVERY_DURATION_MS) {
+    recoveryBuffer.length = 0;
+    recoveryGeneration++;
+    projectionFresh = false;
+    recoveryRequested = true;
+    setStatus({
+      enabled: true,
+      connected: isConnected.value,
+      mode: 'stale',
+      channel: ALERTS_CHANNEL,
+      error: 'Buffer de recuperación excedido; estado posiblemente desactualizado.'
+    });
+    return;
+  }
+  recoveryBuffer.push({ kind, payload });
+}
+
 // S5-06: transport state and projection freshness are separate concerns.
 // 'live' = transport connected AND snapshot applied (projection fresh).
 // 'recovering' = snapshot in flight, live events buffered.
@@ -59,11 +86,19 @@ const CONNECTION_ERROR_MESSAGES = {
 };
 
 function replayRecoveryBuffer(alertsStore) {
-  // S5-03: replay buffered live events through the store's idempotency path.
-  // addRealtimeAlert already deduplicates by id (wasKnown check), so replay is safe.
+  // S5-03 / Gate 7 (7.2): replay buffered live events, in arrival order, through the store's
+  // idempotency path. Entries are typed {kind, payload} so a resolved event that arrived
+  // mid-recovery is applied AFTER the snapshot instead of being overwritten by it (the bug
+  // this buffer exists to prevent) — addRealtimeAlert/markAlertResolved dedup by id, so replay
+  // is safe even if the snapshot already reflects the event.
   const buffered = recoveryBuffer.splice(0, recoveryBuffer.length);
 
-  buffered.forEach((payload) => {
+  buffered.forEach(({ kind, payload }) => {
+    if (kind === 'resolved') {
+      alertsStore.markAlertResolved(getResolvedAlertId(payload));
+      return;
+    }
+
     const alert = alertsStore.addRealtimeAlert(payload);
     if (alert) {
       playAlertSound({
@@ -210,23 +245,7 @@ export function subscribeAlerts() {
     // This prevents the race where a live event arrives during the snapshot GET and is
     // overwritten when the older HTTP response arrives.
     if (activeRecovery) {
-      const age = Date.now() - recoveryStartTime;
-      if (recoveryBuffer.length >= MAX_RECOVERY_EVENTS || age >= MAX_RECOVERY_DURATION_MS) {
-        // Buffer bound exceeded — mark stale, clear buffer, let the snapshot finish
-        recoveryBuffer.length = 0;
-        recoveryGeneration++;
-        projectionFresh = false;
-        recoveryRequested = true;
-        setStatus({
-          enabled: true,
-          connected: isConnected.value,
-          mode: 'stale',
-          channel: ALERTS_CHANNEL,
-          error: 'Buffer de recuperación excedido; estado posiblemente desactualizado.'
-        });
-        return;
-      }
-      recoveryBuffer.push(payload);
+      bufferDuringRecovery('triggered', payload);
       return;
     }
 
@@ -243,7 +262,16 @@ export function subscribeAlerts() {
 
   releaseResolvedChannel = listenOnChannel(ALERTS_CHANNEL, ALERTS_RESOLVED_EVENT, (event) => {
     const payload = getEventPayload(event);
-    const alertId = payload?.alert?.id ?? payload?.id ?? payload?.alert_id;
+
+    // Gate 7 (7.2): a resolved event that arrives while an HTTP snapshot is in flight must
+    // NOT apply immediately — the older snapshot response could still resurrect the alert
+    // it just resolved. Buffer and replay after the snapshot applies, same as triggered.
+    if (activeRecovery) {
+      bufferDuringRecovery('resolved', payload);
+      return;
+    }
+
+    const alertId = getResolvedAlertId(payload);
     if (alertId) {
       alertsStore.markAlertResolved(alertId);
     }

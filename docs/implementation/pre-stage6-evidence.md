@@ -1,3 +1,5 @@
+> **HISTORICAL / SUPERSEDED (2026-09-10).** Pre-Stage-6 gate concerns recorded here (`00b560c`/`faae3aa` era) are resolved or carried forward. Gates 6/7/8 are now code-complete on HEAD `88de73a`; the authoritative record is `docs/implementation/gates-6-7-8-evidence.md`. Only SEC-01 (secret history purge + credential rotation) remains open, unchanged. Keep this file for history only.
+
 # Pre-Stage-6 Evidence Ledger
 
 **Branch:** `refraccion`

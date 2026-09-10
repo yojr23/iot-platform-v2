@@ -178,7 +178,8 @@ class SensorApiControllerTest extends TestCase
                 ->where('aggregate_id', (string) $newReading->id)
                 ->count());
 
-            $this->getJson("/api/sensors/{$sensor->id}/latest-readings?limit=1")
+            $this->actingAs(User::factory()->create())
+                ->getJson("/api/sensors/{$sensor->id}/latest-readings?limit=1")
                 ->assertOk()
                 ->assertJsonPath('0.id', $newReading->id);
         } finally {

@@ -51,3 +51,64 @@ describe('alerts snapshot projection', () => {
     expect(store.unresolvedCount).toBe(27);
   });
 });
+
+describe('Gate 7.1 idempotent trigger/resolve ledgers', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('increments unresolvedCount once for a duplicate triggered alert', () => {
+    const store = useAlertsStore();
+
+    store.addRealtimeAlert({ id: 30, resolved: false });
+    store.addRealtimeAlert({ id: 30, resolved: false });
+
+    expect(store.unresolvedCount).toBe(1);
+    expect(store.seenTriggeredIds).toEqual([30]);
+  });
+
+  it('decrements unresolvedCount once for a duplicate resolved alert', () => {
+    const store = useAlertsStore();
+    store.addRealtimeAlert({ id: 31, resolved: false });
+
+    const first = store.markAlertResolved(31);
+    const second = store.markAlertResolved(31);
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    expect(store.unresolvedCount).toBe(0);
+  });
+
+  it('decrements only once when a resolve arrives for an alert already evicted from the visible arrays', () => {
+    const store = useAlertsStore();
+    store.addRealtimeAlert({ id: 32, resolved: false });
+    // Simulate eviction from the bounded display arrays without going through the store API.
+    store.activeAlerts = [];
+    store.items = [];
+
+    store.markAlertResolved(32);
+    store.markAlertResolved(32);
+
+    expect(store.unresolvedCount).toBe(0);
+  });
+
+  it('returns false and does not mutate state for a non-finite alert id', () => {
+    const store = useAlertsStore();
+    store.unresolvedCount = 3;
+
+    expect(store.markAlertResolved(undefined)).toBe(false);
+    expect(store.markAlertResolved(Number.NaN)).toBe(false);
+    expect(store.unresolvedCount).toBe(3);
+  });
+
+  it('clearAuthorizedState clears both ledgers', () => {
+    const store = useAlertsStore();
+    store.addRealtimeAlert({ id: 33, resolved: false });
+    store.markAlertResolved(33);
+
+    store.clearAuthorizedState();
+
+    expect(store.seenTriggeredIds).toEqual([]);
+    expect(store.seenResolvedIds).toEqual([]);
+  });
+});

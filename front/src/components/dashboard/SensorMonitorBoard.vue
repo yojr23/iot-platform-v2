@@ -112,9 +112,9 @@
             <!-- Stage 6 graph-only: the public graph bootstrap intentionally does NOT expose sensor
                  operational status, so no Activo/Sin-estado badge is rendered (it would always read
                  "Sin estado" and imply a device-health claim the graph contract doesn't own). -->
-            <span>{{ readingsFor(monitor).length }} puntos</span>
-            <span v-if="latestReading(monitor)">
-              Ultimo: {{ formatNumber(latestReading(monitor).value) }} {{ selectedSensor(monitor)?.unit || '' }}
+            <span>{{ pointCount(monitor) }} puntos</span>
+            <span v-if="latestPoint(monitor)">
+              Ultimo: {{ formatNumber(latestPoint(monitor).value) }} {{ selectedSensor(monitor)?.unit || '' }}
             </span>
           </div>
 
@@ -135,10 +135,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import { getDashboardPreferences, updateDashboardPreferences } from '@/api/dashboard';
-import { graphPointToReading } from '@/api/graph';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import SensorReadingChart from '@/components/charts/SensorReadingChart.vue';
 import { buildSensorChartViewModel } from '@/components/charts/sensorChartViewModel';
+import { composeGraphSeries } from '@/components/charts/graphSeriesProjection';
 import { RECOVERY_WINDOW_MS, useSensorRealtime } from '@/realtime/useSensorRealtime';
 import { useGraphSeriesQueryStore } from '@/stores/graphSeriesQuery';
 import { useSensorReadingsStore } from '@/stores/sensorReadings';
@@ -179,6 +179,10 @@ const mainMonitor = reactive({
 const monitors = ref([]);
 const loadingByMonitor = reactive({});
 const readErrorByMonitor = reactive({});
+// monitor.id -> { from, to }: the exact window a monitor last asked for, so the descriptor used to
+// READ the cached historical result matches the one used to WRITE it (buildGraphQueryKey keys on
+// from/to). Mirrors loadingByMonitor/readErrorByMonitor; kept out of the persisted layout on purpose.
+const queryByMonitor = reactive({});
 const realtimeEnabled = ref(true);
 const restoring = ref(false);
 
@@ -226,19 +230,38 @@ function selectedSensorName(monitor) {
   return selectedSensor(monitor)?.name || 'Sensor sin seleccionar';
 }
 
-function readingsFor(monitor) {
-  return sensorReadingsStore.readingsFor(monitor.sensor_id);
+function descriptorFor(monitor) {
+  const window = queryByMonitor[monitor.id] || {};
+  return { scope: 'public', sensorId: monitor.sensor_id, from: window.from, to: window.to, aggregation: 'raw' };
 }
 
-function latestReading(monitor) {
-  return sensorReadingsStore.latestFor(monitor.sensor_id);
+// Single composition point: historical window (graphSeriesQuery) + shared live tail
+// (sensorReadings), merged by the pure projection helper. Neither store hydrates the other.
+function composedFor(monitor) {
+  const historical = graphSeriesQueryStore.resultForQuery(descriptorFor(monitor));
+  return composeGraphSeries({
+    historicalPoints: historical?.points || [],
+    liveReadings: sensorReadingsStore.readingsFor(monitor.sensor_id),
+    serverStats: historical?.stats || null,
+    partial: Boolean(historical?.truncated || historical?.stats?.partial)
+  });
+}
+
+function pointCount(monitor) {
+  return composedFor(monitor).points.length;
+}
+
+function latestPoint(monitor) {
+  const { points } = composedFor(monitor);
+  return points[points.length - 1] || null;
 }
 
 function chartViewModel(monitor) {
-  // sensorReadingsStore keeps readings chronological ascending; buildSensorChartViewModel
-  // expects newest-first (it reverses internally), so hand it a reversed copy.
-  const readings = [...readingsFor(monitor)].reverse();
-  return buildSensorChartViewModel(readings, { unit: selectedSensor(monitor)?.unit || '' });
+  const composed = composedFor(monitor);
+  // composed.points are chronological ascending; buildSensorChartViewModel expects newest-first
+  // (it reverses internally), so hand it a reversed copy.
+  const base = buildSensorChartViewModel([...composed.points].reverse(), { unit: selectedSensor(monitor)?.unit || '' });
+  return { ...base, stats: composed.stats, partial: composed.partial };
 }
 
 function teardownRealtime(monitorId) {
@@ -288,17 +311,19 @@ async function loadHistory(monitor) {
 
   const to = new Date();
   const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
+  // Record the exact window so descriptorFor(monitor) reads back the same cache entry we write.
+  queryByMonitor[monitor.id] = { from, to };
 
   // Always the public graph-series contract: this board is the guest-capable graph surface
-  // (PLAN.md 6.0/6.2), never a restricted/private sensor.
-  await graphSeriesQueryStore.fetchWindow(sensorId, { scope: 'public', from, to });
+  // (PLAN.md 6.0/6.2), never a restricted/private sensor. The historical result stays in the query
+  // store keyed by descriptor — it is NOT hydrated into the live tail (Gate 6: history and live
+  // stay separate owners, composed only at render via composeGraphSeries).
+  await graphSeriesQueryStore.fetchWindow(sensorId, { scope: 'public', from, to, consumerKey: monitor.id });
 
-  const outcome = graphSeriesQueryStore.resultFor(sensorId);
+  const outcome = graphSeriesQueryStore.resultForQuery(descriptorFor(monitor));
 
   if (outcome?.error) {
     readErrorByMonitor[monitor.id] = outcome.error;
-  } else if (outcome?.points) {
-    sensorReadingsStore.hydrate(sensorId, outcome.points.map((point) => graphPointToReading(point, sensorId)));
   }
 
   loadingByMonitor[monitor.id] = false;
@@ -311,8 +336,10 @@ function handleDeviceChange(monitor) {
 }
 
 async function handleSensorChange(monitor) {
-  await loadHistory(monitor);
+  // Subscribe FIRST, then load history: history no longer touches the live store, so a live event
+  // arriving mid-fetch lands in the shared tail and simply merges (dedup by id at compose time).
   syncRealtime(monitor);
+  await loadHistory(monitor);
   schedulePersist();
 }
 
@@ -327,8 +354,8 @@ function addMonitor() {
 
   nextTick(async () => {
     const monitor = monitors.value[monitors.value.length - 1];
-    await loadHistory(monitor);
     syncRealtime(monitor);
+    await loadHistory(monitor);
     schedulePersist();
   });
 }
@@ -455,8 +482,8 @@ async function restoreLayout() {
       }))
     : [];
 
-  await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
   visibleMonitors.value.forEach(syncRealtime);
+  await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
   restoring.value = false;
   schedulePersist();
 }

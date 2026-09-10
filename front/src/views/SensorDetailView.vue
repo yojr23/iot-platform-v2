@@ -67,7 +67,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 
 import { exportSensorReadings, getSensor, getSensorLatestReadings, getSensorReadings } from '@/api/sensors';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
@@ -78,6 +78,7 @@ import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import SensorReadingsChart from '@/components/sensors/SensorReadingsChart.vue';
 import SensorReadingsTable from '@/components/sensors/SensorReadingsTable.vue';
 import { useSensorRealtime } from '@/realtime/useSensorRealtime';
+import { useSensorReadingsStore } from '@/stores/sensorReadings';
 import { paginatedItems } from '@/utils/formatters';
 
 const props = defineProps({
@@ -87,8 +88,8 @@ const props = defineProps({
   }
 });
 
+const readingsStore = useSensorReadingsStore();
 const sensor = ref(null);
-const readings = ref([]);
 const loading = ref(false);
 const error = ref('');
 const filtering = ref(false);
@@ -98,23 +99,17 @@ const filters = reactive({
   to: ''
 });
 
-function addRealtimeReading(reading) {
-  if (!reading?.reading_id && !reading?.id) {
-    return;
-  }
-
-  const readingId = Number(reading.reading_id ?? reading.id);
-  const exists = readings.value.some((item) => Number(item.id ?? item.reading_id) === readingId);
-
-  if (exists) {
-    readings.value = readings.value.map((item) => (
-      Number(item.id ?? item.reading_id) === readingId ? { ...item, ...reading } : item
-    ));
-    return;
-  }
-
-  readings.value = [reading, ...readings.value].slice(0, 50);
-}
+// Gate 6: the default (unfiltered) live view is a view over the SHARED live tail store — no second
+// local live cache. The explicit historical filter keeps its OWN immutable result that live events
+// never touch; exiting the filter falls straight back to the shared tail.
+const filterActive = ref(false);
+const filteredReadings = ref([]);
+const readings = computed(() => (
+  filterActive.value
+    ? filteredReadings.value
+    // Shared tail is chronological ascending; the chart/table want newest-first.
+    : [...readingsStore.readingsFor(props.id)].reverse()
+));
 
 function readingFilterParams() {
   return {
@@ -129,7 +124,9 @@ async function filterReadings() {
 
   try {
     const response = await getSensorReadings(props.id, readingFilterParams());
-    readings.value = paginatedItems(response);
+    // Local immutable historical result for the filtered range — live events do not mutate it.
+    filteredReadings.value = paginatedItems(response);
+    filterActive.value = true;
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron filtrar las lecturas.');
   } finally {
@@ -140,6 +137,8 @@ async function filterReadings() {
 async function resetFilter() {
   filters.from = '';
   filters.to = '';
+  filteredReadings.value = [];
+  filterActive.value = false;
   await load();
 }
 
@@ -164,11 +163,15 @@ async function exportReadings() {
   }
 }
 
-const sensorRealtime = useSensorRealtime(() => props.id, addRealtimeReading);
+// Live events feed the shared tail store (id-based dedup lives there), not a local array.
+const sensorRealtime = useSensorRealtime(() => props.id, (reading) => {
+  readingsStore.mergeReading(props.id, reading);
+});
 
 async function load() {
   loading.value = true;
   error.value = '';
+  filterActive.value = false;
 
   try {
     const [sensorResponse, readingsResponse] = await Promise.all([
@@ -177,7 +180,9 @@ async function load() {
     ]);
 
     sensor.value = unwrapData(sensorResponse);
-    readings.value = unwrapData(readingsResponse) || [];
+    // Merge (not replace): the subscribe-before-snapshot order means a live event may already have
+    // landed in the shared tail — merging preserves it and dedups the overlap by id.
+    readingsStore.mergeReadings(props.id, unwrapData(readingsResponse) || []);
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudo cargar el sensor.');
   } finally {
@@ -186,8 +191,9 @@ async function load() {
 }
 
 onMounted(async () => {
-  await load();
+  // Subscribe BEFORE the snapshot so no reading emitted during the load is missed.
   sensorRealtime.subscribeSensor();
+  await load();
 });
 
 onBeforeUnmount(() => {

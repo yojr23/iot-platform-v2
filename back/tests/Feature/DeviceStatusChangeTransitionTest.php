@@ -102,4 +102,52 @@ class DeviceStatusChangeTransitionTest extends TestCase
             ->where('aggregate_id', (string) $device->id)
             ->count());
     }
+
+    /**
+     * Gate 8: the outbox payload itself must carry the full immutable fact (status/is_active/
+     * changed_at), not just `device_id` — `DomainEventBroadcastConsumer` no longer reloads the
+     * `Device` row to learn what a given transition actually was.
+     */
+    public function test_outbox_payload_captures_the_full_immutable_fact(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $device = Device::factory()->create(['status' => true, 'is_active' => true]);
+
+        $this->actingAs($admin)->postJson("/api/devices/{$device->id}/status", ['status' => false])->assertOk();
+
+        $outbox = DomainEventOutbox::query()
+            ->where('event_type', 'device.status.changed')
+            ->where('aggregate_id', (string) $device->id)
+            ->firstOrFail();
+
+        $this->assertSame($device->id, $outbox->payload['device_id']);
+        $this->assertFalse($outbox->payload['status']);
+        $this->assertFalse($outbox->payload['is_active']);
+        $this->assertNotEmpty($outbox->payload['changed_at']);
+    }
+
+    /**
+     * Gate 8 core regression: OFF then ON, both applied before any consumer runs, must leave two
+     * outbox rows each frozen with the value true *at the time of that transition* — never both
+     * reading back the row's final (current) value.
+     */
+    public function test_rapid_off_then_on_each_outbox_fact_keeps_its_own_value(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $device = Device::factory()->create(['status' => true, 'is_active' => true]);
+
+        $this->actingAs($admin)->postJson("/api/devices/{$device->id}/status", ['status' => false])->assertOk();
+        $this->actingAs($admin)->postJson("/api/devices/{$device->id}/status", ['status' => true])->assertOk();
+
+        $facts = DomainEventOutbox::query()
+            ->where('event_type', 'device.status.changed')
+            ->where('aggregate_id', (string) $device->id)
+            ->orderBy('id')
+            ->get();
+
+        $this->assertCount(2, $facts);
+        $this->assertFalse($facts[0]->payload['status']);
+        $this->assertTrue($facts[1]->payload['status']);
+        $this->assertTrue($facts[1]->id > $facts[0]->id);
+    }
 }

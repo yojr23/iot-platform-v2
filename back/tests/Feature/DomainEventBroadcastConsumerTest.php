@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Events\AlertResolved;
 use App\Events\DeviceStatusUpdated;
+use App\Events\NewAlertTriggered;
 use App\Events\NewSensorReading;
 use App\Models\Alert;
 use App\Models\Device;
@@ -72,6 +73,19 @@ class DomainEventBroadcastConsumerTest extends TestCase
         ]);
     }
 
+    private function triggeredAlertOutbox(): DomainEventOutbox
+    {
+        $alert = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
+
+        return DomainEventOutbox::factory()->create([
+            'event_type' => 'alert.triggered',
+            'aggregate_type' => 'alert',
+            'aggregate_id' => (string) $alert->id,
+            'payload' => ['alert_id' => $alert->id],
+            'status' => 'published',
+        ]);
+    }
+
     private function resolvedAlertOutbox(): DomainEventOutbox
     {
         $alert = Alert::factory()->create(['resolved' => true, 'resolved_at' => now()]);
@@ -93,7 +107,12 @@ class DomainEventBroadcastConsumerTest extends TestCase
             'event_type' => 'device.status.changed',
             'aggregate_type' => 'device',
             'aggregate_id' => (string) $device->id,
-            'payload' => ['device_id' => $device->id],
+            'payload' => [
+                'device_id' => $device->id,
+                'status' => false,
+                'is_active' => false,
+                'changed_at' => now()->toIso8601String(),
+            ],
             'status' => 'published',
         ]);
     }
@@ -113,6 +132,34 @@ class DomainEventBroadcastConsumerTest extends TestCase
             'payload' => ['reading_id' => $reading->id],
             'status' => 'published',
         ]);
+    }
+
+    public function test_alert_triggered_fact_is_broadcast_exactly_once(): void
+    {
+        Event::fake([NewAlertTriggered::class]);
+
+        $outbox = $this->triggeredAlertOutbox();
+        $this->xadd($outbox->id, 'alert.triggered');
+
+        $stats = $this->consumer()->runOnce('worker-A', 10, 100);
+
+        $this->assertSame(1, $stats['acked']);
+        Event::assertDispatchedTimes(NewAlertTriggered::class, 1);
+        $this->assertNotNull($outbox->fresh()->delivered_at);
+    }
+
+    public function test_duplicate_delivery_of_alert_triggered_broadcasts_only_once(): void
+    {
+        Event::fake([NewAlertTriggered::class]);
+
+        $outbox = $this->triggeredAlertOutbox();
+        // Same outbox row delivered twice (at-least-once relay) must stay idempotent.
+        $this->xadd($outbox->id, 'alert.triggered');
+        $this->xadd($outbox->id, 'alert.triggered');
+
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        Event::assertDispatchedTimes(NewAlertTriggered::class, 1);
     }
 
     public function test_alert_resolved_fact_is_broadcast_exactly_once(): void
@@ -140,6 +187,95 @@ class DomainEventBroadcastConsumerTest extends TestCase
 
         $this->assertSame(1, $stats['acked']);
         Event::assertDispatchedTimes(DeviceStatusUpdated::class, 1);
+    }
+
+    /**
+     * Gate 8: the event is built straight from the immutable outbox payload — no `Device::find()`
+     * re-read — and broadcasts on the PRIVATE `device-status` channel (moved off the public
+     * `Channel` at Gate 8, device status is not guest data).
+     */
+    public function test_device_status_changed_broadcasts_on_private_channel_with_immutable_payload(): void
+    {
+        Event::fake([DeviceStatusUpdated::class]);
+
+        $device = Device::factory()->create(['status' => false, 'is_active' => false]);
+        $outbox = DomainEventOutbox::factory()->create([
+            'event_type' => 'device.status.changed',
+            'aggregate_type' => 'device',
+            'aggregate_id' => (string) $device->id,
+            'payload' => [
+                'device_id' => $device->id,
+                'status' => true,
+                'is_active' => true,
+                'changed_at' => '2026-01-01T00:00:00+00:00',
+            ],
+            'status' => 'published',
+        ]);
+        $this->xadd($outbox->id, 'device.status.changed');
+
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        Event::assertDispatched(DeviceStatusUpdated::class, function (DeviceStatusUpdated $event) use ($device, $outbox) {
+            $this->assertInstanceOf(PrivateChannel::class, $event->broadcastOn());
+            $this->assertSame('private-device-status', $event->broadcastOn()->name);
+
+            // Payload comes from the outbox row (captured at write time), not a live Device row —
+            // even though the row currently says false/false, the fact says true/true.
+            $this->assertSame($device->id, $event->deviceId);
+            $this->assertTrue($event->status);
+            $this->assertTrue($event->isActive);
+            $this->assertSame('2026-01-01T00:00:00+00:00', $event->changedAt);
+            $this->assertSame($outbox->id, $event->eventSequence);
+
+            return true;
+        });
+    }
+
+    /**
+     * Gate 8 regression: two rapid status transitions must each keep their own value in their own
+     * fact, and `event_sequence` must strictly increase — the bug this closes is the consumer
+     * re-reading the *current* Device row so an earlier fact's broadcast could carry a later fact's
+     * status.
+     */
+    public function test_two_rapid_device_status_facts_keep_independent_payload_and_increasing_sequence(): void
+    {
+        Event::fake([DeviceStatusUpdated::class]);
+
+        $device = Device::factory()->create(['status' => true, 'is_active' => true]);
+
+        $offOutbox = DomainEventOutbox::factory()->create([
+            'event_type' => 'device.status.changed',
+            'aggregate_type' => 'device',
+            'aggregate_id' => (string) $device->id,
+            'payload' => ['device_id' => $device->id, 'status' => false, 'is_active' => false, 'changed_at' => now()->toIso8601String()],
+            'status' => 'published',
+        ]);
+        $onOutbox = DomainEventOutbox::factory()->create([
+            'event_type' => 'device.status.changed',
+            'aggregate_type' => 'device',
+            'aggregate_id' => (string) $device->id,
+            'payload' => ['device_id' => $device->id, 'status' => true, 'is_active' => true, 'changed_at' => now()->toIso8601String()],
+            'status' => 'published',
+        ]);
+
+        // Device row's *current* value is ON, but the first fact must still broadcast OFF — proves
+        // the consumer never reloads the live row.
+        $this->xadd($offOutbox->id, 'device.status.changed');
+        $this->xadd($onOutbox->id, 'device.status.changed');
+
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        $dispatched = [];
+        Event::assertDispatched(DeviceStatusUpdated::class, function (DeviceStatusUpdated $event) use (&$dispatched) {
+            $dispatched[] = $event;
+
+            return true;
+        });
+
+        $this->assertCount(2, $dispatched);
+        $this->assertFalse($dispatched[0]->status);
+        $this->assertTrue($dispatched[1]->status);
+        $this->assertTrue($dispatched[1]->eventSequence > $dispatched[0]->eventSequence);
     }
 
     public function test_sensor_reading_created_fact_is_broadcast_exactly_once(): void
