@@ -1,7 +1,7 @@
 # Gates 6 / 7 / 8 — completion evidence (authoritative)
 
-**Branch:** `refraccion` · **Base HEAD (pre-commit):** `88de73aa9a77f9d19fe25239c1e919f4574902fd`
-**Date:** 2026-09-10 · **Working tree:** all changes below are **uncommitted** at time of writing.
+**Branch:** `refraccion` · **Base HEAD:** `1d74340`
+**Date:** 2026-09-10 · **Working tree:** stabilization changes may be uncommitted; restamp after SEC-01 history rewrite.
 **Execution environment:** code + test authoring only. NO php / composer / docker / mysql / redis reachable this session; node + vitest present. Backend suites are **GAP — run on the operator machine** with the commands at the bottom. No PASS/FAIL was fabricated. Frontend vitest results are real (agent-executed).
 
 Implemented with sonnet-5 subagents, one backend + one frontend agent per gate, coordinated to disjoint file sets, gate-by-gate with a review checkpoint between gates.
@@ -14,11 +14,11 @@ Implemented with sonnet-5 subagents, one backend + one frontend agent per gate, 
 
 | Gate | Verdict | Evidence quality |
 |---|---|---|
-| **GATE 6** — public graph boundary + sensor realtime correctness | **PASS (code + frontend tests)** | Frontend vitest green. Backend code+tests written, **runtime GAP**. MySQL EXPLAIN/index measurement (Task 6.6) **GAP** (no MySQL). Browser network-audit **GAP** (no browser harness). |
-| **GATE 7** — private alerts, replay safety, durable `alert.triggered` | **PASS (code + frontend tests)** | Frontend vitest green. Backend code+tests written; consumer tests need Redis → **runtime GAP**. |
-| **GATE 8** — immutable private device-status projection | **PASS (code + frontend tests)** | Frontend vitest green. Backend code+tests written, **runtime GAP**. |
+| **GATE 6** — public graph boundary + sensor realtime correctness | **PASS CANDIDATE** | Frontend vitest green. Backend code+tests written, **runtime GAP**. MySQL EXPLAIN/index measurement (Task 6.6) **GAP** (no MySQL). Browser network-audit **GAP** (no browser harness). |
+| **GATE 7** — private alerts, replay safety, durable `alert.triggered` | **PASS CANDIDATE** | Frontend vitest green. Backend code+tests written; consumer tests need Redis → **runtime GAP**. |
+| **GATE 8** — immutable private device-status projection | **PASS CANDIDATE** | Frontend vitest green. Backend code+tests written, **runtime GAP**. |
 
-**Frontend test evidence (real, `npx vitest run` in `front/`):** 26 test files, **116 tests, 0 failures**. `npm run build` succeeds. `npm run test:structure`, `test:phase4`, `test:phase5`, `test:phase7` all pass (`verify-phase5.mjs` was corrected from demanding alert polling to asserting its absence).
+**Frontend test evidence (real, `npm.cmd run test:unit` in `front/`):** 26 test files, **122 tests, 0 failures**. `npm.cmd run build` succeeds. Historical structural-script results are not restamped in this audit; runtime evidence remains open.
 
 ---
 
@@ -59,7 +59,7 @@ Frontend:
 ## GATE 8 — what changed
 
 Backend:
-- `app/Services/DeviceService.php` — `changeStatus()` records the **immutable fact** `{device_id,status,is_active,changed_at}` (captured at write time; `last_communication` set from the same timestamp), not just `device_id`.
+- `app/Services/DeviceService.php` — `changeStatus()` records the **immutable fact** `{device_id,status,is_active,changed_at}` (captured at write time) and does **not** update `last_communication`, which remains actual device-contact time.
 - `app/Events/DeviceStatusUpdated.php` — readonly scalar constructor (`deviceId,status,isActive,changedAt,eventSequence`), `PrivateChannel('device-status')`, `broadcastWith` = 5 keys + envelope. No longer built from a mutable model.
 - `routes/channels.php` — `Broadcast::channel('device-status', fn($user)=>true)`; stale "public" comment corrected.
 - `DomainEventBroadcastConsumer::broadcastDeviceStatusChanged()` — builds the event from `$outbox->payload` with `eventSequence=$outbox->id`; no `Device::find()` reload.
@@ -67,8 +67,8 @@ Backend:
 - Tests: immutable-payload + rapid OFF→ON independence in `DeviceStatusChangeTransitionTest` + `DomainEventBroadcastConsumerTest`; private-channel guest-denied/PAT-authorized in `BroadcastChannelAuthorizationTest`; envelope updates in `EventEnvelopeTest`.
 
 Frontend:
-- `stores/deviceStatuses.js` — `applyStatusEvent` with sequence guard (ignores duplicate/out-of-order), `applySnapshot` (realtime always wins), `statusFor`, `clear`.
-- `realtime/useDeviceStatusRealtime.js` (new) — single private adapter, reuses `echo.js`/`channelRegistry` (no second Echo), authenticated-only, subscribe-first snapshot with buffered replay, `onResync('auth')` unsubscribe/clear, no timers.
+- `stores/deviceStatuses.js` — `applyStatusEvent` with sequence guard (ignores duplicate/out-of-order), `applySnapshot` preserves sequenced realtime facts, `statusFor`, `clear`.
+- `realtime/useDeviceStatusRealtime.js` (new) — single private adapter, reuses `echo.js`/`channelRegistry` (no second Echo), authenticated-only, bounded single-flight generation-guarded recovery, subscribe-first snapshot with buffered replay, `onResync('auth')` unsubscribe/clear, no timers.
 - `AppLayout.vue` wires subscribe/unsubscribe session-wide; `DevicesView.vue` seeds snapshot + `effectiveDevice` overlay + no full reload after toggle; `DeviceDetailView.vue` overlay via `/sensor-list`; `DeviceStatusList.vue` presentation-only (removed independent `getDevices`).
 
 ---

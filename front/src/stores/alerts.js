@@ -132,6 +132,12 @@ export const useAlertsStore = defineStore('alerts', {
       const nextActiveAlerts = Array.isArray(alerts) ? alerts : [];
       let newAlerts = [];
 
+      // Seed authoritative active IDs before buffered/replayed triggers are projected.
+      const snapshotIds = nextActiveAlerts
+        .map((alert) => Number(alert?.id))
+        .filter(Number.isFinite);
+      this.seenTriggeredIds = [...new Set([...this.seenTriggeredIds, ...snapshotIds])].slice(-500);
+
       if (notifyNew) {
         const knownIds = new Set([...this.activeAlerts, ...this.items]
           .map((alert) => Number(alert?.id)).filter(Number.isFinite));
@@ -210,11 +216,7 @@ export const useAlertsStore = defineStore('alerts', {
 
     async resolveAlert(alertId) {
       const response = await resolveAlertRequest(alertId);
-      this.items = this.items.map((alert) => (
-        Number(alert.id) === Number(alertId) ? { ...alert, resolved: true, resolved_at: new Date().toISOString() } : alert
-      ));
-      this.activeAlerts = this.activeAlerts.filter((alert) => Number(alert.id) !== Number(alertId));
-      this.unresolvedCount = Math.max(0, this.unresolvedCount - 1);
+      this.markAlertResolved(alertId);
       return response;
     },
 
@@ -237,6 +239,10 @@ export const useAlertsStore = defineStore('alerts', {
 
     async resolveAll() {
       const response = await resolveAllAlerts();
+      const knownActiveIds = [...this.activeAlerts, ...this.items]
+        .map((alert) => Number(alert?.id))
+        .filter(Number.isFinite);
+      knownActiveIds.forEach((id) => this.markAlertResolved(id));
       this.items = this.items.map((alert) => ({ ...alert, resolved: true, resolved_at: new Date().toISOString() }));
       this.activeAlerts = [];
       this.unresolvedCount = 0;

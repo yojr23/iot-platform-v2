@@ -56,6 +56,11 @@ export const useDeviceStatusesStore = defineStore('deviceStatuses', {
           return;
         }
 
+        // Metadata snapshots have no event cursor and may predate a sequenced realtime fact.
+        if (Number(next[id]?.event_sequence) > 0) {
+          return;
+        }
+
         next[id] = {
           status: Boolean(device.status),
           is_active: Boolean(device.is_active),

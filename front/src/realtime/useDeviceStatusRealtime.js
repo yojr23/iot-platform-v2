@@ -20,31 +20,64 @@ let stopResync = null;
 let subscribed = false;
 
 // Gate 8.4: DeviceStatusUpdated events that arrive while the one-shot device snapshot GET is
-// in flight are buffered and replayed afterwards. The store's sequence guard (Gate 8.3) makes
-// replay order-independent/idempotent, so — unlike alerts — this buffer needs no kind-tagging
-// or bounded-duration overflow fallback: worst case is a harmlessly-ignored duplicate.
+// in flight are buffered and replayed afterwards. Recovery is single-flight and generation
+// guarded; a bounded buffer requests one follow-up snapshot rather than allowing overlap.
 let recoveryBuffer = [];
+let activeRecovery = null;
 let snapshotInFlight = false;
+let recoveryRequested = false;
+let recoveryGeneration = 0;
+const MAX_RECOVERY_EVENTS = 100;
 
 function eventPayload(event) {
   return event?.data ?? event;
 }
 
-async function runSnapshot(store) {
-  // One-shot, lifecycle-triggered (subscribe/reconnect/visibility) — never a periodic GET.
+async function runSnapshot(store, generation) {
   snapshotInFlight = true;
-  recoveryBuffer = [];
+  // One-shot, lifecycle-triggered (subscribe/reconnect/visibility) — never a periodic GET.
+  recoveryBuffer.length = 0;
 
   try {
     const response = await getDevices({ per_page: 100 });
+    if (generation !== recoveryGeneration) {
+      return;
+    }
     store.applySnapshot(paginatedItems(response));
   } catch {
     // Lean V1: snapshot failure leaves whatever realtime already produced in place; the
     // channel stays subscribed so the next DeviceStatusUpdated still applies.
   } finally {
-    snapshotInFlight = false;
-    recoveryBuffer.splice(0, recoveryBuffer.length).forEach((payload) => store.applyStatusEvent(payload));
+    if (generation === recoveryGeneration) {
+      snapshotInFlight = false;
+      recoveryBuffer.splice(0, recoveryBuffer.length).forEach((payload) => store.applyStatusEvent(payload));
+    }
   }
+}
+
+function requestSnapshot(store) {
+  if (activeRecovery) {
+    recoveryRequested = true;
+    return activeRecovery;
+  }
+
+  const generation = ++recoveryGeneration;
+  const recovery = runSnapshot(store, generation);
+  activeRecovery = recovery;
+
+  recovery.finally(() => {
+    if (activeRecovery !== recovery) {
+      return;
+    }
+
+    activeRecovery = null;
+    if (recoveryRequested) {
+      recoveryRequested = false;
+      requestSnapshot(store);
+    }
+  });
+
+  return recovery;
 }
 
 export function subscribeDeviceStatus() {
@@ -69,6 +102,10 @@ export function subscribeDeviceStatus() {
     const payload = eventPayload(event);
 
     if (snapshotInFlight) {
+      if (recoveryBuffer.length >= MAX_RECOVERY_EVENTS) {
+        recoveryRequested = true;
+        return;
+      }
       recoveryBuffer.push(payload);
       return;
     }
@@ -89,7 +126,7 @@ export function subscribeDeviceStatus() {
 
   // Subscribe FIRST (above), then fetch the snapshot — a live event during the fetch is
   // buffered above, not lost.
-  runSnapshot(store);
+  requestSnapshot(store);
 
   stopResync = onResync((reason) => {
     if (reason === 'auth') {
@@ -103,7 +140,7 @@ export function subscribeDeviceStatus() {
       return;
     }
 
-    runSnapshot(store);
+    requestSnapshot(store);
   });
 
   return true;
@@ -118,7 +155,10 @@ export function unsubscribeDeviceStatus() {
   stopConnectionWatch = null;
   stopResync = null;
   subscribed = false;
+  recoveryGeneration++;
+  activeRecovery = null;
   snapshotInFlight = false;
+  recoveryRequested = false;
   recoveryBuffer = [];
   isConnected.value = false;
 }

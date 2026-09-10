@@ -119,6 +119,36 @@ describe('device status realtime adapter', () => {
     expect(store.statusFor(1)).toMatchObject({ status: false, is_active: false, source: 'realtime' });
   });
 
+  it('coalesces overlapping recovery requests so an earlier response cannot overwrite the newer projection', async () => {
+    const snapshots = [];
+    getDevices.mockImplementation(() => new Promise((resolve) => snapshots.push(resolve)));
+
+    const { subscribeDeviceStatus, DEVICE_STATUS_EVENT } = await import('./useDeviceStatusRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useDeviceStatusesStore } = await import('@/stores/deviceStatuses');
+    authenticate(useAuthStore());
+    const store = useDeviceStatusesStore();
+
+    subscribeDeviceStatus();
+    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledOnce());
+    fireResync('reconnect');
+
+    const listenCall = echoMock.privateChannel.listen.mock.calls.find(([event]) => event === DEVICE_STATUS_EVENT);
+    listenCall[1]({ device_id: 8, event_sequence: 9, status: false, is_active: false });
+
+    snapshots[0]({ data: [{ id: 8, status: true, is_active: true }] });
+    await vi.waitFor(() => expect(getDevices).toHaveBeenCalledTimes(2));
+    snapshots[1]({ data: [{ id: 8, status: true, is_active: true }] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.statusFor(8)).toMatchObject({
+      status: false,
+      is_active: false,
+      event_sequence: 9,
+      source: 'realtime'
+    });
+  });
+
   it('feeds duplicate/out-of-order events through the store sequence guard', async () => {
     const { subscribeDeviceStatus, DEVICE_STATUS_EVENT } = await import('./useDeviceStatusRealtime');
     const { useAuthStore } = await import('@/stores/auth');

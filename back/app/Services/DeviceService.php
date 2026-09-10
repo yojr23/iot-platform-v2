@@ -67,7 +67,6 @@ class DeviceService
             $device->update([
                 'status' => $newStatus,
                 'is_active' => $newStatus,
-                'last_communication' => $changedAt,
             ]);
 
             $device->statusLogs()->create([

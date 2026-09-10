@@ -50,6 +50,16 @@ describe('alerts snapshot projection', () => {
 
     expect(store.unresolvedCount).toBe(27);
   });
+
+  it('does not increment when a trigger already represented by the authoritative snapshot is redelivered', () => {
+    const store = useAlertsStore();
+
+    store.applyActiveSnapshot([{ id: 41, resolved: false }], { count: 1 });
+    store.addRealtimeAlert({ id: 41, resolved: false });
+
+    expect(store.unresolvedCount).toBe(1);
+    expect(store.seenTriggeredIds).toContain(41);
+  });
 });
 
 describe('Gate 7.1 idempotent trigger/resolve ledgers', () => {
@@ -77,6 +87,29 @@ describe('Gate 7.1 idempotent trigger/resolve ledgers', () => {
     expect(first).toBe(true);
     expect(second).toBe(false);
     expect(store.unresolvedCount).toBe(0);
+  });
+
+  it('projects a successful manual resolution through the same idempotent ledger as its durable event', async () => {
+    const store = useAlertsStore();
+    store.applyActiveSnapshot([{ id: 34, resolved: false }], { count: 1 });
+
+    await store.resolveAlert(34);
+    const durableEventApplied = store.markAlertResolved(34);
+
+    expect(store.unresolvedCount).toBe(0);
+    expect(durableEventApplied).toBe(false);
+    expect(store.seenResolvedIds).toContain(34);
+  });
+
+  it('records every visible alert resolved by a successful bulk resolution', async () => {
+    const store = useAlertsStore();
+    store.applyActiveSnapshot([{ id: 35 }, { id: 36 }], { count: 2 });
+
+    await store.resolveAll();
+
+    expect(store.unresolvedCount).toBe(0);
+    expect(store.seenResolvedIds).toEqual(expect.arrayContaining([35, 36]));
+    expect(store.markAlertResolved(35)).toBe(false);
   });
 
   it('decrements only once when a resolve arrives for an alert already evicted from the visible arrays', () => {

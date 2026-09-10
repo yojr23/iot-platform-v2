@@ -70,6 +70,22 @@ class DeviceStatusChangeTransitionTest extends TestCase
             ->count());
     }
 
+    public function test_manual_status_transition_does_not_falsify_last_device_communication(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+        $lastCommunication = now()->subHour()->startOfSecond();
+        $device = Device::factory()->create([
+            'status' => true,
+            'is_active' => true,
+            'last_communication' => $lastCommunication,
+        ]);
+
+        $this->actingAs($admin)->postJson("/api/devices/{$device->id}/status", ['status' => false])
+            ->assertOk();
+
+        $this->assertTrue($device->fresh()->last_communication->equalTo($lastCommunication));
+    }
+
     public function test_blade_toggle_status_writes_one_log_and_one_outbox_row(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);

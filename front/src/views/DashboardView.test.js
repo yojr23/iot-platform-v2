@@ -15,6 +15,9 @@ const getDashboardMetrics = vi.fn(() => Promise.resolve({
 const getGraphBootstrap = vi.fn(() => Promise.resolve({
   data: { version: 1, default_sensor_id: null, devices: [] }
 }));
+const getDevices = vi.fn(() => Promise.resolve({
+  data: { data: [{ id: 9, name: 'Authenticated device', status: true, is_active: true }] }
+}));
 const getActiveAlerts = vi.fn(() => Promise.resolve({ data: { alerts: [], count: 0 } }));
 
 vi.mock('@/api/dashboard', () => ({
@@ -25,6 +28,10 @@ vi.mock('@/api/dashboard', () => ({
 
 vi.mock('@/api/graph', () => ({
   getGraphBootstrap: (...args) => getGraphBootstrap(...args)
+}));
+
+vi.mock('@/api/devices', () => ({
+  getDevices: (...args) => getDevices(...args)
 }));
 
 vi.mock('@/api/alerts', () => ({
@@ -50,11 +57,17 @@ vi.mock('@/components/dashboard/RecentReadingsTable.vue', () => ({
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const mountedApps = [];
 
-async function mountDashboardView() {
+async function mountDashboardView({ authenticated = false } = {}) {
   const { default: DashboardView } = await import('./DashboardView.vue');
   const el = document.createElement('div');
   const app = createApp(DashboardView);
   app.use(createPinia());
+  if (authenticated) {
+    const { useAuthStore } = await import('@/stores/auth');
+    const authStore = useAuthStore();
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test User' };
+  }
   app.mount(el);
   mountedApps.push(app);
   await nextTick();
@@ -104,6 +117,16 @@ describe('DashboardView guest alert containment', () => {
     // Protected widgets are authenticated-only and must be absent from the guest surface.
     expect(el.querySelector('[data-testid="device-status-list"]')).toBeFalsy();
     expect(el.querySelector('[data-testid="recent-readings-table"]')).toBeFalsy();
+
+    unmount();
+  });
+
+  it('loads dashboard device metadata from the protected devices owner, not metrics payload', async () => {
+    const { el, unmount } = await mountDashboardView({ authenticated: true });
+
+    expect(getDashboardMetrics).toHaveBeenCalledOnce();
+    expect(getDevices).toHaveBeenCalledWith({ per_page: 5 });
+    expect(el.querySelector('[data-testid="device-status-list"]')).toBeTruthy();
 
     unmount();
   });

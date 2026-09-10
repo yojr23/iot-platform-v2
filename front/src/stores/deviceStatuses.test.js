@@ -56,6 +56,20 @@ describe('deviceStatuses sequence guard', () => {
     expect(store.statusFor(1)).toMatchObject({ status: false, is_active: false, source: 'realtime' });
   });
 
+  it('keeps a sequenced realtime state when an older metadata snapshot arrives afterwards', () => {
+    const store = useDeviceStatusesStore();
+
+    store.applyStatusEvent({ device_id: 1, event_sequence: 12, status: false, is_active: false });
+    store.applySnapshot([{ id: 1, status: true, is_active: true }]);
+
+    expect(store.statusFor(1)).toMatchObject({
+      status: false,
+      is_active: false,
+      event_sequence: 12,
+      source: 'realtime'
+    });
+  });
+
   it('clear() resets the projection for logout', () => {
     const store = useDeviceStatusesStore();
 

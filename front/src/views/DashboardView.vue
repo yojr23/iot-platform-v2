@@ -47,6 +47,7 @@
 import { computed, onMounted, ref } from 'vue';
 
 import { getDashboardMetrics } from '@/api/dashboard';
+import { getDevices } from '@/api/devices';
 import { getGraphBootstrap } from '@/api/graph';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
@@ -57,6 +58,7 @@ import MetricsCards from '@/components/dashboard/MetricsCards.vue';
 import RecentReadingsTable from '@/components/dashboard/RecentReadingsTable.vue';
 import SensorMonitorBoard from '@/components/dashboard/SensorMonitorBoard.vue';
 import { useAuthStore } from '@/stores/auth';
+import { paginatedItems } from '@/utils/formatters';
 
 const loading = ref(false);
 const error = ref('');
@@ -73,12 +75,17 @@ async function load() {
 
   try {
     const dashboardRequest = authStore.isAuthenticated ? getDashboardMetrics() : Promise.resolve({ data: {} });
-    const [dashboardResponse, bootstrapResponse] = await Promise.all([dashboardRequest, getGraphBootstrap()]);
+    const devicesRequest = authStore.isAuthenticated ? getDevices({ per_page: 5 }) : Promise.resolve({ data: [] });
+    const [dashboardResponse, devicesResponse, bootstrapResponse] = await Promise.all([
+      dashboardRequest,
+      devicesRequest,
+      getGraphBootstrap()
+    ]);
     const dashboardPayload = unwrapData(dashboardResponse) || {};
     const bootstrapPayload = unwrapData(bootstrapResponse) || {};
 
     summary.value = dashboardPayload;
-    devices.value = Array.isArray(dashboardPayload.devices) ? dashboardPayload.devices : [];
+    devices.value = authStore.isAuthenticated ? paginatedItems(devicesResponse) : [];
     graphDevices.value = Array.isArray(bootstrapPayload.devices) ? bootstrapPayload.devices : [];
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las metricas del dashboard.');
