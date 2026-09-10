@@ -87,7 +87,7 @@ describe('SensorMonitorBoard polling removal', () => {
 
     expect(vi.getTimerCount()).toBe(0);
     // monitor.sensor_id is stored as a normalized string ('10'), not the numeric device catalog id.
-    expect(fetchWindow).toHaveBeenCalledWith('10', expect.objectContaining({ scope: 'public' }));
+    expect(fetchWindow).toHaveBeenCalledWith('10', expect.objectContaining({ authorizationScope: 'public' }));
     expect(subscribeSensor).toHaveBeenCalled();
 
     unmount();
@@ -114,7 +114,7 @@ describe('SensorMonitorBoard polling removal', () => {
     toggle.dispatchEvent(new Event('change'));
     await flush();
 
-    expect(fetchWindow).toHaveBeenCalledWith('10', expect.objectContaining({ scope: 'public' }));
+    expect(fetchWindow).toHaveBeenCalledWith('10', expect.objectContaining({ authorizationScope: 'public' }));
     unmount();
   });
 
@@ -125,7 +125,7 @@ describe('SensorMonitorBoard polling removal', () => {
     el.querySelector('[data-testid="monitor-card-device-change"]').click();
     await flush();
 
-    expect(fetchWindow).toHaveBeenCalledWith('20', expect.objectContaining({ scope: 'public' }));
+    expect(fetchWindow).toHaveBeenCalledWith('20', expect.objectContaining({ authorizationScope: 'public' }));
     unmount();
   });
 });

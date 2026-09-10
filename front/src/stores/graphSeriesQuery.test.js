@@ -39,7 +39,7 @@ describe('graphSeriesQuery historical query layer', () => {
     const store = useGraphSeriesQueryStore();
     const from = new Date('2026-01-01T00:00:00Z');
     const to = new Date('2026-01-01T00:05:00Z');
-    const descriptor = { scope: 'public', sensorId: 5, from, to };
+    const descriptor = { authorizationScope: 'public', sensorId: 5, from, to };
     const result = await store.fetchWindow(5, descriptor);
 
     expect(getGraphSeries).toHaveBeenCalledWith(5, { from, to, signal: expect.any(AbortSignal) });
@@ -61,7 +61,7 @@ describe('graphSeriesQuery historical query layer', () => {
     const store = useGraphSeriesQueryStore();
     const from = new Date('2026-01-01T00:00:00Z');
     const to = new Date('2026-01-01T00:10:00Z');
-    const descriptor = { scope: 'public', sensorId: 5, from, to };
+    const descriptor = { authorizationScope: 'public', sensorId: 5, from, to };
     const result = await store.fetchWindow(5, descriptor);
 
     expect(result.points).toHaveLength(151);
@@ -79,8 +79,8 @@ describe('graphSeriesQuery historical query layer', () => {
 
     const store = useGraphSeriesQueryStore();
     const to = new Date('2026-01-01T01:00:00Z');
-    const fiveMin = { scope: 'public', sensorId: 5, from: new Date(to.getTime() - 5 * 60 * 1000), to };
-    const dayLong = { scope: 'public', sensorId: 5, from: new Date(to.getTime() - 24 * 60 * 60 * 1000), to };
+    const fiveMin = { authorizationScope: 'public', sensorId: 5, from: new Date(to.getTime() - 5 * 60 * 1000), to };
+    const dayLong = { authorizationScope: 'public', sensorId: 5, from: new Date(to.getTime() - 24 * 60 * 60 * 1000), to };
 
     await store.fetchWindow(5, { ...fiveMin, consumerKey: 'm1' });
     await store.fetchWindow(5, { ...dayLong, consumerKey: 'm2' });
@@ -97,7 +97,7 @@ describe('graphSeriesQuery historical query layer', () => {
     });
 
     const store = useGraphSeriesQueryStore();
-    const descriptor = { scope: 'public', sensorId: 9, from: new Date('2026-01-01T00:00:00Z'), to: new Date('2026-01-01T00:05:00Z'), aggregation: 'raw' };
+    const descriptor = { authorizationScope: 'public', sensorId: 9, from: new Date('2026-01-01T00:00:00Z'), to: new Date('2026-01-01T00:05:00Z'), aggregation: 'raw' };
     await store.fetchWindow(9, descriptor);
 
     expect(store.resultForQuery(descriptor).points[0].value).toBe(7);
@@ -119,8 +119,8 @@ describe('graphSeriesQuery historical query layer', () => {
 
     const store = useGraphSeriesQueryStore();
     const to = new Date('2026-01-01T01:00:00Z');
-    const firstCall = store.fetchWindow(5, { scope: 'public', from: new Date(to.getTime() - 5 * 60 * 1000), to, consumerKey: 'm1' });
-    const secondCall = store.fetchWindow(5, { scope: 'public', from: new Date(to.getTime() - 60 * 60 * 1000), to, consumerKey: 'm1' });
+    const firstCall = store.fetchWindow(5, { authorizationScope: 'public', from: new Date(to.getTime() - 5 * 60 * 1000), to, consumerKey: 'm1' });
+    const secondCall = store.fetchWindow(5, { authorizationScope: 'public', from: new Date(to.getTime() - 60 * 60 * 1000), to, consumerKey: 'm1' });
 
     await Promise.all([firstCall, secondCall]);
 
@@ -140,8 +140,8 @@ describe('graphSeriesQuery historical query layer', () => {
     const store = useGraphSeriesQueryStore();
     const from = new Date('2026-01-01T00:00:00Z');
     const to = new Date('2026-01-01T00:05:00Z');
-    const firstCall = store.fetchWindow(5, { scope: 'public', from, to, consumerKey: 'm1' });
-    const secondCall = store.fetchWindow(5, { scope: 'public', from, to, consumerKey: 'm2' });
+    const firstCall = store.fetchWindow(5, { authorizationScope: 'public', from, to, consumerKey: 'm1' });
+    const secondCall = store.fetchWindow(5, { authorizationScope: 'public', from, to, consumerKey: 'm2' });
 
     await secondCall;
 
@@ -160,7 +160,7 @@ describe('graphSeriesQuery historical query layer', () => {
     const store = useGraphSeriesQueryStore();
     const from = new Date('2026-01-01T00:00:00Z');
     const to = new Date('2026-01-01T00:05:00Z');
-    const descriptor = { scope: 'public', sensorId: 5, from, to };
+    const descriptor = { authorizationScope: 'public', sensorId: 5, from, to };
     const firstCall = store.fetchWindow(5, { ...descriptor, consumerKey: 'm1' });
     const secondCall = store.fetchWindow(5, { ...descriptor, consumerKey: 'm1' });
 
@@ -175,7 +175,7 @@ describe('graphSeriesQuery historical query layer', () => {
     getGraphSeries.mockRejectedValue(new Error('boom'));
 
     const store = useGraphSeriesQueryStore();
-    const descriptor = { scope: 'public', sensorId: 5, from: new Date('2026-01-01T00:00:00Z'), to: new Date('2026-01-01T00:05:00Z') };
+    const descriptor = { authorizationScope: 'public', sensorId: 5, from: new Date('2026-01-01T00:00:00Z'), to: new Date('2026-01-01T00:05:00Z') };
     const result = await store.fetchWindow(5, descriptor);
 
     expect(result).toBeNull();
@@ -187,7 +187,7 @@ describe('graphSeriesQuery historical query layer', () => {
     getGraphSeries.mockImplementationOnce((sensorId, options) => pendingUntilAborted(options.signal));
 
     const store = useGraphSeriesQueryStore();
-    const descriptor = { scope: 'public', sensorId: 5, from: new Date('2026-01-01T00:00:00Z'), to: new Date('2026-01-01T00:05:00Z') };
+    const descriptor = { authorizationScope: 'public', sensorId: 5, from: new Date('2026-01-01T00:00:00Z'), to: new Date('2026-01-01T00:05:00Z') };
     store.fetchWindow(5, descriptor);
     store.clearAll();
 

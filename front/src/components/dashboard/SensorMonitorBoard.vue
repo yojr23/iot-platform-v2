@@ -10,6 +10,29 @@
       </div>
 
       <div class="monitor-toolbar__actions">
+        <div class="btn-group btn-group-sm me-2" role="group" aria-label="Rango de tiempo">
+          <button
+            v-for="opt in timeRangeOptions"
+            :key="opt.label"
+            type="button"
+            class="btn"
+            :class="timeRange === opt.label ? 'btn-primary' : 'btn-outline-primary'"
+            @click="timeRange = opt.label"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+
+        <span
+          v-if="authStore.isAuthenticated"
+          class="me-2"
+          style="font-size: 0.8rem; line-height: 2.2;"
+        >
+          <span v-if="saveState === 'saved'" class="text-success">Guardado</span>
+          <span v-else-if="saveState === 'saving' || saveState === 'dirty'" class="text-warning">Guardando...</span>
+          <span v-else-if="saveState === 'error'" class="text-danger">Error al guardar</span>
+        </span>
+
         <div class="form-check form-switch mb-0" style="min-height: 44px; display: flex; align-items: center;">
           <input
             id="dashboardRealtimeToggle"
@@ -71,7 +94,8 @@ import { buildSensorChartViewModel } from '@/components/charts/sensorChartViewMo
 import { composeGraphSeries } from '@/components/charts/graphSeriesProjection';
 import MonitorCard from '@/components/dashboard/MonitorCard.vue';
 import { useMonitorLayout } from '@/composables/useMonitorLayout';
-import { RECOVERY_WINDOW_MS, useSensorRealtime } from '@/realtime/useSensorRealtime';
+import { useSensorRealtime } from '@/realtime/useSensorRealtime';
+import { useAuthStore } from '@/stores/auth';
 import { useGraphSeriesQueryStore } from '@/stores/graphSeriesQuery';
 import { useSensorReadingsStore } from '@/stores/sensorReadings';
 
@@ -96,8 +120,21 @@ const props = defineProps({
   }
 });
 
+const authStore = useAuthStore();
 const sensorReadingsStore = useSensorReadingsStore();
 const graphSeriesQueryStore = useGraphSeriesQueryStore();
+
+const timeRange = ref('5m');
+const timeRangeOptions = [
+  { label: '1m', ms: 60000 },
+  { label: '5m', ms: 300000 },
+  { label: '1h', ms: 3600000 },
+  { label: '6h', ms: 21600000 },
+  { label: '24h', ms: 86400000 },
+];
+const selectedTimeRangeMs = computed(() =>
+  timeRangeOptions.find((o) => o.label === timeRange.value)?.ms ?? 300000
+);
 
 const mainMonitor = reactive({
   id: 'main',
@@ -157,7 +194,7 @@ function selectedSensorName(monitor) {
 
 function descriptorFor(monitor) {
   const window = queryByMonitor[monitor.id] || {};
-  return { scope: 'public', sensorId: monitor.sensor_id, from: window.from, to: window.to, aggregation: 'raw' };
+  return { authorizationScope: 'public', sensorId: monitor.sensor_id, from: window.from, to: window.to, aggregation: 'raw' };
 }
 
 // Single composition point: historical window (graphSeriesQuery) + shared live tail
@@ -235,7 +272,7 @@ async function loadHistory(monitor) {
   readErrorByMonitor[monitor.id] = '';
 
   const to = new Date();
-  const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
+  const from = new Date(to.getTime() - selectedTimeRangeMs.value);
   // Record the exact window so descriptorFor(monitor) reads back the same cache entry we write.
   queryByMonitor[monitor.id] = { from, to };
 
@@ -243,7 +280,7 @@ async function loadHistory(monitor) {
   // (PLAN.md 6.0/6.2), never a restricted/private sensor. The historical result stays in the query
   // store keyed by descriptor — it is NOT hydrated into the live tail (Gate 6: history and live
   // stay separate owners, composed only at render via composeGraphSeries).
-  await graphSeriesQueryStore.fetchWindow(sensorId, { scope: 'public', from, to, consumerKey: monitor.id });
+  await graphSeriesQueryStore.fetchWindow(sensorId, { authorizationScope: 'public', sensorId, from, to, aggregation: 'raw', consumerKey: monitor.id });
 
   const outcome = graphSeriesQueryStore.resultForQuery(descriptorFor(monitor));
 
@@ -326,7 +363,7 @@ function sanitizeMonitor(monitor, fallback = firstSelectableSensor()) {
   return fallback;
 }
 
-const { restoring, restoreLayout: restoreSavedLayout, schedulePersist, cleanup: cleanupLayout } = useMonitorLayout(
+const { restoring, restoreLayout: restoreSavedLayout, schedulePersist, cleanup: cleanupLayout, saveState } = useMonitorLayout(
   mainMonitor,
   monitors,
   firstSelectableSensor,
@@ -351,6 +388,9 @@ watch(realtimeEnabled, async (enabled) => {
   } else {
     teardownAllRealtime();
   }
+});
+watch(timeRange, async () => {
+  await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
 });
 watch(() => props.devices, restoreLayout);
 

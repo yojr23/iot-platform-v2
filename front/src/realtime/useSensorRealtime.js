@@ -89,7 +89,7 @@ export function useSensorRealtime(sensorIdSource, onReading) {
     const to = new Date();
     const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
     const result = await useGraphSeriesQueryStore().fetchWindow(currentSensorId, {
-      scope: 'public',
+      authorizationScope: 'public',
       from,
       to,
       consumerKey: `snapshot:${currentSensorId}`

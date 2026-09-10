@@ -1,18 +1,7 @@
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref } from 'vue';
 
 import { getDashboardPreferences, updateDashboardPreferences } from '@/api/dashboard';
 import { useAuthStore } from '@/stores/auth';
-
-const LOCAL_STORAGE_KEY = 'iot-platform-v2.dashboard_layout';
-
-function readLocalLayout() {
-  try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
 
 function currentLayout(mainMonitor, monitors) {
   return {
@@ -30,8 +19,12 @@ function currentLayout(mainMonitor, monitors) {
 
 /**
  * Encapsulates dashboard layout persistence (server for authenticated users,
- * localStorage for guests) and restore logic. Returns reactive state +
+ * memory-only for guests) and restore logic. Returns reactive state +
  * restore/persist helpers consumed by SensorMonitorBoard.
+ *
+ * Guest layout is ephemeral — lost on page refresh (intentional per PLAN.md).
+ * Authenticated users persist to the server via getDashboardPreferences/
+ * updateDashboardPreferences.
  *
  * ponytail: extracted from SensorMonitorBoard.vue to keep that component
  * under 300 lines. This composable owns no chart, no realtime, no device data —
@@ -40,43 +33,41 @@ function currentLayout(mainMonitor, monitors) {
 export function useMonitorLayout(mainMonitor, monitors, firstSelectableSensor, sanitizeMonitor) {
   const authStore = useAuthStore();
   const restoring = ref(false);
+  const saveState = ref('clean');
   let persistTimer = null;
-
-  function normalizeId(value) {
-    return value === null || value === undefined ? '' : String(value);
-  }
+  let savedResetTimer = null;
 
   async function loadSavedLayout() {
-    if (authStore.isAuthenticated) {
-      try {
-        const response = await getDashboardPreferences();
-        return response.data?.layout || null;
-      } catch {
-        return readLocalLayout();
-      }
+    if (!authStore.isAuthenticated) return null;
+
+    try {
+      const response = await getDashboardPreferences();
+      return response.data?.layout || null;
+    } catch {
+      return null;
     }
-    return readLocalLayout();
   }
 
   async function persistPreferences() {
+    if (!authStore.isAuthenticated) return;
+
     const layout = currentLayout(mainMonitor, monitors);
 
-    if (authStore.isAuthenticated) {
-      try {
-        await updateDashboardPreferences({ layout });
-        return;
-      } catch {
-        window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(layout));
-        return;
-      }
+    try {
+      saveState.value = 'saving';
+      await updateDashboardPreferences({ layout });
+      saveState.value = 'saved';
+      window.clearTimeout(savedResetTimer);
+      savedResetTimer = window.setTimeout(() => { saveState.value = 'clean'; }, 2000);
+    } catch {
+      saveState.value = 'error';
     }
-
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(layout));
   }
 
   function schedulePersist() {
     if (restoring.value) return;
 
+    saveState.value = 'dirty';
     window.clearTimeout(persistTimer);
     persistTimer = window.setTimeout(persistPreferences, 350);
   }
@@ -107,7 +98,8 @@ export function useMonitorLayout(mainMonitor, monitors, firstSelectableSensor, s
 
   function cleanup() {
     window.clearTimeout(persistTimer);
+    window.clearTimeout(savedResetTimer);
   }
 
-  return { restoring, restoreLayout, schedulePersist, cleanup };
+  return { restoring, restoreLayout, schedulePersist, cleanup, saveState };
 }

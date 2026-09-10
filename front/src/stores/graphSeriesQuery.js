@@ -24,10 +24,10 @@ const activeControllersByConsumer = new Map();
  * (fetchWindow) and the read path (resultForQuery) so a cached result is always retrievable by the
  * exact descriptor that produced it.
  */
-export function buildGraphQueryKey({ scope = 'public', sensorId, from, to, aggregation = 'raw' } = {}) {
+export function buildGraphQueryKey({ authorizationScope = 'public', sensorId, from, to, aggregation = 'raw' } = {}) {
   const fromKey = from ? new Date(from).getTime() : 'none';
   const toKey = to ? new Date(to).getTime() : 'none';
-  return `${scope}:${sensorId}:${fromKey}:${toKey}:${aggregation}`;
+  return `${authorizationScope}:${sensorId}:${fromKey}:${toKey}:${aggregation}`;
 }
 
 function computeStats(values) {
@@ -59,19 +59,21 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
   actions: {
     /**
      * @param {number|string} sensorId
-     * @param {{scope?: 'public', from?: Date|string, to?: Date|string, aggregation?: string,
-     *          consumerKey?: string}} options — `consumerKey` identifies the caller (e.g. a monitor
-     *          id) so a superseding request from the SAME consumer aborts the previous one. Absent,
-     *          it defaults to the full query key (per-query cancellation, no cross-consumer effect).
+     * @param {{authorizationScope?: 'public'|'private', from?: Date|string, to?: Date|string, aggregation?: string,
+     *          consumerKey?: string}} options — `authorizationScope` is 'public' for guest access
+     *          or 'private' for authenticated sensor access. `consumerKey` identifies the caller
+     *          (e.g. a monitor id) so a superseding request from the SAME consumer aborts the
+     *          previous one. Absent, it defaults to the full query key (per-query cancellation,
+     *          no cross-consumer effect).
      * @returns {Promise<{points: Array, stats: object, truncated: boolean}|null>} null on
      *   cancellation or failure — check `resultForQuery(descriptor).error` to distinguish.
      */
-    async fetchWindow(sensorId, { scope = 'public', from, to, aggregation = 'raw', consumerKey } = {}) {
+    async fetchWindow(sensorId, { authorizationScope = 'public', from, to, aggregation = 'raw', consumerKey } = {}) {
       if (!sensorId) {
         return null;
       }
 
-      const key = buildGraphQueryKey({ scope, sensorId, from, to, aggregation });
+      const key = buildGraphQueryKey({ authorizationScope, sensorId, from, to, aggregation });
       const cancelKey = consumerKey ?? key;
       activeControllersByConsumer.get(cancelKey)?.abort();
       const controller = new AbortController();
@@ -98,7 +100,7 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
             stats: result.stats,
             truncated: result.truncated,
             window: { from, to },
-            scope,
+            scope: authorizationScope,
             sensorId,
             aggregation,
             loading: false,

@@ -23,17 +23,22 @@ use Illuminate\Support\Facades\Log;
  *
  * Visibility is enforced by the caller (`PublicGraphController` via `PublicGraphVisibility`)
  * before a `Sensor` ever reaches this class — this service performs no policy checks itself.
+ *
+ * EXPLAIN SELECT id, value, reading_time
+ * FROM sensor_readings
+ * WHERE sensor_id = ? AND reading_time >= ? AND reading_time < ?
+ * ORDER BY reading_time, id
+ * LIMIT 5001;
+ *
+ * Expected: key=sensor_readings_sensor_id_reading_time_index (or similar composite)
+ * Type: range
+ * Extra: Using index condition (no filesort if reading_time is leading)
  */
 final class PublicGraphSeriesService
 {
-    /**
-     * ponytail: illustrative bounded-query ceiling, not a measured one. PLAN.md's Contract Freeze
-     * defers the real sample ceiling to a Stage 6 MySQL EXPLAIN benchmark against the composite
-     * index; this value only has to be generous enough that a legitimate high-frequency window
-     * (e.g. 151 two-second samples across 5 minutes) is never silently truncated. Replace with the
-     * measured ceiling once that EXPLAIN evidence exists.
-     */
-    private const SAMPLE_LIMIT = 5000;
+    private const DEFAULT_SAMPLE_LIMIT = 5000;
+
+    private const MAX_WINDOW_HOURS = 24;
 
     /**
      * @return array{
@@ -54,22 +59,63 @@ final class PublicGraphSeriesService
 
         $startTime = microtime(true);
         $appTimezone = config('app.timezone');
+        $sampleLimit = $this->getSampleLimit();
 
-        $fromLocal = $fromUtc->setTimezone($appTimezone)->format('Y-m-d H:i:s');
-        $toLocal = $toUtc->setTimezone($appTimezone)->format('Y-m-d H:i:s');
+        $fromLocal = $fromUtc->setTimezone($appTimezone);
+        $toLocal = $toUtc->setTimezone($appTimezone);
+
+        $windowHours = $fromLocal->diffInHours($toLocal);
+        Log::info('PublicGraphSeriesService:series query window', [
+            'sensor_id' => $sensor->id,
+            'window_hours' => $windowHours,
+        ]);
+
+        if ($windowHours > self::MAX_WINDOW_HOURS) {
+            Log::warning('PublicGraphSeriesService:series window clamped', [
+                'sensor_id' => $sensor->id,
+                'original_window_hours' => $windowHours,
+                'clamped_to_hours' => self::MAX_WINDOW_HOURS,
+            ]);
+            $toLocal = $fromLocal->addHours(self::MAX_WINDOW_HOURS);
+        }
+
+        $readingsCountEstimate = $this->estimateReadingCount($sensor, $fromLocal, $toLocal);
+        if ($readingsCountEstimate > $sampleLimit) {
+            Log::warning('PublicGraphSeriesService:series early truncation — window exceeds sample limit', [
+                'sensor_id' => $sensor->id,
+                'estimated_count' => $readingsCountEstimate,
+                'sample_limit' => $sampleLimit,
+                'suggestion' => 'Use aggregation to reduce point count',
+            ]);
+
+            return [
+                'window' => [
+                    'from' => $this->toWireFormat($fromUtc),
+                    'to' => $this->toWireFormat($toUtc),
+                ],
+                'points' => [],
+                'stats' => ['min' => null, 'max' => null, 'mean' => null, 'count' => 0, 'partial' => true],
+                'truncated' => true,
+                'returned_count' => 0,
+                'message' => "Window estimated at {$readingsCountEstimate} points, exceeding the {$sampleLimit} limit. Use aggregation to reduce point count.",
+            ];
+        }
+
+        $fromLocalStr = $fromLocal->format('Y-m-d H:i:s');
+        $toLocalStr = $toLocal->format('Y-m-d H:i:s');
 
         /** @var Collection<int, SensorReading> $fetched */
         $fetched = $sensor->readings()
-            ->where('reading_time', '>=', $fromLocal)
-            ->where('reading_time', '<', $toLocal)
+            ->where('reading_time', '>=', $fromLocalStr)
+            ->where('reading_time', '<', $toLocalStr)
             ->where('reading_time', '<=', now())
             ->orderBy('reading_time')
             ->orderBy('id')
-            ->limit(self::SAMPLE_LIMIT + 1)
+            ->limit($sampleLimit + 1)
             ->get(['id', 'value', 'reading_time']);
 
-        $truncated = $fetched->count() > self::SAMPLE_LIMIT;
-        $readings = $truncated ? $fetched->take(self::SAMPLE_LIMIT) : $fetched;
+        $truncated = $fetched->count() > $sampleLimit;
+        $readings = $truncated ? $fetched->take($sampleLimit) : $fetched;
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         Log::info('PublicGraphSeriesService:series completed', [
@@ -97,6 +143,20 @@ final class PublicGraphSeriesService
             'truncated' => $truncated,
             'returned_count' => $readings->count(),
         ];
+    }
+
+    private function getSampleLimit(): int
+    {
+        return (int) config('graph.sample_limit', self::DEFAULT_SAMPLE_LIMIT);
+    }
+
+    private function estimateReadingCount(Sensor $sensor, CarbonImmutable $fromLocal, CarbonImmutable $toLocal): int
+    {
+        return $sensor->readings()
+            ->where('reading_time', '>=', $fromLocal->format('Y-m-d H:i:s'))
+            ->where('reading_time', '<', $toLocal->format('Y-m-d H:i:s'))
+            ->where('reading_time', '<=', now())
+            ->count();
     }
 
     /**
