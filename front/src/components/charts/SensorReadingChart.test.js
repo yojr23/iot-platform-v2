@@ -61,13 +61,13 @@ describe('SensorReadingChart', () => {
 
   it('shows a partial-data notice only when partial is set, never labelling partial stats as full-window', async () => {
     const full = await renderChart(sampleViewModel);
-    expect(full.el.textContent).not.toContain('Partial data for this window');
+    expect(full.el.textContent).not.toContain('Datos parciales');
     full.unmount();
 
     const partial = await renderChart({ ...sampleViewModel, partial: true });
     const notice = partial.el.querySelector('[role="status"]');
     expect(notice).toBeTruthy();
-    expect(notice.textContent).toContain('Partial data for this window');
+    expect(notice.textContent).toContain('Datos parciales');
     partial.unmount();
   });
 

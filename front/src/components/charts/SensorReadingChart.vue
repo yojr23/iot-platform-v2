@@ -25,7 +25,7 @@
         </li>
       </ul>
 
-      <p v-if="partial" class="small text-warning" role="status">Partial data for this window. Statistics describe only the returned sample.</p>
+      <p v-if="partial" class="small text-warning" role="status">Datos parciales. Las estadísticas describen las muestras devueltas.</p>
 
       <dl class="sensor-chart-stats d-flex flex-wrap gap-3 gap-md-4 mt-3 mb-0 small text-muted-strong">
         <div>
@@ -56,6 +56,7 @@
 <script setup>
 import {
   CategoryScale,
+  Filler,
   Chart as ChartJS,
   Legend,
   LinearScale,
@@ -71,7 +72,7 @@ import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import { resolveChartTokens } from '@/utils/chartTheme';
 import { formatDate, formatNumber } from '@/utils/formatters';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+ChartJS.register(Filler, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
 // Presentation-only chart owner. Honest V1 scope: last-observed timestamp,
 // no-data/loading/error states, and min/max/mean/count for the returned
@@ -130,13 +131,18 @@ const chartData = computed(() => ({
       data: props.series,
       borderColor: tokens.line,
       backgroundColor: tokens.fill,
-      tension: 0.3,
+      tension: 0,
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      spanGaps: false,
       fill: true
     }
   ]
 }));
 
 const chartOptions = {
+  animation: false,
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
@@ -145,8 +151,11 @@ const chartOptions = {
     }
   },
   scales: {
+    x: { ticks: { color: tokens.muted, font: { family: 'Inter', size: 11 }, maxTicksLimit: 6, maxRotation: 0, callback(value) { const label = this.getLabelForValue(value); const clock = label.match(/\b(\d{1,2}:\d{2})(?::\d{2})?/); return clock ? clock[1] : label; } }, grid: { display: false } },
     y: {
-      beginAtZero: false
+      beginAtZero: false,
+      ticks: { color: tokens.muted, font: { family: 'Inter', size: 11 }, maxTicksLimit: 6 },
+      grid: { color: '#eef2f7' }, border: { display: false }
     }
   }
 };

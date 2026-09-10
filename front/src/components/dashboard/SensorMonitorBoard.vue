@@ -1,403 +1,647 @@
 <template>
-  <section class="monitor-board">
-    <div class="content-panel monitor-toolbar p-3 p-lg-4 mb-3">
-      <div>
-        <p class="section-kicker mb-1">Graficas configurables</p>
-        <h2 class="h4 mb-1">Monitor de sensores</h2>
-        <p class="text-muted mb-0">
-          Agrega, ordena y consulta lecturas por dispositivo sin iniciar sesion.
-        </p>
-      </div>
-
-      <div class="monitor-toolbar__actions">
-        <div class="btn-group btn-group-sm me-2" role="group" aria-label="Rango de tiempo">
-          <button
-            v-for="opt in timeRangeOptions"
-            :key="opt.label"
-            type="button"
-            class="btn"
-            :class="timeRange === opt.label ? 'btn-primary' : 'btn-outline-primary'"
-            @click="timeRange = opt.label"
-          >
-            {{ opt.label }}
-          </button>
+    <div class="lab-workspace">
+        <div class="lab-toolbar">
+            <div class="lab-title">
+                <h1>Mi tablero</h1>
+                <span>{{
+                    selectedSensor?.deviceName || "Monitoreo de sensores"
+                }}</span>
+            </div>
+            <div class="lab-actions">
+                <span
+                    v-if="auth.isAuthenticated"
+                    class="lab-save-state"
+                    role="status"
+                    >{{ saveLabels[saveState] }}</span
+                ><button
+                    class="lab-button"
+                    :disabled="
+                        auth.isAuthenticated &&
+                        (!dirty || saveState === 'saving')
+                    "
+                    @click="saveClick"
+                >
+                    <I name="save" /><span>Guardar</span></button
+                ><button
+                    class="lab-button primary"
+                    :disabled="!catalog.length"
+                    @click="openAdd"
+                >
+                    <I name="plus" /><span>Agregar gráfica</span>
+                </button>
+            </div>
         </div>
-
-        <span
-          v-if="authStore.isAuthenticated"
-          class="me-2"
-          style="font-size: 0.8rem; line-height: 2.2;"
-        >
-          <span v-if="saveState === 'saved'" class="text-success">Guardado</span>
-          <span v-else-if="saveState === 'saving' || saveState === 'dirty'" class="text-warning">Guardando...</span>
-          <span v-else-if="saveState === 'error'" class="text-danger">Error al guardar</span>
-        </span>
-
-        <div class="form-check form-switch mb-0" style="min-height: 44px; display: flex; align-items: center;">
-          <input
-            id="dashboardRealtimeToggle"
-            v-model="realtimeEnabled"
-            class="form-check-input"
-            type="checkbox"
-            role="switch"
-          />
-          <label class="form-check-label" for="dashboardRealtimeToggle">Tiempo real</label>
+        <p v-if="message" role="alert" class="lab-notice">{{ message }}</p>
+        <div class="lab-workspace-grid">
+            <div class="lab-primary">
+                <RouterLink
+                    v-if="auth.isAuthenticated && critical"
+                    :to="`/alerts/${critical.id}`"
+                    class="lab-critical"
+                    ><I name="alert" /><strong>{{
+                        critical.alert_rule?.message || "Alerta crítica"
+                    }}</strong
+                    ><span>{{ critical.device?.name }}</span
+                    ><span class="lab-critical-time">{{
+                        time(critical.created_at)
+                    }}</span
+                    ><I name="arrow"
+                /></RouterLink>
+                <div v-else-if="!auth.isAuthenticated" class="lab-public-note">
+                    <span class="lab-dot" /> Explora las gráficas públicas, sin
+                    registro.<span class="lab-note-right"
+                        >Tu tablero es temporal</span
+                    >
+                </div>
+                <article v-if="selected" class="lab-card lab-main-chart">
+                    <div class="lab-chart-selectors">
+                        <label
+                            ><span class="visually-hidden">Dispositivo</span
+                            ><select
+                                :value="selected.device_id"
+                                @change="changeDevice($event.target.value)"
+                            >
+                                <option
+                                    v-for="d in devices"
+                                    :value="d.id"
+                                    :key="d.id"
+                                >
+                                    {{ d.name }}
+                                </option>
+                            </select></label
+                        ><label
+                            ><span class="visually-hidden">Sensor</span
+                            ><select
+                                :value="selected.sensor_id"
+                                @change="changeSensor($event.target.value)"
+                            >
+                                <option
+                                    v-for="s in catalog.filter(
+                                        (s) =>
+                                            s.device_id === selected.device_id,
+                                    )"
+                                    :value="s.id"
+                                    :key="s.id"
+                                >
+                                    {{ s.name }}
+                                </option>
+                            </select></label
+                        ><span class="lab-chart-caption">{{
+                            selectedSensor?.unit
+                        }}</span>
+                    </div>
+                    <div class="lab-reading-row">
+                        <div class="lab-reading">
+                            <span>{{ number(latest?.value) }}</span
+                            ><span class="lab-unit">{{
+                                selectedSensor?.unit
+                            }}</span>
+                        </div>
+                        <div class="lab-connection">
+                            <span
+                                :class="[
+                                    'lab-connection-label',
+                                    { connected: connection === 'connected' },
+                                ]"
+                                ><span class="lab-dot" />{{
+                                    connection === "connected"
+                                        ? "Transporte conectado"
+                                        : "Sin conexión en vivo"
+                                }}</span
+                            ><small
+                                >Último dato ·
+                                {{ time(latest?.reading_time) }}</small
+                            >
+                        </div>
+                    </div>
+                    <div class="lab-chart-tools">
+                        <span
+                            >{{ selectedSensor?.name }}
+                            <span class="lab-muted"
+                                >({{ selectedSensor?.unit }})</span
+                            ></span
+                        >
+                        <div
+                            class="lab-ranges"
+                            role="group"
+                            aria-label="Rango de tiempo"
+                        >
+                            <button
+                                v-for="(_, r) in ranges"
+                                :key="r"
+                                :aria-pressed="selected.range === r"
+                                :class="{ active: selected.range === r }"
+                                @click="changeRange(r)"
+                            >
+                                {{ r }}
+                            </button>
+                        </div>
+                    </div>
+                    <SensorReadingChart
+                        v-bind="viewModel"
+                        :loading="history[selected.id]?.loading"
+                        :error="activeError"
+                    />
+                    <button
+                        v-if="activeError"
+                        class="lab-button"
+                        @click="load(selected)"
+                    >
+                        Reintentar
+                    </button>
+                    <details class="lab-readings-table">
+                        <summary>
+                            Consultar últimas lecturas <I name="down" />
+                        </summary>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Hora (UTC)</th>
+                                    <th>Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="p in activeData.points
+                                        .slice(-8)
+                                        .reverse()"
+                                    :key="p.id"
+                                >
+                                    <td>{{ time(p.reading_time) }}</td>
+                                    <td>
+                                        {{ number(p.value) }}
+                                        {{ selectedSensor?.unit }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </details>
+                </article>
+                <div v-else class="lab-card lab-empty">
+                    <I name="chart" />
+                    <h2>Tu próximo dato empieza aquí</h2>
+                    <p>
+                        {{
+                            catalog.length
+                                ? "Agrega una gráfica para comenzar a monitorear."
+                                : "No hay sensores públicos disponibles."
+                        }}
+                    </p>
+                    <button
+                        v-if="catalog.length"
+                        class="lab-button primary"
+                        @click="openAdd"
+                    >
+                        Agregar gráfica
+                    </button>
+                </div>
+                <div class="lab-spark-grid">
+                    <button
+                        v-for="w in secondary"
+                        :key="w.id"
+                        class="lab-card lab-spark"
+                        @click="select(w.id)"
+                    >
+                        <div class="lab-spark-title">
+                            <span class="lab-sensor-icon"
+                                ><I :name="icon(sensor(w)?.name)"
+                            /></span>
+                            <div>
+                                <strong>{{ sensor(w)?.name }}</strong
+                                ><small>{{ sensor(w)?.deviceName }}</small>
+                            </div>
+                            <I name="right" />
+                        </div>
+                        <div class="lab-spark-value">
+                            {{ number(points(w).points.at(-1)?.value) }}
+                            <small>{{ sensor(w)?.unit }}</small>
+                        </div>
+                        <svg
+                            viewBox="0 0 280 45"
+                            preserveAspectRatio="none"
+                            aria-hidden="true"
+                        >
+                            <path
+                                :d="spark(w)"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.8"
+                            />
+                        </svg>
+                    </button>
+                </div>
+                <section
+                    v-if="auth.isAuthenticated"
+                    class="lab-card lab-events"
+                >
+                    <div class="lab-card-heading">
+                        <h2>Alertas recientes</h2>
+                        <RouterLink to="/alerts"
+                            >Ver historial <I name="arrow"
+                        /></RouterLink>
+                    </div>
+                    <p v-if="!alerts.activeAlerts.length" class="lab-muted">
+                        No hay alertas activas.
+                    </p>
+                    <div v-else class="lab-table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha y hora</th>
+                                    <th>Evento</th>
+                                    <th>Dispositivo</th>
+                                    <th>Severidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="a in alerts.activeAlerts.slice(0, 4)"
+                                    :key="a.id"
+                                >
+                                    <td>{{ time(a.created_at) }}</td>
+                                    <td>
+                                        <RouterLink :to="`/alerts/${a.id}`">{{
+                                            a.alert_rule?.message || a.message
+                                        }}</RouterLink>
+                                    </td>
+                                    <td>{{ a.device?.name }}</td>
+                                    <td>
+                                        <span
+                                            :class="[
+                                                'lab-severity',
+                                                a.alert_rule?.severity,
+                                            ]"
+                                            >{{
+                                                a.alert_rule?.severity ===
+                                                "danger"
+                                                    ? "Crítica"
+                                                    : "Advertencia"
+                                            }}</span
+                                        >
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+            <aside class="lab-inspector">
+                <section id="my-charts" class="lab-card lab-chart-list">
+                    <div class="lab-card-heading">
+                        <h2>
+                            Mis gráficas <span>({{ widgets.length }})</span>
+                        </h2>
+                        <button
+                            class="lab-text-button"
+                            @click="editing = !editing"
+                        >
+                            {{ editing ? "Listo" : "Editar" }}
+                        </button>
+                    </div>
+                    <div
+                        v-for="(w, i) in widgets"
+                        :key="w.id"
+                        class="lab-list-item"
+                        :class="{ selected: w.id === selectedId }"
+                        :draggable="editing"
+                        @dragstart="dragged = w.id"
+                        @dragover.prevent
+                        @drop.prevent="drop(w.id)"
+                    >
+                        <button
+                            class="lab-list-select"
+                            :aria-pressed="w.id === selectedId"
+                            @click="select(w.id)"
+                        >
+                            <I
+                                :name="editing ? 'grip' : icon(sensor(w)?.name)"
+                            /><span
+                                ><strong>{{ sensor(w)?.name }}</strong
+                                ><small>{{
+                                    sensor(w)?.deviceName
+                                }}</small></span
+                            ><b
+                                >{{ number(points(w).points.at(-1)?.value)
+                                }}<small>{{ sensor(w)?.unit }}</small></b
+                            >
+                        </button>
+                        <div v-if="editing" class="lab-edit-actions">
+                            <button
+                                :disabled="i === 0"
+                                :aria-label="`Subir ${sensor(w)?.name}`"
+                                @click="move(w.id, -1)"
+                            >
+                                <I name="up" /></button
+                            ><button
+                                :disabled="i === widgets.length - 1"
+                                :aria-label="`Bajar ${sensor(w)?.name}`"
+                                @click="move(w.id, 1)"
+                            >
+                                <I name="down" /></button
+                            ><button
+                                :aria-label="`Quitar ${sensor(w)?.name}`"
+                                @click="remove(w.id)"
+                            >
+                                <I name="trash" />
+                            </button>
+                        </div>
+                    </div>
+                    <button
+                        class="lab-add-row"
+                        :disabled="!catalog.length"
+                        @click="openAdd"
+                    >
+                        <I name="plus" /> Agregar gráfica
+                    </button>
+                    <p v-if="removed" class="lab-undo" role="status">
+                        Gráfica quitada. <button @click="undo">Deshacer</button>
+                    </p>
+                </section>
+                <details
+                    v-if="selected"
+                    class="lab-card lab-details"
+                    :open="wide"
+                >
+                    <summary>Detalle del sensor <I name="down" /></summary>
+                    <dl>
+                        <div>
+                            <dt>Dispositivo</dt>
+                            <dd>{{ selectedSensor?.deviceName }}</dd>
+                        </div>
+                        <div>
+                            <dt>Sensor</dt>
+                            <dd>{{ selectedSensor?.name }}</dd>
+                        </div>
+                        <div>
+                            <dt>Unidad</dt>
+                            <dd>{{ selectedSensor?.unit }}</dd>
+                        </div>
+                        <div>
+                            <dt>Rango mostrado</dt>
+                            <dd>{{ selected.range }}</dd>
+                        </div>
+                        <div>
+                            <dt>Muestras devueltas</dt>
+                            <dd>{{ viewModel.stats?.count || 0 }}</dd>
+                        </div>
+                        <div>
+                            <dt>Último dato</dt>
+                            <dd>{{ time(latest?.reading_time) }}</dd>
+                        </div>
+                        <div>
+                            <dt>Zona horaria</dt>
+                            <dd>UTC</dd>
+                        </div>
+                    </dl>
+                    <p>Estadísticas del período seleccionado.</p>
+                </details>
+                <section
+                    v-if="auth.isAuthenticated"
+                    class="lab-card lab-active-alerts"
+                >
+                    <div class="lab-card-heading">
+                        <h2>
+                            Alertas activas
+                            <span>({{ alerts.unresolvedCount }})</span>
+                        </h2>
+                        <RouterLink to="/alerts"
+                            ><I name="arrow" /><span class="visually-hidden"
+                                >Ver alertas</span
+                            ></RouterLink
+                        >
+                    </div>
+                    <p v-if="alerts.error" role="alert">{{ alerts.error }}</p>
+                    <p
+                        v-else-if="!alerts.activeAlerts.length"
+                        class="lab-muted"
+                    >
+                        Sin alertas activas.
+                    </p>
+                    <RouterLink
+                        v-for="a in alerts.activeAlerts.slice(0, 3)"
+                        :key="a.id"
+                        :to="`/alerts/${a.id}`"
+                        class="lab-alert-item"
+                        ><span
+                            :class="['lab-alert-icon', a.alert_rule?.severity]"
+                            ><I name="alert"
+                        /></span>
+                        <div>
+                            <strong>{{ a.device?.name }}</strong>
+                            <p>{{ a.alert_rule?.message || a.message }}</p>
+                            <small>{{ time(a.created_at) }} UTC</small>
+                        </div>
+                        <I name="right"
+                    /></RouterLink>
+                </section>
+                <section v-else class="lab-card lab-access">
+                    <span class="lab-access-icon"><I name="lock" /></span>
+                    <h2>Tu espacio de trabajo</h2>
+                    <p>
+                        Inicia sesión para guardar tu tablero y consultar las
+                        alertas autorizadas.
+                    </p>
+                    <RouterLink to="/login" class="lab-button"
+                        >Iniciar sesión <I name="arrow" /></RouterLink
+                    ><small>Las gráficas públicas siguen disponibles.</small>
+                </section>
+            </aside>
         </div>
-
-        <button class="btn btn-primary" type="button" :disabled="devices.length === 0" @click="addMonitor">
-          Agregar grafica
-        </button>
-      </div>
+        <dialog ref="dialog" class="lab-dialog" @click="onBackdrop">
+            <form @submit.prevent="confirmAdd">
+                <div class="lab-card-heading">
+                    <h2>Agregar gráfica</h2>
+                    <button
+                        type="button"
+                        class="lab-icon-button"
+                        aria-label="Cerrar"
+                        @click="dialog.close()"
+                    >
+                        <I name="close" />
+                    </button>
+                </div>
+                <p>Elige una señal para tu tablero.</p>
+                <label
+                    >Dispositivo<select v-model="newDevice">
+                        <option
+                            v-for="d in devices"
+                            :key="d.id"
+                            :value="String(d.id)"
+                        >
+                            {{ d.name }}
+                        </option>
+                    </select></label
+                ><label
+                    >Sensor<select v-model="newSensor" required>
+                        <option
+                            v-for="s in catalog.filter(
+                                (s) => s.device_id === newDevice,
+                            )"
+                            :key="s.id"
+                            :value="s.id"
+                        >
+                            {{ s.name }} · {{ s.unit }}
+                        </option>
+                    </select></label
+                >
+                <p class="lab-muted">
+                    Si ya existe, se seleccionará su gráfica.
+                </p>
+                <div class="lab-dialog-actions">
+                    <button
+                        type="button"
+                        class="lab-button"
+                        @click="dialog.close()"
+                    >
+                        Cancelar</button
+                    ><button class="lab-button primary">Agregar gráfica</button>
+                </div>
+            </form>
+        </dialog>
     </div>
-
-    <BaseAlert
-      v-if="devices.length === 0"
-      variant="info"
-      message="No hay dispositivos disponibles para graficar."
-    />
-
-    <div v-else class="row g-3">
-      <div
-        v-for="(monitor, index) in visibleMonitors"
-        :key="monitor.id"
-        class="col-12"
-        :class="monitor.id === 'main' ? 'col-xxl-8' : 'col-xxl-4 col-lg-6'"
-      >
-        <MonitorCard
-          :monitor="monitor"
-          :index="index"
-          :total-monitors="visibleMonitors.length"
-          :devices="devices"
-          :sensor-options="availableSensors(monitor)"
-          :selected-sensor="selectedSensor(monitor)"
-          :selected-sensor-name="selectedSensorName(monitor)"
-          :point-count="pointCount(monitor)"
-          :latest-point="latestPoint(monitor)"
-          :chart-view-model="chartViewModel(monitor)"
-          :loading="loadingByMonitor[monitor.id]"
-          :error="readErrorByMonitor[monitor.id]"
-          @move="moveMonitor"
-          @remove="removeMonitor"
-          @device-change="handleDeviceChange"
-          @sensor-change="handleSensorChange"
-        />
-      </div>
-    </div>
-  </section>
 </template>
-
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-
-import BaseAlert from '@/components/base/BaseAlert.vue';
-import { buildSensorChartViewModel } from '@/components/charts/sensorChartViewModel';
-import { composeGraphSeries } from '@/components/charts/graphSeriesProjection';
-import MonitorCard from '@/components/dashboard/MonitorCard.vue';
-import { useMonitorLayout } from '@/composables/useMonitorLayout';
-import { useSensorRealtime } from '@/realtime/useSensorRealtime';
-import { useAuthStore } from '@/stores/auth';
-import { useGraphSeriesQueryStore } from '@/stores/graphSeriesQuery';
-import { useSensorReadingsStore } from '@/stores/sensorReadings';
-
-// PLAN.md Stage 6.2 — cutover from component-local polling to the shared live sensor
-// projection + historical graph query layer. This board is the guest-capable "Lab Blue" graph
-// surface (PLAN.md 6.0/6.2): it always queries the public graph bootstrap/series contract,
-// never an authenticated-only endpoint, regardless of whether the viewer happens to be logged
-// in — guest and authenticated visitors see the same graph workflow.
-//
-// Existing code reused: add/remove/move/select monitor behavior and the dashboard-preferences /
-// localStorage persistence below are unchanged from the pre-cutover version. The readings
-// merge/history/MAX_POINTS behavior itself moved verbatim to stores/sensorReadings.js (kept,
-// not rewritten) per the G0D ownership rule.
-// Deleted in this cutover (PLAN.md Stage 6, "Delete in the same cutover"): `pollTimer`,
-// `startPolling`/`stopPolling`, `refreshVisibleMonitors`, `refreshMonitor`, and the
-// `pollInterval` prop / browser interval configuration. No polling fallback remains.
-
-const props = defineProps({
-  devices: {
-    type: Array,
-    default: () => []
-  }
-});
-
-const authStore = useAuthStore();
-const sensorReadingsStore = useSensorReadingsStore();
-const graphSeriesQueryStore = useGraphSeriesQueryStore();
-
-const timeRange = ref('5m');
-const timeRangeOptions = [
-  { label: '1m', ms: 60000 },
-  { label: '5m', ms: 300000 },
-  { label: '1h', ms: 3600000 },
-  { label: '6h', ms: 21600000 },
-  { label: '24h', ms: 86400000 },
-];
-const selectedTimeRangeMs = computed(() =>
-  timeRangeOptions.find((o) => o.label === timeRange.value)?.ms ?? 300000
+import { computed, onBeforeUnmount, ref, toRef, watch } from "vue";
+import { useRouter, onBeforeRouteLeave } from "vue-router";
+import I from "./lab/LabIcon.vue";
+import SensorReadingChart from "@/components/charts/SensorReadingChart.vue";
+import { useLabWorkspace, ranges } from "@/composables/useLabWorkspace";
+import { useAlertsStore } from "@/stores/alerts";
+const props = defineProps({ devices: { type: Array, default: () => [] } });
+const router = useRouter(),
+    alerts = useAlertsStore();
+const {
+    auth,
+    widgets,
+    selectedId,
+    selected,
+    editing,
+    saveState,
+    message,
+    removed,
+    connection,
+    catalog,
+    sensor,
+    points,
+    viewModel,
+    activeData,
+    activeError,
+    history,
+    dirty,
+    add,
+    select,
+    changeDevice,
+    changeSensor,
+    changeRange,
+    remove,
+    undo,
+    move,
+    save,
+    load,
+} = useLabWorkspace(toRef(props, "devices"));
+const selectedSensor = computed(() => sensor(selected.value)),
+    latest = computed(() =>
+        activeData.value.points.filter((p) => p.value !== null).at(-1),
+    ),
+    secondary = computed(() =>
+        widgets.value.filter((w) => w.id !== selectedId.value).slice(0, 3),
+    );
+const critical = computed(() =>
+    alerts.activeAlerts.find((a) => a.alert_rule?.severity === "danger"),
 );
-
-const mainMonitor = reactive({
-  id: 'main',
-  device_id: '',
-  sensor_id: ''
-});
-const monitors = ref([]);
-const loadingByMonitor = reactive({});
-const readErrorByMonitor = reactive({});
-// monitor.id -> { from, to }: the exact window a monitor last asked for, so the descriptor used to
-// READ the cached historical result matches the one used to WRITE it (buildGraphQueryKey keys on
-// from/to). Mirrors loadingByMonitor/readErrorByMonitor; kept out of the persisted layout on purpose.
-const queryByMonitor = reactive({});
-const realtimeEnabled = ref(true);
-// monitor.id -> { realtime: ReturnType<useSensorRealtime>, sensorId }. Not reactive state —
-// mirrors channelRegistry.js's own module-scope bookkeeping convention; these are subscription
-// handles, not data to render.
-const realtimeHandles = new Map();
-
-const visibleMonitors = computed(() => [mainMonitor, ...monitors.value]);
-
-function normalizeId(value) {
-  return value === null || value === undefined ? '' : String(value);
+const number = (v) =>
+    v == null
+        ? "—"
+        : new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 }).format(
+              v,
+          );
+const time = (v) =>
+    v
+        ? new Date(v).toLocaleTimeString("es-CO", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+              timeZone: "UTC",
+          })
+        : "Sin dato";
+const icon = (name) =>
+    /temper/i.test(name)
+        ? "temp"
+        : /hum/i.test(name)
+          ? "drop"
+          : /pres/i.test(name)
+            ? "pressure"
+            : "chart";
+const saveLabels = {
+    clean: "",
+    dirty: "Cambios sin guardar",
+    saving: "Guardando…",
+    saved: "Guardado",
+    error: "Error al guardar",
+};
+const dialog = ref(null),
+    newDevice = ref(""),
+    newSensor = ref(""),
+    dragged = ref("");
+const wide = ref(window.innerWidth >= 992);
+watch(
+    newDevice,
+    (d) =>
+        (newSensor.value =
+            catalog.value.find((s) => s.device_id === d)?.id || ""),
+);
+function openAdd() {
+    newDevice.value = String(props.devices[0]?.id || "");
+    newSensor.value =
+        catalog.value.find((s) => s.device_id === newDevice.value)?.id || "";
+    dialog.value.showModal();
 }
-
-function firstSelectableSensor() {
-  for (const device of props.devices) {
-    const sensor = (device.sensors || []).find((item) => item.status) || device.sensors?.[0];
-
-    if (sensor) {
-      return {
-        device_id: normalizeId(device.id),
-        sensor_id: normalizeId(sensor.id)
-      };
+function confirmAdd() {
+    add(newSensor.value);
+    dialog.value.close();
+}
+function onBackdrop(e) {
+    if (e.target === dialog.value) {
+        const r = dialog.value.getBoundingClientRect();
+        if (
+            e.clientX < r.left ||
+            e.clientX > r.right ||
+            e.clientY < r.top ||
+            e.clientY > r.bottom
+        )
+            dialog.value.close();
     }
-  }
-
-  return {
-    device_id: '',
-    sensor_id: ''
-  };
 }
-
-function availableSensors(monitor) {
-  const device = props.devices.find((item) => Number(item.id) === Number(monitor.device_id));
-
-  return device?.sensors || [];
+function drop(id) {
+    const a = widgets.value.findIndex((w) => w.id === dragged.value),
+        b = widgets.value.findIndex((w) => w.id === id);
+    if (a >= 0) move(dragged.value, b - a);
+    dragged.value = "";
 }
-
-function selectedSensor(monitor) {
-  return availableSensors(monitor).find((sensor) => Number(sensor.id) === Number(monitor.sensor_id));
+function spark(w) {
+    const a = points(w)
+        .points.filter((p) => p.value !== null)
+        .slice(-60);
+    const min = Math.min(...a.map((p) => p.value)),
+        max = Math.max(...a.map((p) => p.value));
+    return a
+        .map(
+            (p, i) =>
+                `${i ? "L" : "M"}${(i * 280) / Math.max(a.length - 1, 1)},${40 - ((p.value - min) / (max - min || 1)) * 32}`,
+        )
+        .join(" ");
 }
-
-function selectedSensorName(monitor) {
-  return selectedSensor(monitor)?.name || 'Sensor sin seleccionar';
+async function saveClick() {
+    if (auth.isAuthenticated) await save();
+    else
+        await router.push({ name: "login", query: { redirect: "/dashboard" } });
 }
-
-function descriptorFor(monitor) {
-  const window = queryByMonitor[monitor.id] || {};
-  return { authorizationScope: 'public', sensorId: monitor.sensor_id, from: window.from, to: window.to, aggregation: 'raw' };
-}
-
-// Single composition point: historical window (graphSeriesQuery) + shared live tail
-// (sensorReadings), merged by the pure projection helper. Neither store hydrates the other.
-function composedFor(monitor) {
-  const historical = graphSeriesQueryStore.resultForQuery(descriptorFor(monitor));
-  return composeGraphSeries({
-    historicalPoints: historical?.points || [],
-    liveReadings: sensorReadingsStore.readingsFor(monitor.sensor_id),
-    serverStats: historical?.stats || null,
-    partial: Boolean(historical?.truncated || historical?.stats?.partial)
-  });
-}
-
-function pointCount(monitor) {
-  return composedFor(monitor).points.length;
-}
-
-function latestPoint(monitor) {
-  const { points } = composedFor(monitor);
-  return points[points.length - 1] || null;
-}
-
-function chartViewModel(monitor) {
-  const composed = composedFor(monitor);
-  // composed.points are chronological ascending; buildSensorChartViewModel expects newest-first
-  // (it reverses internally), so hand it a reversed copy.
-  const base = buildSensorChartViewModel([...composed.points].reverse(), { unit: selectedSensor(monitor)?.unit || '' });
-  return { ...base, stats: composed.stats, partial: composed.partial };
-}
-
-function teardownRealtime(monitorId) {
-  const handle = realtimeHandles.get(monitorId);
-
-  if (handle) {
-    handle.realtime.unsubscribeSensor();
-    realtimeHandles.delete(monitorId);
-  }
-}
-
-function teardownAllRealtime() {
-  [...realtimeHandles.keys()].forEach(teardownRealtime);
-}
-
-function syncRealtime(monitor) {
-  const sensorId = monitor.sensor_id;
-  const existing = realtimeHandles.get(monitor.id);
-
-  if (existing && existing.sensorId !== sensorId) {
-    teardownRealtime(monitor.id);
-  }
-
-  if (!sensorId || !realtimeEnabled.value) {
-    return;
-  }
-
-  if (!realtimeHandles.has(monitor.id)) {
-    const realtime = useSensorRealtime(sensorId, (reading) => {
-      sensorReadingsStore.mergeReading(sensorId, reading);
-    });
-    realtimeHandles.set(monitor.id, { realtime, sensorId });
-  }
-
-  realtimeHandles.get(monitor.id).realtime.subscribeSensor();
-}
-
-async function loadHistory(monitor) {
-  const sensorId = monitor.sensor_id;
-
-  if (!sensorId) {
-    return;
-  }
-
-  loadingByMonitor[monitor.id] = true;
-  readErrorByMonitor[monitor.id] = '';
-
-  const to = new Date();
-  const from = new Date(to.getTime() - selectedTimeRangeMs.value);
-  // Record the exact window so descriptorFor(monitor) reads back the same cache entry we write.
-  queryByMonitor[monitor.id] = { from, to };
-
-  // Always the public graph-series contract: this board is the guest-capable graph surface
-  // (PLAN.md 6.0/6.2), never a restricted/private sensor. The historical result stays in the query
-  // store keyed by descriptor — it is NOT hydrated into the live tail (Gate 6: history and live
-  // stay separate owners, composed only at render via composeGraphSeries).
-  await graphSeriesQueryStore.fetchWindow(sensorId, { authorizationScope: 'public', sensorId, from, to, aggregation: 'raw', consumerKey: monitor.id });
-
-  const outcome = graphSeriesQueryStore.resultForQuery(descriptorFor(monitor));
-
-  if (outcome?.error) {
-    readErrorByMonitor[monitor.id] = outcome.error;
-  }
-
-  loadingByMonitor[monitor.id] = false;
-}
-
-function handleDeviceChange(monitor, deviceId) {
-  monitor.device_id = normalizeId(deviceId);
-  const firstSensor = availableSensors(monitor)[0];
-  monitor.sensor_id = firstSensor ? normalizeId(firstSensor.id) : '';
-  handleSensorChange(monitor);
-}
-
-async function handleSensorChange(monitor, sensorId) {
-  if (sensorId !== undefined) {
-    monitor.sensor_id = normalizeId(sensorId);
-  }
-  // Subscribe FIRST, then load history: history no longer touches the live store, so a live event
-  // arriving mid-fetch lands in the shared tail and simply merges (dedup by id at compose time).
-  syncRealtime(monitor);
-  await loadHistory(monitor);
-  schedulePersist();
-}
-
-function addMonitor() {
-  const defaults = firstSelectableSensor();
-
-  monitors.value.push({
-    id: `chart-${Date.now()}`,
-    device_id: defaults.device_id,
-    sensor_id: defaults.sensor_id
-  });
-
-  nextTick(async () => {
-    const monitor = monitors.value[monitors.value.length - 1];
-    syncRealtime(monitor);
-    await loadHistory(monitor);
-    schedulePersist();
-  });
-}
-
-function removeMonitor(monitorId) {
-  teardownRealtime(monitorId);
-  monitors.value = monitors.value.filter((monitor) => monitor.id !== monitorId);
-  schedulePersist();
-}
-
-function moveMonitor(monitorId, direction) {
-  const currentIndex = monitors.value.findIndex((monitor) => monitor.id === monitorId);
-  const nextIndex = currentIndex + direction;
-
-  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= monitors.value.length) {
-    return;
-  }
-
-  const nextMonitors = [...monitors.value];
-  const [monitor] = nextMonitors.splice(currentIndex, 1);
-  nextMonitors.splice(nextIndex, 0, monitor);
-  monitors.value = nextMonitors;
-  schedulePersist();
-}
-
-function sanitizeMonitor(monitor, fallback = firstSelectableSensor()) {
-  const deviceId = normalizeId(monitor?.device_id ?? fallback.device_id);
-  const device = props.devices.find((item) => Number(item.id) === Number(deviceId));
-  const sensorId = normalizeId(monitor?.sensor_id ?? fallback.sensor_id);
-  const sensor = device?.sensors?.find((item) => Number(item.id) === Number(sensorId));
-
-  if (device && sensor) {
-    return {
-      device_id: normalizeId(device.id),
-      sensor_id: normalizeId(sensor.id)
-    };
-  }
-
-  return fallback;
-}
-
-const { restoring, restoreLayout: restoreSavedLayout, schedulePersist, cleanup: cleanupLayout, saveState } = useMonitorLayout(
-  mainMonitor,
-  monitors,
-  firstSelectableSensor,
-  sanitizeMonitor
+// Native route confirmation is deliberately limited to discarding a draft; saving is explicit.
+onBeforeRouteLeave(
+    () =>
+        !auth.isAuthenticated ||
+        !dirty.value ||
+        window.confirm("Tienes cambios sin guardar. ¿Salir y descartarlos?"),
 );
-
-async function restoreLayout() {
-  if (props.devices.length === 0) {
-    return;
-  }
-
-  await restoreSavedLayout(props.devices);
-
-  visibleMonitors.value.forEach(syncRealtime);
-  await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
-}
-
-watch(realtimeEnabled, async (enabled) => {
-  if (enabled) {
-    visibleMonitors.value.forEach(syncRealtime);
-    await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
-  } else {
-    teardownAllRealtime();
-  }
-});
-watch(timeRange, async () => {
-  await Promise.all(visibleMonitors.value.map((monitor) => loadHistory(monitor)));
-});
-watch(() => props.devices, restoreLayout);
-
-onMounted(restoreLayout);
-
-onBeforeUnmount(() => {
-  teardownAllRealtime();
-  cleanupLayout();
-});
 </script>

@@ -1,103 +1,52 @@
 <template>
-  <section class="dashboard-surface">
-    <div class="dashboard-hero mb-4">
-      <div>
-        <p class="section-kicker mb-2">Vista publica de monitoreo</p>
-        <h1 class="display-6 fw-semibold mb-2">Dashboard IoT</h1>
-        <p v-if="authStore.isAuthenticated" class="mb-0">
-          Supervisa sensores, graficas configurables, dispositivos y alertas activas en una sola pantalla.
-        </p>
-        <p v-else class="mb-0">
-          Supervisa graficas configurables de sensores publicos en una sola pantalla.
-        </p>
-      </div>
-
-      <div class="dashboard-hero__actions">
-        <span v-if="authStore.isAuthenticated" class="badge rounded-pill text-bg-light">
-          Estado: {{ summary.system_status || 'sin datos' }}
-        </span>
-        <button class="btn btn-light" type="button" :disabled="loading" @click="load">
-          Actualizar
-        </button>
-      </div>
-    </div>
-
-    <BaseAlert v-if="error" variant="danger" :message="error" />
-    <LoadingSpinner v-if="loading" label="Cargando metricas..." />
-
-    <template v-if="!loading">
-      <SensorMonitorBoard class="mt-3" :devices="graphDevices" />
-
-      <template v-if="authStore.isAuthenticated">
-        <MetricsCards :summary="summary" :include-alerts="true" />
-        <div class="row g-3 mt-1">
-          <div class="col-12 col-xl-4">
-            <ActiveAlertsCard />
-          </div>
-
-          <div class="col-12 col-xl-4">
-            <DeviceStatusList :devices="devices.slice(0, 5)" />
-          </div>
-
-          <div class="col-12 col-xl-4">
-            <RecentReadingsTable :readings="latestReadings" />
-          </div>
+    <section class="lab-dashboard">
+        <div v-if="loading" class="lab-loading" role="status">
+            Cargando tu espacio de monitoreo…
         </div>
-      </template>
-    </template>
-  </section>
+        <div v-else-if="error" class="lab-empty" role="alert">
+            <h1>No se pudo cargar el tablero</h1>
+            <p>{{ error }}</p>
+            <button class="lab-button" @click="load">Reintentar</button>
+        </div>
+        <SensorMonitorBoard v-else :devices="graphDevices" />
+    </section>
 </template>
-
 <script setup>
-import { computed, onMounted, ref } from 'vue';
-
-import { getDashboardMetrics } from '@/api/dashboard';
-import { getDevices } from '@/api/devices';
-import { getGraphBootstrap } from '@/api/graph';
-import { getApiErrorMessage, unwrapData } from '@/api/client';
-import BaseAlert from '@/components/base/BaseAlert.vue';
-import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
-import ActiveAlertsCard from '@/components/dashboard/ActiveAlertsCard.vue';
-import DeviceStatusList from '@/components/dashboard/DeviceStatusList.vue';
-import MetricsCards from '@/components/dashboard/MetricsCards.vue';
-import RecentReadingsTable from '@/components/dashboard/RecentReadingsTable.vue';
-import SensorMonitorBoard from '@/components/dashboard/SensorMonitorBoard.vue';
-import { useAuthStore } from '@/stores/auth';
-import { paginatedItems } from '@/utils/formatters';
-
-const loading = ref(false);
-const error = ref('');
-const summary = ref({});
-const devices = ref([]);
-const graphDevices = ref([]);
-const authStore = useAuthStore();
-
-const latestReadings = computed(() => summary.value.latest_readings || summary.value.latestReadings || []);
-
+import { onBeforeUnmount, ref, watch } from "vue";
+import { getGraphBootstrap } from "@/api/graph";
+import { getApiErrorMessage, unwrapData } from "@/api/client";
+import SensorMonitorBoard from "@/components/dashboard/SensorMonitorBoard.vue";
+import { useAuthStore } from "@/stores/auth";
+const auth = useAuthStore(),
+    loading = ref(true),
+    error = ref(""),
+    graphDevices = ref([]);
+let controller,
+    generation = 0;
 async function load() {
-  loading.value = true;
-  error.value = '';
-
-  try {
-    const dashboardRequest = authStore.isAuthenticated ? getDashboardMetrics() : Promise.resolve({ data: {} });
-    const devicesRequest = authStore.isAuthenticated ? getDevices({ per_page: 5 }) : Promise.resolve({ data: [] });
-    const [dashboardResponse, devicesResponse, bootstrapResponse] = await Promise.all([
-      dashboardRequest,
-      devicesRequest,
-      getGraphBootstrap()
-    ]);
-    const dashboardPayload = unwrapData(dashboardResponse) || {};
-    const bootstrapPayload = unwrapData(bootstrapResponse) || {};
-
-    summary.value = dashboardPayload;
-    devices.value = authStore.isAuthenticated ? paginatedItems(devicesResponse) : [];
-    graphDevices.value = Array.isArray(bootstrapPayload.devices) ? bootstrapPayload.devices : [];
-  } catch (requestError) {
-    error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las metricas del dashboard.');
-  } finally {
-    loading.value = false;
-  }
+    const g = ++generation;
+    controller?.abort();
+    controller = new AbortController();
+    loading.value = true;
+    error.value = "";
+    try {
+        const payload = unwrapData(
+            await getGraphBootstrap({ signal: controller.signal }),
+        );
+        if (g === generation) graphDevices.value = payload?.devices || [];
+    } catch (e) {
+        if (g === generation && e.code !== "ERR_CANCELED")
+            error.value = getApiErrorMessage(
+                e,
+                "No se pudieron cargar las gráficas.",
+            );
+    } finally {
+        if (g === generation) loading.value = false;
+    }
 }
-
-onMounted(load);
+watch(() => auth.isAuthenticated, load, { immediate: true });
+onBeforeUnmount(() => {
+    generation++;
+    controller?.abort();
+});
 </script>

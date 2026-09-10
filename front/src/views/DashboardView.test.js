@@ -123,12 +123,13 @@ describe('DashboardView guest alert containment', () => {
     unmount();
   });
 
-  it('loads dashboard device metadata from the protected devices owner, not metrics payload', async () => {
+  it('uses the shared graph catalog without fetching unrelated global metrics in private mode', async () => {
     const { el, unmount } = await mountDashboardView({ authenticated: true });
 
-    expect(getDashboardMetrics).toHaveBeenCalledOnce();
-    expect(getDevices).toHaveBeenCalledWith({ per_page: 5 });
-    expect(el.querySelector('[data-testid="device-status-list"]')).toBeTruthy();
+    expect(getDashboardMetrics).not.toHaveBeenCalled();
+    expect(getDevices).not.toHaveBeenCalled();
+    expect(getGraphBootstrap).toHaveBeenCalledOnce();
+    expect(el.querySelector('[data-testid="sensor-monitor-board"]')).toBeTruthy();
 
     unmount();
   });

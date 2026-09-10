@@ -55,3 +55,6 @@ __pycache__/
 # Env/host backups are never committed
 .env.*-backup
 *.env.host-backup
+
+# Local design preview fixtures
+front/.demo-data/

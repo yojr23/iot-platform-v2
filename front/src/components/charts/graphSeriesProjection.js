@@ -8,7 +8,7 @@ function toPoint(item) {
   // ({ id, value, reading_time }) — the two shapes the two stores produce.
   const id = item.id ?? item.reading_id;
   const reading_time = item.reading_time ?? item.timestamp ?? item.created_at;
-  return { id, value: Number(item.value), reading_time };
+  return { id, value: item.value === null || item.value === undefined ? null : Number(item.value), reading_time };
 }
 
 function idCompare(a, b) {

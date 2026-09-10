@@ -1,5 +1,6 @@
 <template>
-  <div class="app-shell">
+  <LabShell v-if="isDashboard"><slot /></LabShell>
+  <div v-else class="app-shell">
     <NavBar />
 
     <main class="app-main py-4">
@@ -19,7 +20,11 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, watch } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import LabShell from '@/components/dashboard/lab/LabShell.vue';
+const route = useRoute();
+const isDashboard = computed(() => route?.name === 'dashboard');
 
 import AlertToast from '@/components/alerts/AlertToast.vue';
 import { useAlertsRealtime } from '@/realtime/useAlertsRealtime';

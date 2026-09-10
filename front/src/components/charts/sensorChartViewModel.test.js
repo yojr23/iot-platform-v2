@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { buildSensorChartViewModel } from './sensorChartViewModel';
 
 describe('buildSensorChartViewModel', () => {
+  it('preserves explicit gaps instead of converting null readings to zero', () => {
+    const result = buildSensorChartViewModel([{value: 4}, {value: null}, {value: 2}]);
+    expect(result.series).toEqual([2, null, 4]);
+    expect(result.stats).toEqual({min: 2, max: 4, mean: 3, count: 2});
+  });
   it('returns empty labels/series and null stats for no readings', () => {
     const viewModel = buildSensorChartViewModel([], { unit: 'C' });
 

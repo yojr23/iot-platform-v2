@@ -15,14 +15,15 @@ import { formatDate } from '@/utils/formatters';
 export function buildSensorChartViewModel(readings = [], { unit = '' } = {}) {
   const chronological = [...readings].reverse();
   const labels = chronological.map((reading) => formatDate(reading.reading_time || reading.created_at));
-  const series = chronological.map((reading) => Number(reading.value ?? 0));
+  const series = chronological.map((reading) => reading.value == null ? null : Number(reading.value));
 
-  const count = series.length;
+  const values = series.filter(Number.isFinite);
+  const count = values.length;
   const stats = count > 0
     ? {
-      min: Math.min(...series),
-      max: Math.max(...series),
-      mean: series.reduce((sum, value) => sum + value, 0) / count,
+      min: Math.min(...values),
+      max: Math.max(...values),
+      mean: values.reduce((sum, value) => sum + value, 0) / count,
       count
     }
     : null;

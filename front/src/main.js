@@ -1,6 +1,12 @@
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap';
 import './assets/styles/main.scss';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/jetbrains-mono/500.css';
+import './assets/styles/lab-blue.css';
 
 import { createPinia } from 'pinia';
 import { createApp } from 'vue';
