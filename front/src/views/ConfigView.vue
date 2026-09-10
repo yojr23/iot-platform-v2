@@ -210,6 +210,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import {
   getAlertConfig,
   getEmailConfig,
+  getGeneralConfig,
   getRuntimeConfig,
   getSystemInfo,
   testEmailConfig,
@@ -312,8 +313,18 @@ async function load() {
   try {
     const runtimeResponse = await getRuntimeConfig();
     publicConfig.value = unwrapData(runtimeResponse) || {};
-    generalForm.app_name = publicConfig.value.app_name || 'iot-platform-v2';
-    generalForm.app_url = publicConfig.value.app_url || appUrl;
+
+    // General form round-trips app_name via the dedicated admin endpoint (runtime omits
+    // app_name); fall back to runtime/defaults if that call fails.
+    try {
+      const generalResponse = await getGeneralConfig();
+      const general = unwrapData(generalResponse) || {};
+      generalForm.app_name = general.app_name || publicConfig.value.app_name || 'iot-platform-v2';
+      generalForm.app_url = general.app_url || publicConfig.value.app_url || appUrl;
+    } catch (generalError) {
+      generalForm.app_name = publicConfig.value.app_name || 'iot-platform-v2';
+      generalForm.app_url = publicConfig.value.app_url || appUrl;
+    }
 
     try {
       const alertResponse = await getAlertConfig();

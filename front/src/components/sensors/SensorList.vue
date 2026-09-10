@@ -29,9 +29,9 @@
               </span>
             </td>
             <td>
-              <span v-if="latestReadingFor(sensor.id)">
-                {{ formatNumber(latestReadingFor(sensor.id).value) }} {{ sensor.unit || '' }}
-                <span class="text-muted small d-block">{{ formatDate(latestReadingFor(sensor.id).reading_time) }}</span>
+              <span v-if="latestReadingFor(sensor)">
+                {{ formatNumber(latestReadingFor(sensor).value) }} {{ sensor.unit || '' }}
+                <span class="text-muted small d-block">{{ formatDate(latestReadingFor(sensor).reading_time) }}</span>
               </span>
               <span v-else class="text-muted">-</span>
             </td>
@@ -84,8 +84,10 @@ const props = defineProps({
 
 defineEmits(['edit', 'delete', 'export']);
 
-function latestReadingFor(sensorId) {
-  return readingsStore.latestFor(sensorId);
+// Prefer the live store (realtime supersedes), fall back to the reading eager-loaded in the
+// initial /sensors response so the column shows a value on first paint, not "-".
+function latestReadingFor(sensor) {
+  return readingsStore.latestFor(sensor.id) ?? sensor.latest_reading;
 }
 
 // S1: live-patch each rendered row's last reading through the EXISTING shared realtime path

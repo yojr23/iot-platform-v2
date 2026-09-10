@@ -31,7 +31,7 @@
                 </button>
             </div>
         </div>
-        <div class="lab-summary-row">
+        <div v-if="auth.isAuthenticated" class="lab-summary-row">
             <div
                 v-for="c in summaryCards"
                 :key="c.key"
@@ -605,32 +605,28 @@ async function loadMetrics() {
 }
 onMounted(loadMetrics);
 const summaryCards = computed(() => {
-    if (auth.isAuthenticated) {
-        return [
-            {
-                key: "total",
-                label: "Dispositivos totales",
-                value: metrics.value?.total_devices,
-            },
-            {
-                key: "active",
-                label: "Dispositivos activos",
-                value: metrics.value?.active_devices,
-            },
-            {
-                key: "alerts",
-                label: "Alertas activas",
-                value: alerts.unresolvedCount,
-            },
-        ];
+    // Guest product boundary (frozen): guest = public graph monitoring only, NOT global
+    // operational metrics. The public graph bootstrap deliberately omits device.status, so
+    // operational cards here would both leak product semantics and be wrong (status undefined
+    // → "activos = 0"). Operational summary is authenticated-only, from /dashboard/metrics.
+    if (!auth.isAuthenticated) {
+        return [];
     }
-    const list = props.devices || [];
     return [
-        { key: "total", label: "Dispositivos totales", value: list.length },
+        {
+            key: "total",
+            label: "Dispositivos totales",
+            value: metrics.value?.total_devices,
+        },
         {
             key: "active",
             label: "Dispositivos activos",
-            value: list.filter((d) => d.status).length,
+            value: metrics.value?.active_devices,
+        },
+        {
+            key: "alerts",
+            label: "Alertas activas",
+            value: alerts.unresolvedCount,
         },
     ];
 });

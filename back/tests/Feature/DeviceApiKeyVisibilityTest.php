@@ -40,16 +40,17 @@ class DeviceApiKeyVisibilityTest extends TestCase
             ->assertJsonMissingPath('api_key');
     }
 
-    public function test_admin_sees_api_key_on_devices_index(): void
+    public function test_admin_does_not_see_api_key_on_devices_index(): void
     {
+        // Security: api_key is exposed only on single-device detail, never in the bulk list —
+        // even for admins — to keep every device credential out of the list-page payload.
         Device::factory()->create();
         $admin = User::factory()->create(['is_admin' => true]);
 
         $response = $this->actingAs($admin)->getJson('/api/devices?per_page=10');
 
         $response->assertOk();
-        $this->assertArrayHasKey('api_key', $response->json('data.0'));
-        $this->assertNotEmpty($response->json('data.0.api_key'));
+        $this->assertArrayNotHasKey('api_key', $response->json('data.0'));
     }
 
     public function test_non_admin_does_not_see_api_key_on_devices_index(): void

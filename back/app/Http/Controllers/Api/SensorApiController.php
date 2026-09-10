@@ -444,7 +444,11 @@ class SensorApiController extends Controller
         $startTime = microtime(true);
 
         try {
-            $sensors = Sensor::with(['sensorType', 'device.lab'])->get();
+            // latestReading eager-loaded so SensorResource's `latest_reading` is populated on the
+            // global list too (matches /devices/{device}/sensor-list). Single extra query via the
+            // hasOneOfMany relation — no N+1 — so the list shows a value on first paint instead of
+            // "-" until the next realtime event.
+            $sensors = Sensor::with(['sensorType', 'device.lab', 'latestReading'])->get();
 
             if ($sensors->isEmpty()) {
                 Log::warning('No sensors found in database', [

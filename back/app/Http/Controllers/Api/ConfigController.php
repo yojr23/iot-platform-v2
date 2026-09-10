@@ -163,6 +163,19 @@ class ConfigController extends Controller
         }
     }
 
+    public function general(): JsonResponse
+    {
+        // Admin-only read of the persisted general settings so the config form round-trips
+        // app_name. runtime() intentionally omits app_name (it's a public-ish endpoint); this
+        // dedicated admin endpoint carries it rather than broadening runtime for one admin form.
+        return response()->json([
+            'data' => [
+                'app_name' => SystemSetting::get('app_name', config('app.name')),
+                'app_url' => SystemSetting::get('app_url', config('app.url')),
+            ],
+        ]);
+    }
+
     public function updateGeneral(UpdateGeneralConfigRequest $request): JsonResponse
     {
         $startTime = microtime(true);

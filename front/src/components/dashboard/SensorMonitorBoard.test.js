@@ -33,13 +33,6 @@ vi.mock('@/realtime/useSensorRealtime', () => ({
   RECOVERY_WINDOW_MS: 5 * 60 * 1000
 }));
 
-vi.mock('@/components/dashboard/MonitorCard.vue', () => ({
-  default: {
-    props: ['monitor'],
-    template: '<button data-testid="monitor-card-device-change" @click="$emit(\'deviceChange\', monitor, \'2\')">change</button>'
-  }
-}));
-
 const devices = [
   { id: 1, name: 'Device A', sensors: [{ id: 10, name: 'Sensor A', unit: 'C' }] },
   { id: 2, name: 'Device B', sensors: [{ id: 20, name: 'Sensor B', unit: 'C' }] }

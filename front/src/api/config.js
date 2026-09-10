@@ -4,6 +4,10 @@ export function getRuntimeConfig() {
   return apiClient.get('/config/runtime');
 }
 
+export function getGeneralConfig() {
+  return apiClient.get('/config/general');
+}
+
 export function updateGeneralConfig(payload) {
   return apiClient.put('/config/general', payload);
 }

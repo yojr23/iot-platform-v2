@@ -154,6 +154,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/system-info', [ApiConfigController::class, 'systemInfo'])->middleware('throttle:api-read');
         Route::get('/alerts', [ApiConfigController::class, 'alerts'])->middleware('throttle:api-read');
         Route::put('/alerts', [ApiConfigController::class, 'updateAlerts'])->middleware('throttle:api-write');
+        Route::get('/general', [ApiConfigController::class, 'general'])->middleware('throttle:api-read');
         Route::put('/general', [ApiConfigController::class, 'updateGeneral'])->middleware('throttle:api-write');
         Route::get('/email', [ApiEmailConfigController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/email', [ApiEmailConfigController::class, 'update'])->middleware('throttle:api-write');
