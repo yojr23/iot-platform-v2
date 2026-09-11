@@ -35,10 +35,15 @@ describe('resolveZoneTokens', () => {
     const tokens = resolveZoneTokens();
 
     expect(tokens.danger.line).toBe('#dc2626');
-    expect(tokens.warning.line).toBe('#d97706');
+    expect(tokens.warning.line).toBe('#f59e0b');
     expect(tokens.info.line).toBe('#2563eb');
-    expect(tokens.normal.line).toBe('#16a34a');
+    expect(tokens.normal.line).toBe('#22c55e');
     expect(tokens.neutral.line).toBe('#94a3b8');
+    expect(tokens.danger.fill).toBe('rgba(220, 38, 38, 0.12)');
+    expect(tokens.warning.fill).toBe('rgba(245, 158, 11, 0.14)');
+    expect(tokens.normal.fill).toBe('rgba(34, 197, 94, 0.12)');
+    expect(tokens.info.fill).toBe('rgba(37, 99, 235, 0.16)');
+    expect(tokens.neutral.fill).toBe('rgba(148, 163, 184, 0.16)');
     expect(tokens.info.line).not.toBe(tokens.normal.line);
   });
 
@@ -48,6 +53,6 @@ describe('resolveZoneTokens', () => {
     const tokens = resolveZoneTokens();
 
     expect(tokens.danger.line).toBe('#ff0000');
-    expect(tokens.danger.fill).toBe('rgba(255, 0, 0, 0.16)');
+    expect(tokens.danger.fill).toBe('rgba(255, 0, 0, 0.12)');
   });
 });

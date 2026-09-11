@@ -17,9 +17,9 @@
        info is a distinct brand/blue tint (never green); neutral is "limits not configured" (never
        green either). */
     --sinoa-zone-danger: #dc2626;
-    --sinoa-zone-warning: #d97706;
+    --sinoa-zone-warning: #f59e0b;
     --sinoa-zone-info: #2563eb;
-    --sinoa-zone-normal: #16a34a;
+    --sinoa-zone-normal: #22c55e;
     --sinoa-zone-neutral: #94a3b8;
     --app-blue: #2563eb;
     --app-muted: #64748b;
@@ -1433,7 +1433,7 @@
 @media (min-width: 1200px) {
   .lab-main-chart { position: relative; padding: 14px; }
   .lab-reading-row { margin: 16px 0; gap: 14px; }
-  .lab-main-chart .sensor-chart { height: 230px; }
+  .lab-main-chart .sensor-chart { height: 320px; min-height: 280px; }
   .lab-main-chart .sensor-chart-stats {
     position: absolute; top: 85px; right: 14px; width: 44%;
     margin-top: 0 !important; padding-top: 0; border-top: 0;
@@ -1455,6 +1455,6 @@
 @media (max-width: 767px) {
   .lab-reading-row { margin: 16px 0; }
   .lab-reading { font-size: 36px; }
-  .lab-main-chart .sensor-chart { height: 180px; }
+  .lab-main-chart .sensor-chart { height: 220px; min-height: 200px; }
   .lab-list-select { min-height: 44px; padding-top: 7px; padding-bottom: 7px; }
 }

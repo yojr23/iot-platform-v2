@@ -269,10 +269,11 @@ class PublicGraphControllerTest extends TestCase
     }
 
     /**
-     * docs/implementation/graph-semantic-zones-plan.md (GRAPH-002) — bootstrap projects
-     * `RuleToGraphZones` per public sensor reduced to `{from,to,severity}` only.
+     * A min boundary belongs to the alert side (`value <= min`), which a flat interval cannot
+     * encode. The public graph contract therefore exposes the safe, rule-id-free boundary shape
+     * so the chart and semantic badge agree with AlertService at the exact threshold.
      */
-    public function test_bootstrap_sensor_carries_rule_derived_bands_with_no_rule_metadata_leak(): void
+    public function test_bootstrap_sensor_carries_rule_derived_bands_and_safe_boundaries(): void
     {
         $sensorType = SensorType::factory()->create();
         $public = $this->publicSensor(['sensor_type_id' => $sensorType->id]);
@@ -280,8 +281,8 @@ class PublicGraphControllerTest extends TestCase
             'sensor_type_id' => $sensorType->id,
             'device_id' => null,
             'sensor_id' => null,
-            'min_value' => null,
-            'max_value' => 30,
+            'min_value' => 10,
+            'max_value' => null,
             'severity' => 'danger',
             'message' => 'Hot',
             'name' => 'Danger',
@@ -291,15 +292,16 @@ class PublicGraphControllerTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('devices.0.sensors.0.bands', [
-                ['from' => null, 'to' => 30.0, 'severity' => 'normal'],
-                ['from' => 30.0, 'to' => null, 'severity' => 'danger'],
+                ['from' => null, 'to' => 10.0, 'severity' => 'danger'],
+                ['from' => 10.0, 'to' => null, 'severity' => 'normal'],
+            ])
+            ->assertJsonPath('devices.0.sensors.0.boundaries', [
+                ['value' => 10.0, 'severity' => 'danger', 'bound' => 'min'],
             ]);
 
         $body = json_encode($response->json());
         $this->assertStringNotContainsStringIgnoringCase('rule_id', $body);
-        $this->assertStringNotContainsStringIgnoringCase('"bound"', $body);
         $this->assertStringNotContainsStringIgnoringCase('sensor_type_id', $body);
-        $this->assertStringNotContainsStringIgnoringCase('boundaries', $body);
     }
 
     public function test_bootstrap_sensor_with_no_rules_gets_neutral_bands_not_green(): void

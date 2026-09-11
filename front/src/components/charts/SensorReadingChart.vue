@@ -153,13 +153,13 @@ const chartData = computed(() => ({
       label: props.unit ? `Valor (${props.unit})` : 'Valor',
       data: props.series,
       borderColor: tokens.line,
-      backgroundColor: tokens.fill,
+      backgroundColor: props.zones.regions.length ? 'transparent' : tokens.fill,
       tension: 0,
       borderWidth: 2,
       pointRadius: 0,
       pointHoverRadius: 4,
       spanGaps: false,
-      fill: true
+      fill: props.zones.regions.length === 0
     }
   ]
 }));

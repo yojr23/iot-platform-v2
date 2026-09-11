@@ -20,8 +20,9 @@ use Illuminate\Validation\ValidationException;
  * Existing code reused: `PublicGraphVisibility` (this task's policy owner), the `Sensor` /
  * `SensorType` / `Device` relations already defined on the models, and
  * `PublicGraphSeriesService` for the bounded DB-backed range query. graph-semantic-zones-plan.md
- * (GRAPH-002): `bootstrap` now also projects `RuleToGraphZones::zonesFor()` per public sensor,
- * reduced to `{from,to,severity}` only — no rule ids/scope/notification policy leak to guests.
+ * (GRAPH-002): `bootstrap` projects `RuleToGraphZones::zonesFor()` per public sensor, reduced
+ * to visual bands and rule-id-free boundaries — no rule ids/scope/notification policy leak to
+ * guests. Boundaries preserve AlertService's inclusive threshold semantics at exact values.
  * Existing owner retired/delegated: none — per PLAN.md v1.3 correction #4, transitional public
  * routes (`/api/dashboard/public`, `/api/sensors/{sensor}/latest-readings`,
  * `/api/devices/{device}/sensors`, `/api/config/public`) stay reachable until the atomic
@@ -61,7 +62,7 @@ class PublicGraphController extends Controller
                         'id' => $sensor->id,
                         'name' => $sensor->name,
                         'unit' => $sensor->sensorType?->unit,
-                        'bands' => $this->publicBands($zones, $sensor),
+                        ...$this->publicZones($zones, $sensor),
                     ])->values()->all(),
                 ];
             })
@@ -122,18 +123,34 @@ class PublicGraphController extends Controller
     }
 
     /**
-     * Public-safe reduction of `RuleToGraphZones::zonesFor()`: only `{from,to,severity}` per band.
-     * No rule ids, no scope, no notification policy — guests never see anything beyond the visual
-     * severity intervals needed to paint the plot area.
+     * Public-safe reduction of `RuleToGraphZones::zonesFor()`. The explicit boundary type is
+     * necessary for an inclusive min (`value <= min`), while rule IDs and all rule scope remain
+     * private. Compute the projection once per sensor so its intervals and boundaries cannot
+     * drift apart during a bootstrap response.
      *
-     * @return list<array{from: float|null, to: float|null, severity: string}>
+     * @return array{
+     *     bands: list<array{from: float|null, to: float|null, severity: string}>,
+     *     boundaries: list<array{value: float, severity: string, bound: string}>,
+     * }
      */
-    private function publicBands(RuleToGraphZones $zones, Sensor $sensor): array
+    private function publicZones(RuleToGraphZones $zones, Sensor $sensor): array
     {
-        return array_map(
-            fn (array $zone) => ['from' => $zone['from'], 'to' => $zone['to'], 'severity' => $zone['severity']],
-            $zones->zonesFor($sensor)['zones'],
-        );
+        $projection = $zones->zonesFor($sensor);
+
+        return [
+            'bands' => array_map(
+                fn (array $zone) => ['from' => $zone['from'], 'to' => $zone['to'], 'severity' => $zone['severity']],
+                $projection['zones'],
+            ),
+            'boundaries' => array_map(
+                fn (array $boundary) => [
+                    'value' => $boundary['value'],
+                    'severity' => $boundary['severity'],
+                    'bound' => $boundary['bound'],
+                ],
+                $projection['boundaries'],
+            ),
+        ];
     }
 
     /**

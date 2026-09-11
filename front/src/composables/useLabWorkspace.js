@@ -65,6 +65,29 @@ export function useLabWorkspace(devices) {
             monitors: widgets.value.slice(1),
             selected_id: selectedId.value,
         });
+    const snapshotForLayout = (layout) => {
+        const candidates = [
+            { id: "main", ...(layout?.main || {}) },
+            ...(layout?.monitors || []),
+        ];
+        const normalized = candidates
+            .filter((w) => w.id)
+            .map((w) => ({
+                ...w,
+                id: String(w.id),
+                device_id: w.device_id == null ? null : String(w.device_id),
+                sensor_id: w.sensor_id == null ? null : String(w.sensor_id),
+                range: ranges[w.range] ? w.range : "5m",
+            }));
+        return JSON.stringify({
+            main: normalized[0] || { device_id: null, sensor_id: null },
+            monitors: normalized.slice(1),
+            selected_id:
+                normalized.find((w) => w.id === String(layout?.selected_id))?.id ||
+                normalized[0]?.id ||
+                "",
+        });
+    };
     const dirty = computed(() => snapshot() !== baseline.value);
     function mark() {
         if (saveState.value !== "saving")
@@ -141,7 +164,10 @@ export function useLabWorkspace(devices) {
             // docs/implementation/graph-semantic-zones-plan.md — the sensor's server-owned bands
             // (public bootstrap projection of RuleToGraphZones), normalized once here so
             // SensorReadingChart.vue only maps an already-resolved view-model to pixels.
-            zones: buildZonesViewModel(sensor(selected.value)?.bands),
+            zones: buildZonesViewModel({
+                zones: sensor(selected.value)?.bands,
+                boundaries: sensor(selected.value)?.boundaries,
+            }),
         };
     });
     const activeError = computed(() => {
@@ -230,10 +256,15 @@ export function useLabWorkspace(devices) {
         saveState.value = "saving";
         message.value = "";
         try {
-            await updateDashboardPreferences({ layout: JSON.parse(sent) });
+            const response = await updateDashboardPreferences({ layout: JSON.parse(sent) });
             if (!alive) return;
-            baseline.value = sent;
-            saveState.value = snapshot() === sent ? "saved" : "dirty";
+            const confirmed = response?.data?.layout;
+            if (!confirmed) {
+                throw new Error("Dashboard preferences response did not include a confirmed layout.");
+            }
+            const confirmedSnapshot = snapshotForLayout(confirmed);
+            baseline.value = confirmedSnapshot;
+            saveState.value = snapshot() === confirmedSnapshot ? "saved" : "dirty";
         } catch {
             if (alive) {
                 saveState.value = "error";
@@ -261,7 +292,7 @@ export function useLabWorkspace(devices) {
                       sensor_id: s.id,
                       device_id: s.device_id,
                   }));
-        widgets.value = candidates
+        const nextWidgets = candidates
             .filter((w) => sensor(w))
             .map((w) => ({
                 ...w,
@@ -269,6 +300,21 @@ export function useLabWorkspace(devices) {
                 device_id: String(w.device_id),
                 range: ranges[w.range] ? w.range : "5m",
             }));
+        const nextById = new Map(nextWidgets.map((w) => [w.id, w]));
+        handles.forEach((handle, id) => {
+            const next = nextById.get(id);
+            if (!next || String(next.sensor_id) !== String(handle.sensorId)) {
+                handle.realtime.unsubscribeSensor();
+                handles.delete(id);
+                delete history.value[id];
+            }
+        });
+        Object.keys(history.value).forEach((id) => {
+            const next = nextById.get(id);
+            if (!next || String(next.sensor_id) !== String(handles.get(id)?.sensorId))
+                delete history.value[id];
+        });
+        widgets.value = nextWidgets;
         selectedId.value =
             widgets.value.find((w) => w.id === layout?.selected_id)?.id ||
             widgets.value[0]?.id ||

@@ -595,7 +595,13 @@ const critical = computed(() =>
 // value only — never from `alerts` (the store above), so a critical alert on some other sensor
 // can never bleed into this badge or the chart background.
 const selectedState = computed(() =>
-    sensorSemanticState(selectedSensor.value?.bands, latest.value?.value),
+    sensorSemanticState(
+        {
+            zones: selectedSensor.value?.bands,
+            boundaries: selectedSensor.value?.boundaries,
+        },
+        latest.value?.value,
+    ),
 );
 // C1: summary cards. Authenticated users get the authoritative system-wide
 // counts from GET /dashboard/metrics (mount-time snapshot, no polling refresh

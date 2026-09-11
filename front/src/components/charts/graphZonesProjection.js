@@ -97,9 +97,11 @@ export function buildZonesViewModel(source) {
  * function — there is no such signal in its inputs at all, so a critical alert on another sensor,
  * or a suppressed/failed email for this one, cannot change the result.
  *
- * Picks the highest-precedence region whose interval contains the value (defensive against
- * overlapping input even though the server already resolves precedence), using the same
- * left-inclusive/right-exclusive convention as AlertService's `from <= value < to`.
+ * Exact threshold values are resolved from the server's explicit boundary list first. This is
+ * essential for an inclusive min (`value <= min`): its adjacent plot regions remain
+ * left-inclusive/right-exclusive for drawable geometry, while the boundary record identifies the
+ * alert side. If multiple rules meet at one value, their severities use the same precedence owner
+ * as the backend. Non-boundary values use the regular interval lookup below.
  *
  * @param {Array|{zones: Array}|null|undefined} source
  * @param {number|null|undefined} value
@@ -109,7 +111,17 @@ export function buildZonesViewModel(source) {
 export function sensorSemanticState(source, value) {
   if (!Number.isFinite(value)) return null;
 
-  const { regions } = buildZonesViewModel(source);
+  const { regions, boundaries } = buildZonesViewModel(source);
+  const boundaryState = boundaries
+    .filter((boundary) => boundary.value === value)
+    .reduce((best, boundary) => (
+      best === null || PRECEDENCE[boundary.severity] > PRECEDENCE[best]
+        ? boundary.severity
+        : best
+    ), null);
+
+  if (boundaryState !== null) return boundaryState;
+
   let best = null;
 
   regions.forEach((region) => {

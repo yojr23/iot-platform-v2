@@ -93,6 +93,20 @@ describe('sensorSemanticState (GRAPH-011)', () => {
     expect(sensorSemanticState(workedExampleBands, 1000)).toBe('danger');
   });
 
+  it('uses a min boundary to classify the exact inclusive threshold on the alert side', () => {
+    const minOnly = {
+      zones: [
+        { from: null, to: 10, severity: 'danger' },
+        { from: 10, to: null, severity: 'normal' }
+      ],
+      boundaries: [{ value: 10, severity: 'danger', bound: 'min' }]
+    };
+
+    expect(sensorSemanticState(minOnly, 9.999)).toBe('danger');
+    expect(sensorSemanticState(minOnly, 10)).toBe('danger');
+    expect(sensorSemanticState(minOnly, 10.001)).toBe('normal');
+  });
+
   it('no rules configured (neutral) never reads as normal for a real value', () => {
     expect(sensorSemanticState([], 10)).toBe('neutral');
   });

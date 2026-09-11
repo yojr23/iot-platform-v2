@@ -49,9 +49,9 @@ export function resolveChartTokens() {
 // `neutral` ("limits not configured") stays gray, never green either.
 const ZONE_FALLBACKS = Object.freeze({
   danger: '#dc2626',
-  warning: '#d97706',
+  warning: '#f59e0b',
   info: '#2563eb',
-  normal: '#16a34a',
+  normal: '#22c55e',
   neutral: '#94a3b8'
 });
 
@@ -63,11 +63,19 @@ const ZONE_CSS_VARS = Object.freeze({
   neutral: '--sinoa-zone-neutral'
 });
 
+const ZONE_FILL_ALPHA = Object.freeze({
+  danger: 0.12,
+  warning: 0.14,
+  normal: 0.12,
+  info: 0.16,
+  neutral: 0.16
+});
+
 export function resolveZoneTokens() {
   return Object.fromEntries(
     Object.entries(ZONE_CSS_VARS).map(([severity, cssVar]) => {
       const line = readCssVar(cssVar, ZONE_FALLBACKS[severity]);
-      return [severity, { line, fill: hexToRgba(line, 0.16) }];
+      return [severity, { line, fill: hexToRgba(line, ZONE_FILL_ALPHA[severity]) }];
     })
   );
 }
