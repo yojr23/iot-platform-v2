@@ -39,10 +39,15 @@ Route::get('/profile', [App\Http\Controllers\HomeController::class, 'profile'])
 
 Route::middleware(['auth', 'verified'])->prefix('dashboard')->group(function () {
     Route::get('preferences', [DashboardPreferenceController::class, 'show'])->name('dashboard.preferences.show');
-    Route::post('preferences', [DashboardPreferenceController::class, 'store'])->name('dashboard.preferences.store');
+    Route::post('preferences', [DashboardPreferenceController::class, 'store'])
+        ->middleware('admin')
+        ->name('dashboard.preferences.store');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('metrics', [MetricsController::class, 'index'])->name('metrics.index');
+    Route::get('metrics/data', [MetricsController::class, 'data'])->name('metrics.data');
+
     // Dispositivos
     Route::resource('devices', DeviceController::class);
     Route::post('devices/{device}/toggle-status', [DeviceController::class, 'toggleStatus'])->name('devices.toggle-status');
@@ -72,9 +77,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('alerts/{alert}/resolve', [AlertController::class, 'resolve'])->name('alerts.resolve');
 
     // Configuración
-    Route::get('config', [ConfigController::class, 'index'])->name('config.index');
-
     Route::middleware('admin')->group(function () {
+        Route::get('config', [ConfigController::class, 'index'])->name('config.index');
+
         // Alert Rules
         Route::get('alert-rules/create', [AlertRuleController::class, 'create'])->name('alert-rules.create');
         Route::post('alert-rules', [AlertRuleController::class, 'store'])->name('alert-rules.store');
@@ -105,8 +110,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('config', [ConfigController::class, 'update'])->name('config.update');
         Route::get('config/user-roles', [UserRoleController::class, 'index'])->name('config.user-roles.index');
         Route::patch('config/user-roles/{user}', [UserRoleController::class, 'update'])->name('config.user-roles.update');
-        Route::get('metrics', [MetricsController::class, 'index'])->name('metrics.index');
-        Route::get('metrics/data', [MetricsController::class, 'data'])->name('metrics.data');
 
         // Configuración de Email
         Route::get('email-config', [EmailConfigController::class, 'index'])->name('email-config.index');

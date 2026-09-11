@@ -58,5 +58,13 @@ class ApiAuthTokenTest extends TestCase
             ->assertOk()
             ->assertJsonPath('user.id', $user->id)
             ->assertJsonPath('user.is_admin', false);
+
+        $this->withToken($token)->getJson('/api/metrics')
+            ->assertOk()
+            ->assertJsonStructure(['generated_at', 'snapshot']);
+
+        $this->withToken($token)->putJson('/api/dashboard/preferences', [
+            'layout' => ['main' => ['id' => 'main', 'range' => '5m']],
+        ])->assertForbidden();
     }
 }

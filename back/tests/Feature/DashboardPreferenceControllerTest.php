@@ -25,9 +25,20 @@ class DashboardPreferenceControllerTest extends TestCase
             ->assertJsonPath('layout.monitors', []);
     }
 
+    public function test_standard_user_cannot_store_dashboard_preferences(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+            'layout' => ['main' => ['id' => 'main', 'range' => '5m']],
+        ])->assertForbidden();
+
+        $this->assertDatabaseMissing('dashboard_preferences', ['user_id' => $user->id]);
+    }
+
     public function test_store_normalizes_missing_main_fields_and_monitors(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $device = Device::factory()->create();
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
 
@@ -55,7 +66,7 @@ class DashboardPreferenceControllerTest extends TestCase
 
     public function test_store_persists_selected_id_and_each_widget_range(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
         $device = Device::factory()->create();
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
 
@@ -90,7 +101,7 @@ class DashboardPreferenceControllerTest extends TestCase
 
     public function test_store_rejects_invalid_widget_range(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['is_admin' => true]);
 
         $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
             'layout' => [

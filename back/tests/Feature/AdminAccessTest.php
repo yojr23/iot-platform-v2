@@ -34,13 +34,21 @@ class AdminAccessTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_non_admin_cannot_access_metrics_dashboard()
+    public function test_standard_user_can_access_legacy_metrics_reads(): void
     {
         $user = User::factory()->create(['is_admin' => false]);
 
-        $response = $this->actingAs($user)->get(route('metrics.index'));
+        $this->actingAs($user)->get(route('metrics.index'))->assertOk();
+        $this->actingAs($user)->getJson(route('metrics.data'))
+            ->assertOk()
+            ->assertJsonStructure(['generated_at', 'snapshot']);
+    }
 
-        $response->assertForbidden();
+    public function test_standard_user_cannot_access_legacy_configuration(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($user)->get(route('config.index'))->assertForbidden();
     }
 
     public function test_internal_api_metrics_require_admin_authentication(): void

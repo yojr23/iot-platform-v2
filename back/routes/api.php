@@ -88,11 +88,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/profile', [ApiProfileController::class, 'show'])->middleware('throttle:api-read');
     Route::get('/config/runtime', [ApiConfigController::class, 'runtime'])->middleware('throttle:api-read');
+    Route::get('/metrics', [ApiMetricsController::class, 'index'])->middleware('throttle:api-read');
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/metrics', [ApiDashboardController::class, 'metrics'])->middleware('throttle:api-read');
         Route::get('/preferences', [ApiDashboardPreferenceController::class, 'show'])->middleware('throttle:api-read');
-        Route::put('/preferences', [ApiDashboardPreferenceController::class, 'store'])->middleware('throttle:api-write');
+        Route::put('/preferences', [ApiDashboardPreferenceController::class, 'store'])
+            ->middleware(['admin', 'throttle:api-write']);
     });
 
     // API para dispositivos
@@ -148,7 +150,6 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('admin')->group(function () {
-        Route::get('/metrics', [ApiMetricsController::class, 'index'])->middleware('throttle:api-read');
         Route::get('/users', [ApiUserRoleController::class, 'index'])->middleware('throttle:api-read');
         Route::patch('/users/{user}/role', [ApiUserRoleController::class, 'update'])->middleware('throttle:api-write');
 
