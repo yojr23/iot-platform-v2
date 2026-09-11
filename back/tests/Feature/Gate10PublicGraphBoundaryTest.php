@@ -265,6 +265,13 @@ class Gate10PublicGraphBoundaryTest extends TestCase
 
         $this->withToken($token)->postJson('/api/auth/logout')->assertOk();
 
+        // Sanctum's RequestGuard memoizes the resolved user per booted app instance. Real HTTP
+        // boots a fresh app (and fresh guard) per request, so the deleted token re-authenticates
+        // from scratch; the shared test container does not. Forget guards to mirror real
+        // per-request auth resolution — the assertion below then proves the *token* is revoked,
+        // not merely that a cached user object lingers.
+        $this->app['auth']->forgetGuards();
+
         $response = $this->withToken($token)->getJson('/api/alerts');
         $response->assertUnauthorized();
         $this->assertArrayNotHasKey('data', $response->json() ?? []);

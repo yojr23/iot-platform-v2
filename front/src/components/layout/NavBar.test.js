@@ -66,8 +66,8 @@ describe('NavBar guest vs authenticated alert badge refresh', () => {
   it('keeps only metrics and settings in the administrator navigation', async () => {
     const { el, unmount } = await mountNavBar({ authenticated: true, admin: true });
 
-    expect(el.textContent).toContain('Metricas');
-    expect(el.textContent).toContain('Configuracion');
+    expect(el.textContent).toContain('Métricas');
+    expect(el.textContent).toContain('Configuración');
     expect(el.textContent).not.toContain('Reglas');
     expect(el.textContent).not.toContain('Catalogos');
     expect(el.textContent).not.toContain('Usuarios');

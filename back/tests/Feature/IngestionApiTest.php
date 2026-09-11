@@ -3,9 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\RawSensorEvent;
-use App\Services\Ingestion\RawSensorEventPublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Redis;
 use Mockery;
 use Tests\TestCase;
 
@@ -17,9 +15,14 @@ class IngestionApiTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
-
-        parent::tearDown();
+        // Blindar: si Mockery::close() lanza (expectativa incumplida), parent::tearDown()
+        // igual corre y RefreshDatabase limpia la transacción — evita la cascada
+        // "There is already an active transaction" en el resto del suite.
+        try {
+            Mockery::close();
+        } finally {
+            parent::tearDown();
+        }
     }
 
     public function test_store_raw_event_with_valid_token_persists_event(): void
@@ -138,40 +141,18 @@ class IngestionApiTest extends TestCase
         $this->assertNull($event->source_event_id);
     }
 
-    public function test_store_raw_event_attempts_to_publish_after_persisting(): void
+    /**
+     * Gate 10 (transactional outbox / CDC): el controller ya NO llama a
+     * RawSensorEventPublisher::publish() sincrónicamente. Persiste RawSensorEvent + RawEventOutbox
+     * en una transacción y la entrega a Redis la maneja Debezium CDC -> cdc:consume-outboxes.
+     * Este test congela ese contrato: un ingest crea la fila outbox 'pending' sin dependencia
+     * síncrona de Redis.
+     */
+    public function test_store_raw_event_creates_pending_outbox_row_without_synchronous_redis(): void
     {
         config([
             'app.ingestion_service_token' => self::TOKEN,
         ]);
-
-        $publisher = Mockery::mock(RawSensorEventPublisher::class);
-        $publisher
-            ->shouldReceive('publish')
-            ->once()
-            ->withArgs(function (RawSensorEvent $event): bool {
-                return $event->id !== null
-                    && $event->node_id === 'lab_postgrado_nodo_01'
-                    && $event->status === 'received';
-            })
-            ->andReturn(true);
-
-        $this->app->instance(RawSensorEventPublisher::class, $publisher);
-
-        $this->withHeaders([
-            'X-Ingestion-Token' => self::TOKEN,
-        ])->postJson('/api/ingestion/events', $this->validPayload())
-            ->assertCreated();
-    }
-
-    public function test_store_raw_event_does_not_fail_when_redis_publish_throws(): void
-    {
-        config([
-            'app.ingestion_service_token' => self::TOKEN,
-        ]);
-
-        Redis::shouldReceive('command')
-            ->once()
-            ->andThrow(new \RuntimeException('Redis unavailable'));
 
         $response = $this->withHeaders([
             'X-Ingestion-Token' => self::TOKEN,
@@ -179,10 +160,16 @@ class IngestionApiTest extends TestCase
 
         $response->assertCreated();
 
-        $this->assertDatabaseCount('raw_sensor_events', 1);
+        $eventId = $response->json('event_id');
+
         $this->assertDatabaseHas('raw_sensor_events', [
-            'node_id' => 'lab_postgrado_nodo_01',
+            'id' => $eventId,
             'status' => 'received',
+        ]);
+
+        $this->assertDatabaseHas('raw_event_outboxes', [
+            'raw_sensor_event_id' => $eventId,
+            'status' => 'pending',
         ]);
     }
 

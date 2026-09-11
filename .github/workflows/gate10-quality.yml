@@ -16,6 +16,19 @@ jobs:
     defaults:
       run:
         working-directory: back
+    services:
+      # Real Redis so the CDC/domain-event stream tests (XADD, pending recovery, DLQ,
+      # broadcast-once) actually run instead of being ENVIRONMENT_CONSTRAINT-skipped. Exposed on
+      # 6399 to match the port the suite connects to; TestCase::setUp isolates onto Redis DB 15.
+      redis:
+        image: redis:7
+        ports:
+          - 6399:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -33,6 +46,8 @@ jobs:
           CACHE_STORE: array
           SESSION_DRIVER: array
           QUEUE_CONNECTION: sync
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6399
         run: php artisan test
 
   frontend:

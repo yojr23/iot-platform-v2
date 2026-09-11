@@ -61,7 +61,8 @@ class RawReadingNormalizer
         $readingTime = data_get($event->payload, 'timestamp') ?? $event->received_at ?? now();
 
         $groupedSensors = $device->sensors()
-            ->get(['id', 'device_id', 'name'])
+            // sensor_type_id needed downstream by AlertService::applicableRules (reused in-memory).
+            ->get(['id', 'device_id', 'name', 'sensor_type_id'])
             ->groupBy(fn (Sensor $sensor): string => $this->canonicalSensorName($sensor->name));
 
         $ambiguousNames = $groupedSensors

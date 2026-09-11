@@ -3,7 +3,7 @@
     <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
       <div>
         <p class="section-kicker text-primary mb-2">Observabilidad</p>
-        <h1 class="h3 mb-1">Metricas del sistema</h1>
+        <h1 class="h3 mb-1">Métricas del sistema</h1>
         <p class="text-muted mb-0">Estado de la plataforma IoT y rendimiento operativo.</p>
       </div>
       <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
@@ -75,14 +75,14 @@
 
       <!-- Raw detail tables -->
       <details class="content-panel p-3">
-        <summary class="fw-semibold">Ver detalle numerico</summary>
+        <summary class="fw-semibold">Ver detalle numérico</summary>
         <div class="row g-3 mt-1">
           <div class="col-12 col-lg-6">
             <table class="table align-middle mb-0">
               <thead><tr><th>Dispositivos</th><th class="text-end">Valor</th></tr></thead>
               <tbody>
                 <tr><td>Total dispositivos</td><td class="text-end fw-semibold">{{ snap.total_devices }}</td></tr>
-                <tr><td>En linea</td><td class="text-end fw-semibold text-success">{{ snap.online_devices }}</td></tr>
+                <tr><td>En línea</td><td class="text-end fw-semibold text-success">{{ snap.online_devices }}</td></tr>
                 <tr><td>Fuera de linea</td><td class="text-end fw-semibold" :class="snap.offline_devices > 0 ? 'text-danger' : ''">{{ snap.offline_devices }}</td></tr>
                 <tr><td>Total sensores</td><td class="text-end fw-semibold">{{ snap.total_sensors }}</td></tr>
                 <tr><td>Lecturas hoy</td><td class="text-end fw-semibold">{{ snap.readings_today }}</td></tr>
@@ -148,7 +148,8 @@ const snap = computed(() => {
     total_alert_rules: s.total_alert_rules || 0,
     enabled_rules: s.enabled_rules || 0,
     total_labs: s.total_labs || 0,
-    uptime_percent: s.uptime_percent || 0,
+    // Clamp to [0,100] so a faulty source (e.g. 105) can't render >100% or a negative gauge slice.
+    uptime_percent: Math.min(Math.max(s.uptime_percent || 0, 0), 100),
   };
 });
 
@@ -186,7 +187,7 @@ const metricCards = computed(() => [
 ]);
 
 const devicesChart = computed(() => ({
-  labels: ['En linea', 'Fuera de linea'],
+  labels: ['En línea', 'Fuera de línea'],
   datasets: [{
     data: [snap.value.online_devices, snap.value.offline_devices],
     backgroundColor: [zone.normal.line, zone.danger.line],

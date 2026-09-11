@@ -22,6 +22,7 @@ import { onBeforeUnmount, ref, watch } from "vue";
 import { getGraphBootstrap } from "@/api/graph";
 import { getDevices } from "@/api/devices";
 import { getApiErrorMessage, unwrapData } from "@/api/client";
+import { paginatedItems } from "@/utils/formatters";
 import SensorMonitorBoard from "@/components/dashboard/SensorMonitorBoard.vue";
 import { useAuthStore } from "@/stores/auth";
 const auth = useAuthStore(),
@@ -48,7 +49,11 @@ async function load() {
             try {
                 const authResponse = await getDevices({ signal: controller.signal });
                 if (g === generation) {
-                    const authDevices = unwrapData(authResponse)?.data || [];
+                    // getDevices returns a paginator body ({data:[…], current_page,…}); use the
+                    // shared helper. Previously double-unwrapped (unwrapData already returns the
+                    // inner array, then .data → undefined → []), silently dropping the authorized
+                    // catalog so restricted sensors never showed for authenticated users.
+                    const authDevices = paginatedItems(authResponse);
                     // Merge: auth devices take precedence (they include restricted sensors),
                     // public devices fill gaps for sensors not in the auth catalog.
                     const authMap = new Map(authDevices.map((d) => [String(d.id), d]));

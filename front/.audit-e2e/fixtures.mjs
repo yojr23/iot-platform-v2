@@ -174,7 +174,19 @@ export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
     if (/^\/alerts\/\d+$/.test(p)) return json(route, { data: alerts[0] || alert(1, mode) });
     if (p === '/alert-rules') return json(route, { data: [] });
     if (p === '/users') return json(route, { data: [USERS.user, USERS.admin] });
-    if (p === '/metrics') return json(route, { data: {} });
+    if (p === '/metrics') {
+      return json(route, {
+        total_devices: devices.length,
+        active_devices: devices.filter((d) => d.status && d.is_active).length,
+        total_sensors: sensors.length,
+        readings_today: 1284,
+        active_alerts: alertCount,
+        total_alert_rules: 6,
+        enabled_rules: 4,
+        total_labs: 2,
+        uptime_percent: 99.4
+      });
+    }
     if (p.startsWith('/labs') || p.startsWith('/sensor-types') || p.startsWith('/device-types')) {
       return json(route, { data: [] });
     }

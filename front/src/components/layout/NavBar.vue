@@ -87,8 +87,8 @@ const laboratoryItems = [
 ];
 
 const adminItems = [
-  { label: 'Metricas', to: '/metrics' },
-  { label: 'Configuracion', to: '/config' }
+  { label: 'Métricas', to: '/metrics' },
+  { label: 'Configuración', to: '/config' }
 ];
 
 const navItems = computed(() => {

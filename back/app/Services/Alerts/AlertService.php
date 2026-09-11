@@ -62,7 +62,11 @@ class AlertService
         Log::info('AlertService:triggeredRulesForReading entry', ['reading_id' => $reading->id, 'sensor_id' => $reading->sensor_id]);
 
         $startTime = microtime(true);
-        $sensor = $reading->sensor()->with(['device.lab'])->first();
+        // Reuse the sensor already attached by SensorReadingService (avoids re-selecting `sensors`
+        // per reading); fall back to a query for callers that didn't preload it (legacy path).
+        $sensor = $reading->relationLoaded('sensor') && $reading->sensor !== null
+            ? $reading->sensor->loadMissing('device.lab')
+            : $reading->sensor()->with(['device.lab'])->first();
 
         if (! $sensor) {
             Log::info('AlertService:triggeredRulesForReading no sensor found', ['reading_id' => $reading->id]);

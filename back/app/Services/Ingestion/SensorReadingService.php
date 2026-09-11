@@ -27,10 +27,15 @@ class SensorReadingService
         $startTime = microtime(true);
 
         $result = DB::transaction(function () use ($sensor, $value, $readingTime): SensorReading {
-            $reading = $sensor->readings()->create([
+            // Attach the already-resolved sensor BEFORE save() so the synchronous `created`
+            // observer chain (AlertService::triggeredRulesForReading) reuses it instead of
+            // re-querying `sensors` per reading — keeps sensor resolution O(1) per receipt.
+            $reading = $sensor->readings()->make([
                 'value' => $value,
                 'reading_time' => $this->normalizeReadingTime($readingTime),
             ]);
+            $reading->setRelation('sensor', $sensor);
+            $reading->save();
 
             $this->recorder->record(
                 eventType: 'sensor.reading.created',
@@ -44,7 +49,9 @@ class SensorReadingService
                 ],
             );
 
-            $reading->load('sensor.sensorType', 'sensor.device.lab');
+            // Load sub-relations onto the already-attached sensor (sensor_types/devices/labs),
+            // without re-selecting `sensors` — the sensor model is already in memory.
+            $reading->sensor->loadMissing('sensorType', 'device.lab');
 
             DB::afterCommit(fn () => $this->projection->append($reading));
 

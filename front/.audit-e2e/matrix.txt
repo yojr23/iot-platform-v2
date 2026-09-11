@@ -56,3 +56,17 @@
 # --- M03: long sensor titles beside monitor-card button group, multiple charts, 320px ---
 /dashboard|user|320x700|long|add-monitors|m03-dashboard-long-320
 /dashboard|user|390x844|long|add-monitors|m03-dashboard-long-390
+#
+# --- Gate 9 (HEAD): redesigned /metrics across the DoD viewport matrix (320..1440) ---
+/metrics|admin|320x700|normal|none|g9-metrics-admin-320
+/metrics|admin|360x800|normal|none|g9-metrics-admin-360
+/metrics|admin|390x844|normal|none|g9-metrics-admin-390
+/metrics|admin|768x1024|normal|none|g9-metrics-admin-768
+/metrics|admin|1024x768|normal|none|g9-metrics-admin-1024
+/metrics|admin|1280x800|normal|none|g9-metrics-admin-1280
+/metrics|admin|1440x900|normal|none|g9-metrics-admin-1440
+#
+# --- Gate 9 (HEAD): dashboard desktop confirm at the wide breakpoints ---
+/dashboard|user|1024x768|normal|none|g9-dashboard-user-1024
+/dashboard|user|1280x800|normal|none|g9-dashboard-user-1280
+/dashboard|admin|1440x900|normal|none|g9-dashboard-admin-1440
