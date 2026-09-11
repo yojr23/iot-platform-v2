@@ -126,3 +126,82 @@ describe('SensorMonitorBoard polling removal', () => {
     unmount();
   });
 });
+
+describe('SensorMonitorBoard multi-chart invariants', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    window.localStorage.clear();
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1440 });
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
+    window.localStorage.clear();
+  });
+
+  it('expands multiple widgets in parallel on desktop when selected', async () => {
+    const { el, unmount } = await mountBoard();
+    // Board auto-expands first widget via watch. Second widget starts mini.
+    const miniBodies = el.querySelectorAll('.lab-spark-grid .lab-spark-body');
+    expect(miniBodies.length).toBe(1);
+    // Select the second widget via the list sidebar — should also expand it.
+    const listButtons = el.querySelectorAll('.lab-list-select');
+    expect(listButtons.length).toBe(2);
+    listButtons[1].click();
+    await flush();
+    // Both widgets should now be expanded (desktop allows parallel expansion).
+    const expandedCards = el.querySelectorAll('.lab-main-chart');
+    expect(expandedCards.length).toBe(2);
+    // No mini widgets remain.
+    expect(el.querySelectorAll('.lab-spark-grid .lab-spark-body').length).toBe(0);
+    unmount();
+  });
+
+  it('forces single expanded chart on mobile when a second is selected', async () => {
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+    const { el, unmount } = await mountBoard();
+    await flush();
+    // First widget is auto-expanded. Select the second via the list.
+    const listButtons = el.querySelectorAll('.lab-list-select');
+    listButtons[1].click();
+    await flush();
+    // Mobile: only one expanded card at a time.
+    const expandedCards = el.querySelectorAll('.lab-main-chart');
+    expect(expandedCards.length).toBe(1);
+    unmount();
+  });
+
+  it('disables the "Ver mini" button when only one widget is expanded', async () => {
+    const { el, unmount } = await mountBoard();
+    // First widget auto-expanded, second is mini. Expand second to have 2 expanded.
+    const listButtons = el.querySelectorAll('.lab-list-select');
+    listButtons[1].click();
+    await flush();
+    // Now collapse one of them — "Ver mini" should disable since only 1 remains.
+    const verMiniButtons = el.querySelectorAll('.lab-text-button[aria-pressed="true"]');
+    expect(verMiniButtons.length).toBe(2);
+    verMiniButtons[1].click();
+    await flush();
+    // Only 1 expanded now, "Ver mini" should be disabled.
+    const remaining = el.querySelectorAll('.lab-text-button[aria-pressed="true"]');
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].disabled).toBe(true);
+    unmount();
+  });
+
+  it('selectSync expands a widget that was only selected in the list', async () => {
+    const { el, unmount } = await mountBoard();
+    // Click the second list item — selectSync should expand it too.
+    const listButtons = el.querySelectorAll('.lab-list-select');
+    listButtons[1].click();
+    await flush();
+    // The second widget should now appear as an expanded card.
+    const expandedCards = el.querySelectorAll('.lab-main-chart');
+    expect(expandedCards.length).toBe(2);
+    // And it should be selected (has .selected class).
+    expect(expandedCards[1].classList.contains('selected')).toBe(true);
+    unmount();
+  });
+});

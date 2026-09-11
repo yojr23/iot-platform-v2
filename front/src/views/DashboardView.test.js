@@ -127,7 +127,7 @@ describe('DashboardView guest alert containment', () => {
     const { el, unmount } = await mountDashboardView({ authenticated: true });
 
     expect(getDashboardMetrics).not.toHaveBeenCalled();
-    expect(getDevices).not.toHaveBeenCalled();
+    expect(getDevices).toHaveBeenCalledOnce();
     expect(getGraphBootstrap).toHaveBeenCalledOnce();
     expect(el.querySelector('[data-testid="sensor-monitor-board"]')).toBeTruthy();
 

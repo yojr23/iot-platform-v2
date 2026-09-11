@@ -2,7 +2,7 @@
 
 
 
-
+# Lab Blue en dispositivos, sensores y alertas
 
 Base: rama `refraccion`, commit `c60b6dc`. Cambio visual solicitado el 10 de septiembre de 2026.
 

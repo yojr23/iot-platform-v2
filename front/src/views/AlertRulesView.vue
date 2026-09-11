@@ -126,10 +126,18 @@ async function loadMetadata() {
 }
 
 async function openCreate() {
+  // Capture the trigger element before metadataLoading disables it, so BaseModal's
+  // previouslyFocused restoration can return focus to it after the dialog closes.
+  const trigger = document.activeElement;
   selectedRule.value = null;
   validationErrors.value = {};
   formError.value = '';
   await loadMetadata();
+  // Re-focus the trigger now that metadataLoading is false and the button is re-enabled,
+  // so BaseModal's watch fires with the correct previouslyFocused.
+  if (trigger && typeof trigger.focus === 'function') {
+    trigger.focus();
+  }
   modalOpen.value = true;
 }
 

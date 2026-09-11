@@ -119,7 +119,17 @@ function mergeRealtimeAlert(alert) {
     : [alert, ...alerts.value].slice(0, 50);
 }
 
+// DOCX / PLAN.md Stage 7: AlertResolved from another client must update the local list
+// without requiring a manual refresh. markAlertResolved() modifies activeAlerts/items in the
+// store, but AlertsView owns its own local `alerts` ref. Watch the store's activeAlerts
+// to keep the local list in sync when resolved events arrive via WebSocket.
+function syncResolvedFromStore() {
+  const storeIds = new Set(alertsStore.activeAlerts.map((a) => Number(a.id)));
+  alerts.value = alerts.value.filter((item) => storeIds.has(Number(item.id)));
+}
+
 watch(filter, load);
 watch(() => alertsStore.latestAlert, mergeRealtimeAlert);
+watch(() => alertsStore.activeAlerts, syncResolvedFromStore);
 onMounted(load);
 </script>

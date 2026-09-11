@@ -104,6 +104,7 @@
                             type="button"
                             class="lab-text-button"
                             :aria-pressed="true"
+                            :disabled="expanded.size <= 1"
                             @click="toggleBig(w.id)"
                         >
                             Ver mini
@@ -115,7 +116,7 @@
                             ><select
                                 :value="w.device_id"
                                 @change="
-                                    select(w.id);
+                                    selectSync(w.id);
                                     changeDevice($event.target.value);
                                 "
                             >
@@ -132,7 +133,7 @@
                             ><select
                                 :value="w.sensor_id"
                                 @change="
-                                    select(w.id);
+                                    selectSync(w.id);
                                     changeSensor($event.target.value);
                                 "
                             >
@@ -179,7 +180,7 @@
                                 :aria-pressed="w.range === r"
                                 :class="{ active: w.range === r }"
                                 @click="
-                                    select(w.id);
+                                    selectSync(w.id);
                                     changeRange(r);
                                 "
                             >
@@ -192,6 +193,28 @@
                         :loading="history[w.id]?.loading"
                         :error="widgetError(w)"
                     />
+                    <p v-if="widgetLatest(w)?.reading_time" class="lab-freshness">
+                        Último dato · {{ time(widgetLatest(w).reading_time) }} UTC
+                    </p>
+                    <details class="lab-readings-table">
+                        <summary>Consultar últimas lecturas</summary>
+                        <div class="lab-table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Hora</th>
+                                        <th>Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(p, i) in points(w).points.filter(p => p.value !== null).slice(-10).reverse()" :key="i">
+                                        <td>{{ time(p.reading_time) }}</td>
+                                        <td>{{ number(p.value) }} {{ sensor(w)?.unit }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
                     <button
                         v-if="widgetError(w)"
                         class="lab-button"
@@ -224,7 +247,7 @@
                                 Ver grande
                             </button>
                         </div>
-                        <button class="lab-spark-body" @click="select(w.id)">
+                        <button class="lab-spark-body" @click="selectSync(w.id)">
                             <div class="lab-spark-value">
                                 {{ number(widgetLatest(w)?.value) }}
                                 <small>{{ sensor(w)?.unit }}</small>
@@ -325,7 +348,7 @@
                         <button
                             class="lab-list-select"
                             :aria-pressed="w.id === selectedId"
-                            @click="select(w.id)"
+                            @click="selectSync(w.id)"
                         >
                             <I
                                 :name="editing ? 'grip' : icon(sensor(w)?.name)"
@@ -556,6 +579,18 @@ const {
     save,
     load,
 } = useLabWorkspace(toRef(props, "devices"));
+// DOCX RF05: selecting a widget must also expand it so gráfica + inspector stay in sync.
+const originalSelect = select;
+function selectSync(id) {
+    originalSelect(id);
+    if (!expanded.value.has(id)) {
+        if (isMobile.value) {
+            expanded.value = new Set([id]);
+        } else {
+            expanded.value = new Set([...expanded.value, id]);
+        }
+    }
+}
 const selectedSensor = computed(() => sensor(selected.value)),
     latest = computed(() =>
         activeData.value.points.filter((p) => p.value !== null).at(-1),
@@ -564,8 +599,15 @@ const critical = computed(() =>
     alerts.activeAlerts.find((a) => a.alert_rule?.severity === "danger"),
 );
 // Per-card view: each widget is a mini preview by default; toggle expands it to the full zoned
-// chart in place. Multiple can be expanded at once (parallel big graphs). Selection (for the
-// sidebar detail) is independent — interacting with a card's controls also selects it.
+// chart in place. On mobile (<768px) only one card is expanded at a time (DOCX RF05);
+// on desktop multiple can be expanded in parallel. Selection (for the sidebar detail) is
+// synced with expansion — selecting a widget also expands it so gráfica + lectura + inspector
+// always agree (DOCX "Mis gráficas sincroniza gráfico, lectura e inspector").
+const isMobile = ref(window.innerWidth < 768);
+function onResize() { isMobile.value = window.innerWidth < 768; }
+onMounted(() => window.addEventListener('resize', onResize));
+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+
 const expanded = ref(new Set());
 const expandedWidgets = computed(() =>
     widgets.value.filter((w) => expanded.value.has(w.id)),
@@ -589,12 +631,22 @@ watch(
     },
     { immediate: true },
 );
+// DOCX RF05: on mobile, force exactly one expanded graph (the selected one).
+watch(isMobile, (mobile) => {
+    if (mobile && expanded.value.size > 1) {
+        expanded.value = new Set([selectedId.value || widgets.value[0]?.id].filter(Boolean));
+    }
+});
 function toggleBig(id) {
     const next = new Set(expanded.value);
     if (next.has(id)) {
         if (next.size <= 1) return; // keep at least one card big
         next.delete(id);
     } else {
+        // On mobile, replace the single expanded chart; on desktop, add to the set.
+        if (isMobile.value) {
+            next.clear();
+        }
         next.add(id);
     }
     expanded.value = next;
@@ -834,5 +886,39 @@ onBeforeRouteLeave(
 .lab-zone-badge.neutral {
     background: var(--sinoa-zone-neutral);
     color: #334155;
+}
+.lab-freshness {
+    font-size: 12px;
+    color: var(--sinoa-text-muted, #64748b);
+    margin: 6px 0 0;
+}
+.lab-readings-table {
+    margin-top: 10px;
+    font-size: 13px;
+}
+.lab-readings-table summary {
+    cursor: pointer;
+    color: var(--sinoa-primary, #2563eb);
+    font-weight: 500;
+}
+.lab-readings-table table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+.lab-readings-table th,
+.lab-readings-table td {
+    padding: 4px 8px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+}
+.lab-readings-table th {
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--sinoa-text-muted, #64748b);
+}
+.disabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 </style>

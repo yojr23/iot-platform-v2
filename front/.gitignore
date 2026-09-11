@@ -5,3 +5,4 @@ dist
 .env.*.local
 .audit-e2e/results
 .audit-e2e/*.png
+*.log

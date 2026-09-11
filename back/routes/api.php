@@ -2,9 +2,9 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\API\AuthApiController;
-use App\Http\Controllers\API\DeviceApiController;
-use App\Http\Controllers\API\SensorApiController;
+use App\Http\Controllers\Api\AuthApiController;
+use App\Http\Controllers\Api\DeviceApiController;
+use App\Http\Controllers\Api\SensorApiController;
 use App\Http\Controllers\Api\AlertController as ApiAlertController;
 use App\Http\Controllers\Api\AlertRuleController as ApiAlertRuleController;
 use App\Http\Controllers\Api\ConfigController as ApiConfigController;

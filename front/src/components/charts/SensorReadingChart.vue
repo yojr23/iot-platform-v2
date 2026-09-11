@@ -160,8 +160,9 @@ const chartData = computed(() => ({
       backgroundColor: props.zones.regions.length ? 'transparent' : tokens.fill,
       tension: 0,
       borderWidth: 2,
-      pointRadius: 0,
+      pointRadius: (ctx) => ctx.dataIndex === props.series.length - 1 ? 4 : 0,
       pointHoverRadius: 4,
+      pointBackgroundColor: tokens.line,
       spanGaps: false,
       fill: props.zones.regions.length === 0
     }
@@ -175,6 +176,30 @@ const chartOptions = computed(() => ({
   plugins: {
     legend: {
       display: false
+    },
+    tooltip: {
+      callbacks: {
+        title(items) {
+          if (!items.length) return '';
+          const label = items[0].label || '';
+          const match = label.match(/^(.+?)\s+UTC$/);
+          return match ? match[1] : label;
+        },
+        label(item) {
+          const value = formatNumber(item.parsed.y);
+          const unit = props.unit ? ` ${props.unit}` : '';
+          return `${value}${unit}`;
+        },
+        afterLabel(item) {
+          const label = item.label || '';
+          // Extract date and time from the full label ("11 sep 2026, 10:30:00 UTC")
+          const parts = label.replace(' UTC', '').split(', ');
+          if (parts.length === 2) {
+            return `Zona: UTC`;
+          }
+          return '';
+        }
+      }
     },
     zoneBackground: {
       regions: props.zones.regions,

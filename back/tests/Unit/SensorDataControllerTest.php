@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
-use App\Http\Controllers\API\SensorApiController;
-use App\Http\Controllers\API\SensorDataController;
+use App\Http\Controllers\Api\SensorApiController;
+use App\Http\Controllers\Api\SensorDataController;
 use App\Models\Sensor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
