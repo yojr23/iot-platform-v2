@@ -30,6 +30,15 @@ Todas las rutas continúan protegidas por `requiresAuth` y `requiresAdmin`.
 No se crean endpoints, no se muestran secretos y no se modifica el contrato de
 ninguna API.
 
+## Navegación administrativa
+
+La barra lateral administrativa conserva solamente `Métricas` y
+`Configuración`. Se retiran de ese menú `Reglas de alerta`, `Catálogos` y
+`Usuarios`; sus rutas no se eliminan ni cambian permisos, pero se acceden desde
+las acciones de administración de Configuración. La misma regla se aplica a los
+dos componentes de navegación existentes para evitar que las rutas reaparezcan
+en otra composición.
+
 ## Interfaz y comportamiento
 
 La entrada mantiene el encabezado Lab Blue y utiliza una única superficie de
@@ -46,7 +55,10 @@ sin leer ni revelar la contraseña.
 
 La paleta usa los tokens actuales: superficies blancas, fondo `--sinoa-bg`,
 texto oscuro, borde sutil y azul para acciones. Verde, ámbar y rojo se limitan
-a estados semánticos. En móvil, el resumen se apila, las filas conservan un
+a estados semánticos. La entrada recibe iconos del set Lab Blue para aplicación,
+alertas, correo, diagnóstico y acciones administrativas; sus fondos circulares
+usan tintes muy suaves de azul, ámbar, índigo y gris, sin convertir la vista en
+un tablero de tarjetas. En móvil, el resumen se apila, las filas conservan un
 objetivo táctil de al menos 44 px y las acciones no se desbordan.
 
 ## Componentes y datos
