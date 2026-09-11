@@ -1,12 +1,14 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page metrics-page">
+    <div class="lab-toolbar lab-resource-toolbar mb-4">
       <div>
         <p class="section-kicker text-primary mb-2">Observabilidad</p>
         <h1 class="h3 mb-1">Métricas del sistema</h1>
         <p class="text-muted mb-0">Estado de la plataforma IoT y rendimiento operativo.</p>
       </div>
-      <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
+      <div class="lab-resource-actions">
+        <button class="btn btn-outline-secondary lab-action" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
+      </div>
     </div>
 
     <BaseAlert v-if="error" variant="danger" :message="error" />
@@ -18,7 +20,7 @@
         <div v-for="m in metricCards" :key="m.label" class="col-12 col-md-6 col-xl-3">
           <div class="content-panel p-3 h-100 metric-kpi" :style="{ '--kpi-accent': m.color }">
             <div class="d-flex align-items-center gap-3">
-              <span class="metric-kpi-icon" :style="{ color: m.color }" v-html="m.icon" />
+              <span class="metric-kpi-icon" :style="{ color: m.color }"><I :name="m.icon" /></span>
               <div class="flex-grow-1">
                 <p class="text-muted small mb-1">{{ m.label }}</p>
                 <p class="h4 mb-0" :style="{ color: m.value ? m.color : undefined }">{{ m.value }}</p>
@@ -30,10 +32,10 @@
       </div>
 
       <!-- Charts row -->
-      <div class="row g-3 mb-3">
+      <div v-if="!isApiSnapshot" class="row g-3 mb-3">
         <div class="col-12 col-lg-4">
           <div class="content-panel p-3 h-100">
-            <h2 class="h6 text-muted mb-3">Dispositivos</h2>
+            <h2 class="metric-panel-title"><I name="device" />Dispositivos</h2>
             <div class="metric-chart">
               <Doughnut :data="devicesChart" :options="doughnutOptions" />
             </div>
@@ -41,7 +43,7 @@
         </div>
         <div class="col-12 col-lg-4">
           <div class="content-panel p-3 h-100">
-            <h2 class="h6 text-muted mb-3">Reglas de alerta</h2>
+            <h2 class="metric-panel-title"><I name="bell" />Reglas de alerta</h2>
             <div class="metric-chart">
               <Doughnut :data="rulesChart" :options="doughnutOptions" />
             </div>
@@ -49,7 +51,7 @@
         </div>
         <div class="col-12 col-lg-4">
           <div class="content-panel p-3 h-100">
-            <h2 class="h6 text-muted mb-3">Disponibilidad</h2>
+            <h2 class="metric-panel-title"><I name="shield" />Disponibilidad</h2>
             <div class="metric-chart metric-gauge">
               <Doughnut :data="uptimeChart" :options="gaugeOptions" />
               <div class="metric-gauge-label" :style="{ color: uptimeColor }">
@@ -62,10 +64,10 @@
       </div>
 
       <!-- Comparison bar -->
-      <div class="row g-3 mb-3">
+      <div v-if="!isApiSnapshot" class="row g-3 mb-3">
         <div class="col-12">
           <div class="content-panel p-3">
-            <h2 class="h6 text-muted mb-3">Comparativa del sistema</h2>
+            <h2 class="metric-panel-title"><I name="chart" />Comparativa del sistema</h2>
             <div class="metric-chart metric-chart-wide">
               <Bar :data="comparisonChart" :options="barOptions" />
             </div>
@@ -74,9 +76,33 @@
       </div>
 
       <!-- Raw detail tables -->
-      <details class="content-panel p-3">
+      <div v-if="isApiSnapshot" class="row g-3 mb-3">
+        <div class="col-12">
+          <div class="content-panel p-3">
+            <h2 class="metric-panel-title"><I name="chart" />Actividad de la API</h2>
+            <div class="metric-chart metric-chart-wide">
+              <Bar :data="apiRequestsChart" :options="barOptions" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <details class="content-panel p-3 metric-detail">
         <summary class="fw-semibold">Ver detalle numérico</summary>
-        <div class="row g-3 mt-1">
+        <div v-if="isApiSnapshot" class="row g-3 mt-1">
+          <div class="col-12">
+            <table class="table align-middle mb-0">
+              <thead><tr><th>Rendimiento de API</th><th class="text-end">Valor</th></tr></thead>
+              <tbody>
+                <tr><td>Ventana de observación</td><td class="text-end fw-semibold">{{ apiMetrics.windowMinutes }} min</td></tr>
+                <tr><td>Solicitudes</td><td class="text-end fw-semibold">{{ apiMetrics.requests }}</td></tr>
+                <tr><td>Errores</td><td class="text-end fw-semibold" :class="apiMetrics.errors > 0 ? 'text-danger' : 'text-success'">{{ apiMetrics.errors }}</td></tr>
+                <tr><td>Tasa de error</td><td class="text-end fw-semibold">{{ apiMetrics.errorRate }}%</td></tr>
+                <tr><td>Latencia promedio</td><td class="text-end fw-semibold">{{ apiMetrics.latency }} ms</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div v-else class="row g-3 mt-1">
           <div class="col-12 col-lg-6">
             <table class="table align-middle mb-0">
               <thead><tr><th>Dispositivos</th><th class="text-end">Valor</th></tr></thead>
@@ -125,6 +151,7 @@ import { getApiErrorMessage, unwrapData } from '@/api/client';
 import { resolveZoneTokens } from '@/utils/chartTheme';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -153,38 +180,55 @@ const snap = computed(() => {
   };
 });
 
-const ICONS = {
-  devices: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
-  sensors: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>',
-  alerts: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
-  uptime: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 4 12 14.01l-3-3"/></svg>',
-};
-
 const uptimeColor = computed(() =>
   snap.value.uptime_percent >= 99 ? zone.normal.line
     : snap.value.uptime_percent >= 95 ? zone.warning.line
       : zone.danger.line,
 );
 
-const metricCards = computed(() => [
+const isApiSnapshot = computed(() => Number.isFinite(Number(snapshot.value?.window_minutes)));
+const apiMetrics = computed(() => {
+  const source = snapshot.value || {};
+  return {
+    windowMinutes: Number(source.window_minutes) || 10,
+    requests: Number(source.requests_total) || 0,
+    errors: Number(source.errors_total) || 0,
+    errorRate: Number(source.error_rate_percent) || 0,
+    latency: Number(source.avg_latency_ms) || 0,
+    throughput: Number(source.throughput_rpm_avg) || 0,
+  };
+});
+
+const metricCards = computed(() => {
+  if (isApiSnapshot.value) {
+    const api = apiMetrics.value;
+    return [
+      { label: `Solicitudes en ${api.windowMinutes} min`, value: api.requests, color: zone.info.line, icon: 'chart', sub: `${api.throughput} por minuto` },
+      { label: 'Errores', value: api.errors, color: api.errors > 0 ? zone.danger.line : zone.normal.line, icon: 'alert', sub: 'Respuestas 5xx registradas' },
+      { label: 'Tasa de error', value: `${api.errorRate}%`, color: api.errorRate > 0 ? zone.warning.line : zone.normal.line, icon: 'shield', sub: 'Sobre las solicitudes del periodo' },
+      { label: 'Latencia promedio', value: `${api.latency} ms`, color: zone.info.line, icon: 'pulse', sub: 'Tiempo de respuesta del API' },
+    ];
+  }
+  return [
   {
-    label: 'Dispositivos', value: snap.value.total_devices, color: zone.info.line, icon: ICONS.devices,
+    label: 'Dispositivos', value: snap.value.total_devices, color: zone.info.line, icon: 'device',
     sub: `${snap.value.online_devices} en linea · ${snap.value.offline_devices} fuera`,
   },
   {
-    label: 'Sensores', value: snap.value.total_sensors, color: zone.info.line, icon: ICONS.sensors,
+    label: 'Sensores', value: snap.value.total_sensors, color: zone.info.line, icon: 'sensor',
     sub: `${snap.value.readings_today} lecturas hoy`,
   },
   {
-    label: 'Alertas activas', value: snap.value.active_alerts, icon: ICONS.alerts,
+    label: 'Alertas activas', value: snap.value.active_alerts, icon: 'bell',
     color: snap.value.active_alerts > 0 ? zone.danger.line : zone.normal.line,
     sub: `${snap.value.total_alert_rules} reglas (${snap.value.enabled_rules} activas)`,
   },
   {
-    label: 'Uptime', value: `${snap.value.uptime_percent}%`, color: uptimeColor.value, icon: ICONS.uptime,
+    label: 'Uptime', value: `${snap.value.uptime_percent}%`, color: uptimeColor.value, icon: 'shield',
     sub: `${snap.value.total_labs} laboratorios`,
   },
-]);
+  ];
+});
 
 const devicesChart = computed(() => ({
   labels: ['En línea', 'Fuera de línea'],
@@ -226,6 +270,17 @@ const comparisonChart = computed(() => ({
   }],
 }));
 
+const apiRequestsChart = computed(() => ({
+  labels: ['Solicitudes', 'Errores'],
+  datasets: [{
+    label: `Últimos ${apiMetrics.value.windowMinutes} min`,
+    data: [apiMetrics.value.requests, apiMetrics.value.errors],
+    backgroundColor: [zone.info.line, zone.danger.line],
+    borderRadius: 4,
+    barThickness: 34,
+  }],
+}));
+
 const doughnutOptions = {
   responsive: true, maintainAspectRatio: false, cutout: '62%',
   plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, usePointStyle: true } } },
@@ -246,7 +301,8 @@ async function load() {
   error.value = '';
   try {
     const response = await getMetrics();
-    snapshot.value = unwrapData(response) || {};
+    const payload = unwrapData(response) || {};
+    snapshot.value = payload.snapshot || payload;
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las metricas.');
   } finally {
@@ -261,6 +317,23 @@ onMounted(load);
 .metric-kpi {
   border-left: 4px solid var(--kpi-accent, var(--app-blue, #1d4ed8));
 }
+.metrics-page .section-kicker {
+  display: none;
+}
+.metrics-page .h3 {
+  margin: 0;
+  color: var(--sinoa-text);
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -1px;
+  line-height: 1.2;
+}
+.metrics-page > .lab-toolbar .text-muted {
+  margin: 8px 0 0 !important;
+  color: var(--sinoa-text-muted) !important;
+  font-size: 12px;
+  line-height: 1.6;
+}
 .metric-kpi-icon {
   display: inline-flex;
   align-items: center;
@@ -270,6 +343,23 @@ onMounted(load);
   border-radius: 12px;
   background: color-mix(in srgb, var(--kpi-accent, #1d4ed8) 12%, transparent);
   flex: 0 0 auto;
+}
+.metric-kpi-icon svg,
+.metric-panel-title svg {
+  width: 18px;
+  height: 18px;
+}
+.metric-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  color: var(--sinoa-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.metric-panel-title svg {
+  color: var(--sinoa-action);
 }
 .metric-chart {
   position: relative;
@@ -291,5 +381,9 @@ onMounted(load);
 }
 .metric-gauge-label strong {
   font-size: 1.6rem;
+}
+@media (max-width: 767px) {
+  .metric-chart { height: 205px; }
+  .metric-chart-wide { height: 220px; }
 }
 </style>
