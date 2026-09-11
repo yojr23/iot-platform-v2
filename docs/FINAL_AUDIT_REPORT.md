@@ -1,5 +1,7 @@
 # Final Audit Report — IoT Platform v2
 
+> **Vigencia:** esta es una auditoría puntual del 10 de septiembre de 2026. Sus hallazgos y evidencias se preservan como registro histórico; no debe leerse como el estado en vivo del repositorio. Para el inventario contrastado con la fuente actual, consulte [repository-state-2026-09-11.md](implementation/repository-state-2026-09-11.md).
+
 **Date:** 2026-09-10  
 **Branch:** `refraccion`  
 **Auditor:** 80+ skills, 4 specialized sub-agents  

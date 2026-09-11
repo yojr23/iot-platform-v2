@@ -4,6 +4,8 @@
 
 # Lab Blue en dispositivos, sensores y alertas
 
+> **Vigencia:** esta nota conserva la entrega visual capturada el 10 de septiembre de 2026. Sus cifras de pruebas y su commit base no representan el árbol actual; el estado vigente de capacidades y evidencia está en [repository-state-2026-09-11.md](repository-state-2026-09-11.md).
+
 Base: rama `refraccion`, commit `c60b6dc`. Cambio visual solicitado el 10 de septiembre de 2026.
 
 ## Implementación

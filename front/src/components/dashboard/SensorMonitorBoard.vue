@@ -761,6 +761,12 @@ function openAdd() {
 }
 function confirmAdd() {
     add(newSensor.value);
+    // DOCX RF05: the new widget must be expanded so it's visible on mobile where mini cards
+    // are hidden. add() already sets selectedId; mirror selectSync's expansion logic.
+    const id = selectedId.value;
+    expanded.value = isMobile.value
+        ? new Set([id])
+        : new Set([...expanded.value, id]);
     dialog.value.close();
 }
 function onBackdrop(e) {

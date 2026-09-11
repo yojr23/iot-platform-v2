@@ -57,3 +57,53 @@ describe('AlertsView resolution feedback', () => {
     expect(host.textContent).toContain('Alerta resuelta correctamente.');
   });
 });
+
+describe('AlertsView syncResolvedFromStore regression', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => mountedApps.splice(0).forEach((app) => app.unmount()));
+
+  it('preserves resolved history when a WebSocket AlertResolved arrives for a different alert', async () => {
+    const resolvedHistory = {
+      id: 99,
+      resolved: true,
+      created_at: '2026-09-10T08:00:00Z',
+      alert_rule: { name: 'Humedad baja', severity: 'info' },
+      sensor: { name: 'Humedad', unit: '%' },
+      device: { name: 'Reactor 2' }
+    };
+    const activeAlert = {
+      id: 20,
+      resolved: false,
+      created_at: '2026-09-11T10:00:00Z',
+      alert_rule: { name: 'Temperatura alta', severity: 'warning' },
+      sensor: { name: 'Temperatura', unit: '°C' },
+      device: { name: 'Reactor 1' }
+    };
+
+    getAlerts.mockResolvedValue({ data: { data: [activeAlert, resolvedHistory] } });
+
+    const { host } = await mountAlertsView();
+
+    // Both alerts should be visible in the "all" filter
+    expect(host.textContent).toContain('Temperatura alta');
+    expect(host.textContent).toContain('Humedad baja');
+
+    // Simulate WebSocket resolving alert #20 via the store
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const store = useAlertsStore();
+
+    // Seed store state as if the alert was active
+    store.activeAlerts = [{ ...activeAlert }];
+    store.unresolvedCount = 1;
+
+    // Trigger the resolve — this fires markAlertResolved which removes #20 from activeAlerts
+    // and sets latestAlert, then syncResolvedFromStore should only remove #20 from local list
+    store.markAlertResolved(20);
+    await nextTick();
+    await flush();
+
+    // Resolved history (#99) must survive — only the just-resolved alert (#20) is removed
+    expect(host.textContent).toContain('Humedad baja');
+    expect(host.textContent).not.toContain('Temperatura alta');
+  });
+});

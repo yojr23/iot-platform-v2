@@ -73,6 +73,7 @@ export const useAlertsStore = defineStore('alerts', {
     activeAlerts: [],
     unresolvedCount: 0,
     latestAlert: null,
+    latestResolvedId: null,
     // Honest initial status: no transport engaged yet, not a "polling" fallback claim
     // (audit.md §7 no-hybrid rule) — see useAlertsRealtime.js for the connecting/live/
     // recovering/disconnected/stale vocabulary this gets overwritten with.
@@ -113,6 +114,7 @@ export const useAlertsStore = defineStore('alerts', {
       this.activeAlerts = [];
       this.unresolvedCount = 0;
       this.latestAlert = null;
+      this.latestResolvedId = null;
       this.soundEnabled = false;
       this.loading = false;
       this.error = null;
@@ -234,6 +236,7 @@ export const useAlertsStore = defineStore('alerts', {
         Number(alert.id) === id ? { ...alert, resolved: true, resolved_at: new Date().toISOString() } : alert
       ));
       this.unresolvedCount = Math.max(0, this.unresolvedCount - 1);
+      this.latestResolvedId = id;
       return true;
     },
 

@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 
-export function getDevices(params = {}) {
-  return apiClient.get('/devices', { params });
+export function getDevices({ signal, ...params } = {}) {
+  return apiClient.get('/devices', { params, signal });
 }
 
 export function getDeviceStatusSnapshot(params = {}) {

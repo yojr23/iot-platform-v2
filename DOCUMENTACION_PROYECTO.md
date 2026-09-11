@@ -1,5 +1,7 @@
 # Documentacion Tecnica Formal - IoT Platform v2
 
+> **Nota de vigencia (2026-09-11):** este documento formal conserva contenido de una etapa anterior de la migración y no es la referencia operativa del runtime actual. En particular, las secciones que describen Blade como presentación principal, observers como camino completo de publicación o un flujo de ingesta sin CDC están superadas por el código. La referencia actual y verificable es [docs/implementation/repository-state-2026-09-11.md](docs/implementation/repository-state-2026-09-11.md); el flujo durable actual está en [docs/INGESTION_PIPELINE.md](docs/INGESTION_PIPELINE.md).
+
 Autor: Equipo de desarrollo IoT Platform v2  
 Institucion: Universidad Autonoma de Bucaramanga (UNAB)  
 Ciudad: Bucaramanga  
