@@ -36,11 +36,13 @@ vista de métricas cambia a `requiresAuth` solamente y se presenta en la
 navegación de cualquier sesión autenticada.
 
 La API es la frontera de seguridad. `GET /api/metrics` pasa del grupo `admin` al
-grupo `auth:sanctum`, con límite de lectura. Los endpoints de dispositivos,
-sensores, catálogos, configuración, reglas y roles conservan el middleware
-`admin`. Las rutas de alertas permanecen autenticadas y mantienen las acciones
-`PATCH /api/alerts/{alert}/resolve` y `POST /api/alerts/resolve-all` disponibles
-para ambos roles.
+grupo `auth:sanctum`, con límite de lectura. Las rutas Blade heredadas
+`GET /metrics` y `GET /metrics/data` pasan al grupo web autenticado, fuera del
+subgrupo `admin`, para conservar la misma capacidad cuando se accedan
+directamente. Los endpoints de dispositivos, sensores, catálogos, configuración,
+reglas y roles conservan el middleware `admin`. Las rutas de alertas permanecen
+autenticadas y mantienen las acciones `PATCH /api/alerts/{alert}/resolve` y
+`POST /api/alerts/resolve-all` disponibles para ambos roles.
 
 No se conceden capacidades por ocultar controles: el backend debe devolver 403
 para cualquier intento de administración hecho por un usuario estándar.
@@ -54,6 +56,9 @@ para cualquier intento de administración hecho por un usuario estándar.
   sesión autenticada; Configuración sólo para administradores.
 - `back/routes/api.php`: lectura de métricas para `auth:sanctum`; escritura y
   administración sin cambios de privilegio.
+- `back/routes/web.php`: las dos lecturas Blade heredadas de métricas pasan del
+  subgrupo `admin` al grupo autenticado; las demás rutas administrativas quedan
+  donde están.
 - Pruebas de router, navegación y feature tests Laravel: verifican la matriz
   completa para usuario estándar y administrador.
 
@@ -72,9 +77,11 @@ introducen tokens ni roles nuevos.
 2. Pruebas de navegación: el usuario estándar ve Métricas y no ve Configuración;
    el administrador ve ambas.
 3. Feature test: usuario estándar obtiene 200 de `GET /api/metrics`.
-4. Feature tests de seguridad: usuario estándar conserva 403 en escrituras y
+4. Feature test: usuario estándar obtiene 200 de las lecturas Blade heredadas
+   `/metrics` y `/metrics/data`.
+5. Feature tests de seguridad: usuario estándar conserva 403 en escrituras y
    rutas administrativas representativas; administrador conserva 200/éxito.
-5. Suite frontend y backend correspondiente, seguida de build del frontend.
+6. Suite frontend y backend correspondiente, seguida de build del frontend.
 
 ## Límites de alcance
 
