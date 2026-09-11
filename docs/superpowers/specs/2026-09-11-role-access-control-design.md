@@ -19,14 +19,17 @@ El administrador conserva todas las capacidades existentes.
 | Alertas e historial | Consultar | Consultar |
 | Resolver una alerta / resolver alertas activas | Sí | Sí |
 | Métricas operativas | Consultar | Consultar |
+| Personalizar o guardar el dashboard | No | Sí |
 | Crear, editar o eliminar dispositivos y sensores | No | Sí |
 | Reglas de alerta | No | Sí |
 | Configuración, diagnósticos y correo | No | Sí |
 | Catálogos (laboratorios, tipos de sensor, tipos de dispositivo) | No | Sí |
 | Usuarios y roles | No | Sí |
 
-La resolución de alertas es la única mutación permitida al usuario estándar. No
-se interpreta como permiso de administración de recursos.
+La resolución de alertas es la única mutación de producto permitida al usuario
+estándar. No se interpreta como permiso de administración de recursos ni de
+preferencias. El inicio/cierre de sesión y la verificación de correo se
+conservan como acciones de identidad, no como capacidades de producto.
 
 ## Arquitectura y flujo
 
@@ -44,6 +47,13 @@ reglas y roles conservan el middleware `admin`. Las rutas de alertas permanecen
 autenticadas y mantienen las acciones `PATCH /api/alerts/{alert}/resolve` y
 `POST /api/alerts/resolve-all` disponibles para ambos roles.
 
+`PUT /api/dashboard/preferences` y `POST /dashboard/preferences` pasan a
+administrador. Sus lecturas permanecen autenticadas para que el dashboard
+estándar pueda hidratar una disposición ya existente, pero la interfaz no
+mostrará ni ejecutará controles de edición o guardado para `auth`. La lectura
+Blade heredada `GET /config` pasa también a administrador; no debe filtrar
+configuración fuera de la experiencia de monitoreo.
+
 No se conceden capacidades por ocultar controles: el backend debe devolver 403
 para cualquier intento de administración hecho por un usuario estándar.
 
@@ -54,11 +64,14 @@ para cualquier intento de administración hecho por un usuario estándar.
 - `front/src/components/layout/NavBar.vue` y
   `front/src/components/dashboard/lab/LabShell.vue`: Métricas visible para toda
   sesión autenticada; Configuración sólo para administradores.
-- `back/routes/api.php`: lectura de métricas para `auth:sanctum`; escritura y
-  administración sin cambios de privilegio.
+- `back/routes/api.php`: lectura de métricas para `auth:sanctum`; la escritura
+  de preferencias queda bajo `admin` y el resto de administración no cambia de
+  privilegio.
 - `back/routes/web.php`: las dos lecturas Blade heredadas de métricas pasan del
-  subgrupo `admin` al grupo autenticado; las demás rutas administrativas quedan
-  donde están.
+  subgrupo `admin` al grupo autenticado; la lectura heredada de configuración y
+  la escritura de preferencias pasan a `admin`.
+- `front/src/composables/useLabWorkspace.js` y la superficie del tablero:
+  exponen personalización y guardado solamente a administradores.
 - Pruebas de router, navegación y feature tests Laravel: verifican la matriz
   completa para usuario estándar y administrador.
 
@@ -79,9 +92,13 @@ introducen tokens ni roles nuevos.
 3. Feature test: usuario estándar obtiene 200 de `GET /api/metrics`.
 4. Feature test: usuario estándar obtiene 200 de las lecturas Blade heredadas
    `/metrics` y `/metrics/data`.
-5. Feature tests de seguridad: usuario estándar conserva 403 en escrituras y
+5. Feature tests: usuario estándar recibe 403 al intentar guardar preferencias
+   o abrir la configuración Blade heredada; administrador conserva éxito.
+6. Pruebas frontend: una sesión estándar no expone ni dispara guardado de
+   preferencias, mientras un administrador conserva esa capacidad.
+7. Feature tests de seguridad: usuario estándar conserva 403 en escrituras y
    rutas administrativas representativas; administrador conserva 200/éxito.
-6. Suite frontend y backend correspondiente, seguida de build del frontend.
+8. Suite frontend y backend correspondiente, seguida de build del frontend.
 
 ## Límites de alcance
 
