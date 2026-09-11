@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 
-import { getGraphSeries } from '@/api/graph';
+import { getGraphSeries, getPrivateGraphSeries } from '@/api/graph';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 
 // PLAN.md Stage 6.2 / Gate 6 — historical graph query layer. Owns HISTORICAL window results ONLY,
@@ -85,7 +85,10 @@ export const useGraphSeriesQueryStore = defineStore('graphSeriesQuery', {
       };
 
       try {
-        const response = await getGraphSeries(sensorId, { from, to, signal: controller.signal });
+        // 'private' routes to the authenticated sensor-series endpoint (restricted sensors);
+        // 'public' stays on the anonymous visibility-gated route. Same response shape either way.
+        const fetchSeries = authorizationScope === 'private' ? getPrivateGraphSeries : getGraphSeries;
+        const response = await fetchSeries(sensorId, { from, to, signal: controller.signal });
         const payload = unwrapData(response) || {};
         const result = {
           points: Array.isArray(payload.points) ? payload.points : [],

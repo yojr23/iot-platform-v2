@@ -215,7 +215,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
     volumes:
-      - ./cdc/application.properties:/debezium/conf/application.properties:ro
+      - ./cdc/application.properties:/debezium/config/application.properties:ro
     depends_on:
       db:
         condition: service_healthy

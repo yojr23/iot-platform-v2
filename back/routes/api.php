@@ -114,6 +114,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [SensorApiController::class, 'createSensor'])->middleware(['admin', 'throttle:api-write']);
         Route::get('/{sensor}/readings/export', [SensorApiController::class, 'exportReadings'])->middleware('throttle:api-read');
         Route::get('/{sensor}/readings', [SensorApiController::class, 'readings'])->middleware('throttle:api-read');
+        // Authenticated bounded graph series for restricted (private) sensors — the private
+        // counterpart of /api/public/graph/sensors/{sensor}/series (which 404s for restricted
+        // sensors). Auth is the boundary here; no PublicGraphVisibility gate.
+        Route::get('/{sensor}/series', [SensorApiController::class, 'series'])->middleware('throttle:api-read');
         // Gate 6: moved out of the anonymous surface — realtime latest-readings is an authorized
         // read now, same controller action, throttle + api.metrics preserved.
         Route::get('/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])

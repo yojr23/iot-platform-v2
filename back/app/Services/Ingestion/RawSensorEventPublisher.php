@@ -3,12 +3,15 @@
 namespace App\Services\Ingestion;
 
 use App\Models\RawSensorEvent;
+use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
 
 class RawSensorEventPublisher
 {
+    use UsesRawRedisCommands;
+
     /**
      * Publica un evento mínimo para consumo asíncrono futuro.
      * No debe romper el flujo de ingesta si Redis no está disponible.
@@ -38,9 +41,17 @@ class RawSensorEventPublisher
         ];
 
         try {
-            // phpredis signature: xAdd(key, id, array $fields) — fields is ONE associative
-            // array, not flattened key/value positional args.
-            Redis::command('xadd', [$streamName, '*', $fields]);
+            // Raw XADD (unprefixed key) so this stream name matches EXACTLY what the raw-command
+            // consumers (RawStreamConsumer via UsesRawRedisCommands) and Debezium read. The Redis
+            // facade would prepend Laravel's key prefix (iot_platform_v2_back_database_), writing to
+            // a different key than the consumers read from — a silent delivery break. XADD fields
+            // are flattened key/value positional args in the RESP wire form.
+            $xaddArgs = ['XADD', $streamName, '*'];
+            foreach ($fields as $k => $v) {
+                $xaddArgs[] = $k;
+                $xaddArgs[] = $v;
+            }
+            $this->raw(Redis::connection('default'), $xaddArgs);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
             Log::info('RawSensorEventPublisher:publish completed', [

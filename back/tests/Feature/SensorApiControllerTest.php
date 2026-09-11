@@ -387,4 +387,46 @@ class SensorApiControllerTest extends TestCase
             Redis::swap($originalRedis);
         }
     }
+
+    public function test_authenticated_series_returns_history_for_a_restricted_sensor(): void
+    {
+        // A restricted sensor 404s on the public graph route; the authenticated series endpoint
+        // must return its history. This is the private counterpart the frontend needs.
+        $device = Device::factory()->create(['status' => true, 'is_active' => true]);
+        $sensor = Sensor::factory()->create([
+            'device_id' => $device->id,
+            'public_monitoring_enabled' => false,
+        ]);
+
+        $now = Carbon::create(2026, 9, 11, 12, 0, 0, config('app.timezone'));
+        Carbon::setTestNow($now);
+
+        $sensor->readings()->create(['value' => 8.4, 'reading_time' => $now->copy()->subMinutes(30)]);
+        $sensor->readings()->create(['value' => 8.6, 'reading_time' => $now->copy()->subMinutes(10)]);
+
+        $from = $now->copy()->subHours(2)->utc()->format('Y-m-d\TH:i:s\Z');
+        $to = $now->copy()->utc()->format('Y-m-d\TH:i:s\Z');
+
+        $this->actingAs(User::factory()->create())
+            ->getJson("/api/sensors/{$sensor->id}/series?from={$from}&to={$to}")
+            ->assertOk()
+            ->assertJsonPath('stats.count', 2)
+            ->assertJsonPath('stats.min', 8.4)
+            ->assertJsonPath('stats.max', 8.6);
+
+        // Same restricted sensor is invisible on the anonymous public route.
+        $this->getJson("/api/public/graph/sensors/{$sensor->id}/series?from={$from}&to={$to}")
+            ->assertNotFound();
+
+        Carbon::setTestNow();
+    }
+
+    public function test_series_endpoint_requires_authentication(): void
+    {
+        $device = Device::factory()->create();
+        $sensor = Sensor::factory()->create(['device_id' => $device->id]);
+
+        $this->getJson("/api/sensors/{$sensor->id}/series?from=2026-09-11T00:00:00Z&to=2026-09-11T01:00:00Z")
+            ->assertUnauthorized();
+    }
 }

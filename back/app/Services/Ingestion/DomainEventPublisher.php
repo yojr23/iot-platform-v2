@@ -3,6 +3,7 @@
 namespace App\Services\Ingestion;
 
 use App\Models\DomainEventOutbox;
+use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
@@ -18,6 +19,8 @@ use Throwable;
  */
 class DomainEventPublisher
 {
+    use UsesRawRedisCommands;
+
     public function publish(DomainEventOutbox $outbox): bool
     {
         Log::info('DomainEventPublisher:publish entry', [
@@ -41,10 +44,15 @@ class DomainEventPublisher
         ];
 
         try {
-            // phpredis signature: xAdd(key, id, array $fields) — fields is ONE associative
-            // array, not flattened key/value positional args (that raised "xadd() expects at
-            // most 6 arguments, N given" and broke every domain-event publish at runtime).
-            Redis::command('xadd', [$streamName, '*', $fields]);
+            // Raw XADD (unprefixed) so this key matches EXACTLY what DomainEventBroadcastConsumer
+            // (raw commands) reads. The Redis facade would prepend Laravel's key prefix, writing to
+            // a key the consumer never reads — a silent delivery break.
+            $xaddArgs = ['XADD', $streamName, '*'];
+            foreach ($fields as $k => $v) {
+                $xaddArgs[] = $k;
+                $xaddArgs[] = $v;
+            }
+            $this->raw(Redis::connection('default'), $xaddArgs);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
             Log::info('DomainEventPublisher:publish completed', [

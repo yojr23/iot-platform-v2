@@ -1,0 +1,103 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\DomainEventOutbox;
+use App\Models\RawSensorEvent;
+use App\Services\Ingestion\DomainEventPublisher;
+use App\Services\Ingestion\RawSensorEventPublisher;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Redis;
+use Tests\TestCase;
+
+/**
+ * Regression freeze for a live-only delivery break the mocked CDC tests could NOT catch: the
+ * publishers wrote via the Redis facade (which prepends Laravel's key prefix,
+ * `iot_platform_v2_back_database_`), while every consumer + Debezium reads the stream with RAW,
+ * UNPREFIXED commands. Result: XADD landed on `<prefix>iot.raw-events` but the consumer read
+ * `iot.raw-events` — they never met, so readings were never created in the running Docker stack.
+ *
+ * This test uses the REAL publisher against REAL Redis and asserts the entry is readable at the
+ * unprefixed key (the exact name the raw-command consumer uses). It fails if a publisher ever goes
+ * back to the prefixing facade path.
+ */
+class PublisherStreamPrefixTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        try {
+            Redis::connection('default')->client();
+            Redis::command('ping', []);
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('ENVIRONMENT_CONSTRAINT: no Redis available ('.$e->getMessage().')');
+        }
+    }
+
+    public function test_raw_publisher_writes_to_the_unprefixed_stream_the_consumer_reads(): void
+    {
+        $stream = 'test.prefix.raw-events';
+        config(['app.ingestion_raw_events_stream' => $stream]);
+
+        $conn = Redis::connection('default');
+        $this->rawDel($conn, $stream);
+
+        $event = RawSensorEvent::create([
+            'topic' => 'test', 'source' => 'test', 'source_event_id' => 'pfx-'.uniqid(),
+            'node_id' => 'SN-PFX', 'payload' => ['sensors' => []],
+            'received_at' => now(), 'status' => 'received',
+        ]);
+
+        $this->assertTrue(app(RawSensorEventPublisher::class)->publish($event));
+
+        // Read with a RAW (unprefixed) command — exactly what the consumer does. XLEN must be 1.
+        $len = (int) $this->rawXlen($conn, $stream);
+        $this->assertSame(1, $len, 'Raw publisher must XADD to the unprefixed stream the consumer reads.');
+
+        $this->rawDel($conn, $stream);
+    }
+
+    public function test_domain_publisher_writes_to_the_unprefixed_stream_the_consumer_reads(): void
+    {
+        $stream = 'test.prefix.domain-events';
+        config(['app.domain_events_stream' => $stream]);
+
+        $conn = Redis::connection('default');
+        $this->rawDel($conn, $stream);
+
+        $outbox = DomainEventOutbox::create([
+            'event_type' => 'sensor.reading.created',
+            'aggregate_type' => 'sensor_reading',
+            'aggregate_id' => '1',
+            'payload' => ['reading_id' => 1],
+            'status' => 'pending',
+        ]);
+
+        $this->assertTrue(app(DomainEventPublisher::class)->publish($outbox));
+
+        $len = (int) $this->rawXlen($conn, $stream);
+        $this->assertSame(1, $len, 'Domain publisher must XADD to the unprefixed stream the consumer reads.');
+
+        $this->rawDel($conn, $stream);
+    }
+
+    private function rawXlen($conn, string $stream): mixed
+    {
+        $client = $conn->client();
+
+        return $client instanceof \Redis
+            ? $client->rawCommand('XLEN', $stream)
+            : $client->executeRaw(['XLEN', $stream]);
+    }
+
+    private function rawDel($conn, string $stream): void
+    {
+        $client = $conn->client();
+        $client instanceof \Redis
+            ? $client->rawCommand('DEL', $stream)
+            : $client->executeRaw(['DEL', $stream]);
+    }
+}

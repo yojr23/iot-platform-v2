@@ -101,7 +101,10 @@ export function useLabWorkspace(devices) {
             to = new Date(),
             from = new Date(to - ranges[range]);
         const descriptor = {
-            authorizationScope: "public",
+            // Authenticated users hit the private sensor-series endpoint so restricted
+            // (public_monitoring_enabled=false) sensors return history instead of 404; guests stay
+            // on the anonymous public route.
+            authorizationScope: auth.isAuthenticated ? "private" : "public",
             sensorId: sid,
             from,
             to,

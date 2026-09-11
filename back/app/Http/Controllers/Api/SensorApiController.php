@@ -8,8 +8,10 @@ use App\Models\Device;
 use App\Models\Sensor;
 use App\Services\Ingestion\SensorReadingService;
 use App\Services\Ingestion\SensorReadingProjectionService;
+use App\Services\Monitoring\PublicGraphSeriesService;
 use App\Services\Monitoring\RuleToGraphZones;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -159,6 +161,44 @@ class SensorApiController extends Controller
     public function storeReading(Request $request, Sensor $sensor)
     {
         return $this->store($request, $sensor);
+    }
+
+    /**
+     * Authenticated bounded graph series — the private-sensor counterpart of
+     * PublicGraphController::series. Reuses the SAME PublicGraphSeriesService (indexed DB range,
+     * server-computed stats, JSON_PRESERVE_ZERO_FRACTION) but WITHOUT PublicGraphVisibility: the
+     * auth:sanctum middleware is the authorization boundary, so an authenticated user can pull the
+     * history of a restricted (public_monitoring_enabled=false) sensor — the endpoint the frontend
+     * previously (incorrectly) tried to satisfy via /public/graph/*, which 404s for restricted
+     * sensors. Same window contract (from<to, YYYY-MM-DDTHH:mm:ssZ) as the public route.
+     */
+    public function series(Request $request, Sensor $sensor, PublicGraphSeriesService $service)
+    {
+        $startTime = microtime(true);
+
+        $validated = $request->validate([
+            'from' => ['required', 'string', 'regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/'],
+            'to' => ['required', 'string', 'regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/'],
+        ]);
+
+        $from = CarbonImmutable::createFromFormat('Y-m-d\TH:i:s\Z', $validated['from'], 'UTC') ?: null;
+        $to = CarbonImmutable::createFromFormat('Y-m-d\TH:i:s\Z', $validated['to'], 'UTC') ?: null;
+
+        if (! $from || ! $to || ! $from->lessThan($to)) {
+            throw ValidationException::withMessages([
+                'range' => 'The graph window requires from < to using YYYY-MM-DDTHH:mm:ssZ.',
+            ]);
+        }
+
+        $result = $service->series($sensor, $from, $to);
+
+        Log::info('Authenticated sensor series request', [
+            'sensor_id' => $sensor->id,
+            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
+        ]);
+
+        return response()->json($result, 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     public function readings(Request $request, Sensor $sensor)

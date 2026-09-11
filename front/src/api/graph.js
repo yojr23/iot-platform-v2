@@ -29,6 +29,16 @@ export function getGraphSeries(sensorId, { from, to, signal } = {}) {
   });
 }
 
+// Authenticated counterpart of getGraphSeries for restricted (private) sensors. Same response
+// shape ({points, stats, truncated}); the public route 404s for public_monitoring_enabled=false
+// sensors, so an authenticated user querying a private sensor's history must use this one.
+export function getPrivateGraphSeries(sensorId, { from, to, signal } = {}) {
+  return apiClient.get(`/sensors/${sensorId}/series`, {
+    params: { from: toWindowParam(from), to: toWindowParam(to) },
+    signal
+  });
+}
+
 /**
  * Shared adapter from a graph-series point (`{timestamp, value, reading_id}`) to the reading
  * shape the live sensor projection store (front/src/stores/sensorReadings.js) and
