@@ -4,6 +4,7 @@ namespace App\Services\Ingestion;
 
 use App\Models\RawSensorEvent;
 use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
+use App\Services\Monitoring\EventPipelineMetricsService;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -179,6 +180,7 @@ class RawStreamConsumer
         if (! is_string($eventId) || $eventId === '' || ! ctype_digit($eventId)) {
             $this->deadLetter($id, $fields, 'malformed_message: missing or invalid event_id', null, $this->deliveryCount($id));
             $this->ack($id);
+            EventPipelineMetricsService::increment('raw_failed');
 
             return 'dlq';
         }
@@ -189,6 +191,7 @@ class RawStreamConsumer
             // References a business row that does not exist — no amount of retrying fixes this.
             $this->deadLetter($id, $fields, 'unknown_raw_sensor_event', null, $this->deliveryCount($id));
             $this->ack($id);
+            EventPipelineMetricsService::increment('raw_failed');
 
             return 'dlq';
         }
@@ -203,7 +206,7 @@ class RawStreamConsumer
         try {
             // Both outcomes (this delivery processed it, or a concurrent one already did) mean the
             // receipt is durably handled — ack either way.
-            DB::transaction(function () use ($eventId): string {
+            $outcome = DB::transaction(function () use ($eventId): string {
                 // Concurrent-safe idempotency: two physical stream entries for the same receipt
                 // (at-least-once relay) can be claimed by two consumers at once. Re-read the row
                 // FOR UPDATE inside the transaction so only one wins the "received -> processed"
@@ -239,6 +242,10 @@ class RawStreamConsumer
 
             $this->ack($id);
 
+            if ($outcome === 'processed') {
+                EventPipelineMetricsService::increment('raw_processed');
+            }
+
             return 'acked';
         } catch (Throwable $e) {
             $attempts = $this->deliveryCount($id);
@@ -254,6 +261,7 @@ class RawStreamConsumer
                 $event->forceFill(['status' => 'failed', 'error' => $e->getMessage()])->save();
                 $this->deadLetter($id, $fields, 'max_attempts_exceeded: '.$e->getMessage(), $event->source_event_id, $attempts);
                 $this->ack($id);
+                EventPipelineMetricsService::increment('raw_failed');
 
                 return 'dlq';
             }

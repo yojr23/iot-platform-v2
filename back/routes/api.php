@@ -75,6 +75,12 @@ Route::get('/internal/metrics/api-performance', [InternalMetricsController::clas
     ->middleware('admin')
     ->middleware('throttle:api-read');
 
+Route::get('/internal/metrics/event-pipeline', [InternalMetricsController::class, 'eventPipeline'])
+    ->middleware('api.metrics')
+    ->middleware('auth:sanctum')
+    ->middleware('admin')
+    ->middleware('throttle:api-read');
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();

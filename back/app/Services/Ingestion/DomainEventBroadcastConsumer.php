@@ -10,6 +10,7 @@ use App\Models\Alert;
 use App\Models\DomainEventOutbox;
 use App\Models\SensorReading;
 use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
+use App\Services\Monitoring\EventPipelineMetricsService;
 use App\Services\Monitoring\PublicGraphVisibility;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\DB;
@@ -171,6 +172,7 @@ class DomainEventBroadcastConsumer
         if (! is_string($outboxId) || $outboxId === '' || ! ctype_digit($outboxId)) {
             $this->deadLetter($id, $fields, 'malformed_message: missing or invalid event_id', $this->deliveryCount($id));
             $this->ack($id);
+            EventPipelineMetricsService::increment('domain_broadcast_failure');
 
             return 'dlq';
         }
@@ -180,6 +182,7 @@ class DomainEventBroadcastConsumer
         if (! $outbox) {
             $this->deadLetter($id, $fields, 'unknown_domain_event_outbox', $this->deliveryCount($id));
             $this->ack($id);
+            EventPipelineMetricsService::increment('domain_broadcast_failure');
 
             return 'dlq';
         }
@@ -211,6 +214,10 @@ class DomainEventBroadcastConsumer
 
             $this->ack($id);
 
+            if ($outcome === 'delivered') {
+                EventPipelineMetricsService::increment('domain_broadcast_success');
+            }
+
             return 'acked';
         } catch (Throwable $e) {
             $attempts = $this->deliveryCount($id);
@@ -226,6 +233,7 @@ class DomainEventBroadcastConsumer
             if ($attempts >= self::MAX_ATTEMPTS) {
                 $this->deadLetter($id, $fields, 'max_attempts_exceeded: '.$e->getMessage(), $attempts);
                 $this->ack($id);
+                EventPipelineMetricsService::increment('domain_broadcast_failure');
 
                 return 'dlq';
             }

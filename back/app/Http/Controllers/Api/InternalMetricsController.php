@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Monitoring\ApiMetricsService;
+use App\Services\Monitoring\EventPipelineMetricsService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -51,5 +52,10 @@ class InternalMetricsController extends Controller
         ]);
 
         return response()->json($result);
+    }
+
+    public function eventPipeline(EventPipelineMetricsService $metrics): JsonResponse
+    {
+        return response()->json($metrics->snapshot());
     }
 }
