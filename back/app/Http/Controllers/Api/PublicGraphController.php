@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Sensor;
 use App\Services\Monitoring\PublicGraphSeriesService;
 use App\Services\Monitoring\PublicGraphVisibility;
+use App\Services\Monitoring\RuleToGraphZones;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,9 @@ use Illuminate\Validation\ValidationException;
  *
  * Existing code reused: `PublicGraphVisibility` (this task's policy owner), the `Sensor` /
  * `SensorType` / `Device` relations already defined on the models, and
- * `PublicGraphSeriesService` for the bounded DB-backed range query.
+ * `PublicGraphSeriesService` for the bounded DB-backed range query. graph-semantic-zones-plan.md
+ * (GRAPH-002): `bootstrap` now also projects `RuleToGraphZones::zonesFor()` per public sensor,
+ * reduced to `{from,to,severity}` only — no rule ids/scope/notification policy leak to guests.
  * Existing owner retired/delegated: none — per PLAN.md v1.3 correction #4, transitional public
  * routes (`/api/dashboard/public`, `/api/sensors/{sensor}/latest-readings`,
  * `/api/devices/{device}/sensors`, `/api/config/public`) stay reachable until the atomic
@@ -30,7 +33,7 @@ class PublicGraphController extends Controller
 {
     private const TIMESTAMP_FORMAT = 'Y-m-d\TH:i:s\Z';
 
-    public function bootstrap(PublicGraphVisibility $visibility): JsonResponse
+    public function bootstrap(PublicGraphVisibility $visibility, RuleToGraphZones $zones): JsonResponse
     {
         $startTime = microtime(true);
 
@@ -44,7 +47,7 @@ class PublicGraphController extends Controller
 
         $devices = $sensors
             ->groupBy('device_id')
-            ->map(function ($sensorsForDevice) {
+            ->map(function ($sensorsForDevice) use ($zones) {
                 $device = $sensorsForDevice->first()->device ?? null;
 
                 if ($device === null) {
@@ -58,6 +61,7 @@ class PublicGraphController extends Controller
                         'id' => $sensor->id,
                         'name' => $sensor->name,
                         'unit' => $sensor->sensorType?->unit,
+                        'bands' => $this->publicBands($zones, $sensor),
                     ])->values()->all(),
                 ];
             })
@@ -75,11 +79,14 @@ class PublicGraphController extends Controller
             'duration_ms' => $durationMs,
         ]);
 
+        // JSON_PRESERVE_ZERO_FRACTION: without it, an integer-valued band boundary like 30.0
+        // would serialize as the int 30, silently losing the "measured threshold" float contract
+        // (same reasoning as `series()` below).
         return response()->json([
             'version' => 1,
             'default_sensor_id' => $sensors->first()?->id,
             'devices' => $devices->all(),
-        ]);
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     public function series(
@@ -112,6 +119,21 @@ class PublicGraphController extends Controller
         // assertSame(10.0, ...)) would receive/decode an int and silently lose the "this is a
         // measured float" contract for point values and stats.
         return response()->json($result, 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    /**
+     * Public-safe reduction of `RuleToGraphZones::zonesFor()`: only `{from,to,severity}` per band.
+     * No rule ids, no scope, no notification policy — guests never see anything beyond the visual
+     * severity intervals needed to paint the plot area.
+     *
+     * @return list<array{from: float|null, to: float|null, severity: string}>
+     */
+    private function publicBands(RuleToGraphZones $zones, Sensor $sensor): array
+    {
+        return array_map(
+            fn (array $zone) => ['from' => $zone['from'], 'to' => $zone['to'], 'severity' => $zone['severity']],
+            $zones->zonesFor($sensor)['zones'],
+        );
     }
 
     /**

@@ -110,7 +110,14 @@
                             <span>{{ number(latest?.value) }}</span
                             ><span class="lab-unit">{{
                                 selectedSensor?.unit
-                            }}</span>
+                            }}</span
+                            ><span
+                                v-if="selectedState"
+                                class="lab-zone-badge"
+                                :class="selectedState"
+                                role="status"
+                                >{{ severityLabel(selectedState) }}</span
+                            >
                         </div>
                         <div class="lab-connection">
                             <span
@@ -540,6 +547,8 @@ import SensorReadingChart from "@/components/charts/SensorReadingChart.vue";
 import { useLabWorkspace, ranges } from "@/composables/useLabWorkspace";
 import { useAlertsStore } from "@/stores/alerts";
 import { getDashboardMetrics } from "@/api/dashboard";
+import { sensorSemanticState } from "@/components/charts/graphZonesProjection";
+import { severityLabel } from "@/utils/formatters";
 const props = defineProps({ devices: { type: Array, default: () => [] } });
 const router = useRouter(),
     alerts = useAlertsStore();
@@ -581,6 +590,12 @@ const selectedSensor = computed(() => sensor(selected.value)),
     );
 const critical = computed(() =>
     alerts.activeAlerts.find((a) => a.alert_rule?.severity === "danger"),
+);
+// GRAPH-011/GRAPH-012: the selected sensor's own state, from ITS OWN bands + ITS OWN current
+// value only — never from `alerts` (the store above), so a critical alert on some other sensor
+// can never bleed into this badge or the chart background.
+const selectedState = computed(() =>
+    sensorSemanticState(selectedSensor.value?.bands, latest.value?.value),
 );
 // C1: summary cards. Authenticated users get the authoritative system-wide
 // counts from GET /dashboard/metrics (mount-time snapshot, no polling refresh
@@ -775,5 +790,32 @@ onBeforeRouteLeave(
 }
 .lab-realtime-toggle .lab-dot.off {
     background: #94a3b8;
+}
+/* GRAPH-011 — selected-sensor semantic state badge. Reuses the --sinoa-zone-* tokens
+   (src/assets/styles/lab-blue.css) so its colors match the chart's plot-area background exactly. */
+.lab-zone-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    color: #fff;
+    background: var(--sinoa-zone-neutral);
+}
+.lab-zone-badge.danger {
+    background: var(--sinoa-zone-danger);
+}
+.lab-zone-badge.warning {
+    background: var(--sinoa-zone-warning);
+}
+.lab-zone-badge.info {
+    background: var(--sinoa-zone-info);
+}
+.lab-zone-badge.normal {
+    background: var(--sinoa-zone-normal);
+}
+.lab-zone-badge.neutral {
+    background: var(--sinoa-zone-neutral);
+    color: #334155;
 }
 </style>

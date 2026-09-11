@@ -11,6 +11,16 @@
     --sinoa-text-muted: #64748b;
     --sinoa-border: #e2e8f0;
     --sinoa-danger: #dc2626;
+    /* docs/implementation/graph-semantic-zones-plan.md — graph plot-area semantic zone tokens.
+       Reuse of colors already used elsewhere in this file (connected/disconnected dots, severity
+       badges) so the chart's danger/warning/normal read consistently with the rest of the UI.
+       info is a distinct brand/blue tint (never green); neutral is "limits not configured" (never
+       green either). */
+    --sinoa-zone-danger: #dc2626;
+    --sinoa-zone-warning: #d97706;
+    --sinoa-zone-info: #2563eb;
+    --sinoa-zone-normal: #16a34a;
+    --sinoa-zone-neutral: #94a3b8;
     --app-blue: #2563eb;
     --app-muted: #64748b;
     --app-border: #e2e8f0;

@@ -113,6 +113,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])
             ->middleware('api.metrics')
             ->middleware('throttle:api-read');
+        // docs/implementation/graph-semantic-zones-plan.md (GRAPH-001/008): authenticated
+        // projection of RuleToGraphZones, same normalizer the public bootstrap consumes.
+        Route::get('/{sensor}/graph-zones', [SensorApiController::class, 'graphZones'])
+            ->middleware('throttle:api-read');
         Route::get('/{sensor}', [SensorApiController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/{sensor}', [SensorApiController::class, 'updateSensor'])->middleware(['admin', 'throttle:api-write']);
         Route::delete('/{sensor}', [SensorApiController::class, 'destroySensor'])->middleware(['admin', 'throttle:api-write']);

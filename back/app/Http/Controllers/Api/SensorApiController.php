@@ -8,6 +8,7 @@ use App\Models\Device;
 use App\Models\Sensor;
 use App\Services\Ingestion\SensorReadingService;
 use App\Services\Ingestion\SensorReadingProjectionService;
+use App\Services\Monitoring\RuleToGraphZones;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -624,6 +625,19 @@ class SensorApiController extends Controller
                 'message' => 'Se produjo un error inesperado eliminando el sensor.',
             ], 500);
         }
+    }
+
+    /**
+     * docs/implementation/graph-semantic-zones-plan.md (GRAPH-001/008) — authenticated projection
+     * of the same `RuleToGraphZones` normalizer the public bootstrap uses. Fuller than the public
+     * projection (includes rule boundary values + rule ids for the Sensor Inspector), but still no
+     * notification policy — severity is the only semantic source exposed.
+     */
+    public function graphZones(Sensor $sensor, RuleToGraphZones $zones)
+    {
+        // JSON_PRESERVE_ZERO_FRACTION: an integer-valued threshold like 30.0 must not silently
+        // decode as the int 30 on the client (same reasoning as PublicGraphController::series()).
+        return response()->json($zones->zonesFor($sensor), 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     public function show(Request $request, Sensor $sensor)

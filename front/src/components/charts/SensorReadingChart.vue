@@ -69,16 +69,22 @@ import { Line } from 'vue-chartjs';
 
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
-import { resolveChartTokens } from '@/utils/chartTheme';
+import { resolveChartTokens, resolveZoneTokens } from '@/utils/chartTheme';
 import { formatDate, formatNumber } from '@/utils/formatters';
+import { zoneBackgroundPlugin } from './zoneBackgroundPlugin';
 
-ChartJS.register(Filler, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+ChartJS.register(Filler, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, zoneBackgroundPlugin);
 
 // Presentation-only chart owner. Honest V1 scope: last-observed timestamp,
 // no-data/loading/error states, and min/max/mean/count for the returned
-// set. Never call HTTP or Echo here, never render threshold bands,
-// staleness labels, cadence/completeness/quality, or per-sensor precision
-// rounding — those are unowned future contracts.
+// set. Never call HTTP or Echo here, staleness labels, cadence/completeness/
+// quality, or per-sensor precision rounding — those are unowned future
+// contracts. docs/implementation/graph-semantic-zones-plan.md lifts the
+// previous "never render threshold bands" rule: `zones` below is a
+// server-owned, already-precedence-resolved view-model (graphZonesProjection.js
+// / RuleToGraphZones), not an invented threshold — this component only maps
+// it to pixels via the Y scale (zoneBackgroundPlugin.js), it never evaluates
+// AlertRules itself.
 const props = defineProps({
   labels: {
     type: Array,
@@ -106,6 +112,12 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // Already-normalized `graphZonesProjection.buildZonesViewModel()` output. Optional — a chart
+  // with no zones data (e.g. a sensor without bands) simply paints nothing extra.
+  zones: {
+    type: Object,
+    default: () => ({ regions: [], boundaries: [], domainValues: [] })
+  },
   loading: {
     type: Boolean,
     default: false
@@ -122,6 +134,17 @@ const chartContainer = ref(null);
 let resizeObserver = null;
 
 const tokens = resolveChartTokens();
+const zoneTokens = resolveZoneTokens();
+
+// GRAPH-009/010: the Y-axis domain must include both the observed values AND any configured
+// boundary outside them (e.g. a danger threshold far above all current readings must still be
+// visible), so a plain `beginAtZero:false` auto-range over just `series` is not enough.
+const yDomain = computed(() => {
+  const observed = props.series.filter((value) => Number.isFinite(value));
+  const values = [...observed, ...props.zones.domainValues];
+  if (!values.length) return { min: undefined, max: undefined };
+  return { min: Math.min(...values), max: Math.max(...values) };
+});
 
 const chartData = computed(() => ({
   labels: props.labels,
@@ -141,24 +164,31 @@ const chartData = computed(() => ({
   ]
 }));
 
-const chartOptions = {
+const chartOptions = computed(() => ({
   animation: false,
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
     legend: {
       display: false
+    },
+    zoneBackground: {
+      regions: props.zones.regions,
+      boundaries: props.zones.boundaries,
+      tokens: zoneTokens
     }
   },
   scales: {
     x: { ticks: { color: tokens.muted, font: { family: 'Inter', size: 11 }, maxTicksLimit: 6, maxRotation: 0, callback(value) { const label = this.getLabelForValue(value); const clock = label.match(/\b(\d{1,2}:\d{2})(?::\d{2})?/); return clock ? clock[1] : label; } }, grid: { display: false } },
     y: {
       beginAtZero: false,
+      suggestedMin: yDomain.value.min,
+      suggestedMax: yDomain.value.max,
       ticks: { color: tokens.muted, font: { family: 'Inter', size: 11 }, maxTicksLimit: 6 },
       grid: { color: '#eef2f7' }, border: { display: false }
     }
   }
-};
+}));
 
 onMounted(() => {
   // ResizeObserver is unavailable in older browsers and our non-browser test environment.

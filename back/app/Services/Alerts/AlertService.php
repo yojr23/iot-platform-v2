@@ -4,6 +4,7 @@ namespace App\Services\Alerts;
 
 use App\Models\Alert;
 use App\Models\AlertRule;
+use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Services\Ingestion\DomainEventRecorder;
 use Illuminate\Support\Collection;
@@ -29,21 +30,14 @@ class AlertService
     }
 
     /**
-     * Devuelve las reglas que se disparan con una lectura.
+     * Reglas candidatas para un sensor: mismo sensor_type_id, device_id/sensor_id nulos o
+     * coincidentes, y min o max definido. Este es el ÚNICO resolutor de scoping de reglas —
+     * `triggeredRulesForReading` (valor de una lectura) y `RuleToGraphZones` (bandas de gráfico)
+     * reutilizan este método en lugar de duplicar el query.
      */
-    public function triggeredRulesForReading(SensorReading $reading): Collection
+    public function applicableRules(Sensor $sensor): Collection
     {
-        Log::info('AlertService:triggeredRulesForReading entry', ['reading_id' => $reading->id, 'sensor_id' => $reading->sensor_id]);
-
-        $startTime = microtime(true);
-        $sensor = $reading->sensor()->with(['device.lab'])->first();
-
-        if (! $sensor) {
-            Log::info('AlertService:triggeredRulesForReading no sensor found', ['reading_id' => $reading->id]);
-            return collect();
-        }
-
-        $alertRules = AlertRule::query()
+        return AlertRule::query()
             ->where('sensor_type_id', $sensor->sensor_type_id)
             ->where(function ($query): void {
                 $query->whereNotNull('min_value')
@@ -58,6 +52,24 @@ class AlertService
                     ->orWhere('sensor_id', $sensor->id);
             })
             ->get();
+    }
+
+    /**
+     * Devuelve las reglas que se disparan con una lectura.
+     */
+    public function triggeredRulesForReading(SensorReading $reading): Collection
+    {
+        Log::info('AlertService:triggeredRulesForReading entry', ['reading_id' => $reading->id, 'sensor_id' => $reading->sensor_id]);
+
+        $startTime = microtime(true);
+        $sensor = $reading->sensor()->with(['device.lab'])->first();
+
+        if (! $sensor) {
+            Log::info('AlertService:triggeredRulesForReading no sensor found', ['reading_id' => $reading->id]);
+            return collect();
+        }
+
+        $alertRules = $this->applicableRules($sensor);
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

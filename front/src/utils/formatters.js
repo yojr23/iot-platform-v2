@@ -70,7 +70,11 @@ export function severityLabel(value) {
   const labels = {
     info: 'Info',
     warning: 'Advertencia',
-    danger: 'Critica'
+    danger: 'Critica',
+    // GRAPH-011: selected-sensor semantic state also needs the two non-alert-rule states — a
+    // measured value inside no violated rule ("normal"), and "limits not configured" (neutral).
+    normal: 'Normal',
+    neutral: 'Sin limites configurados'
   };
 
   return labels[value] || value || '-';

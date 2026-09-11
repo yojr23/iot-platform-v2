@@ -41,3 +41,33 @@ export function resolveChartTokens() {
     grid
   };
 }
+
+// docs/implementation/graph-semantic-zones-plan.md — plot-area semantic zone colors. Reuses the
+// SINOA `--sinoa-zone-*` tokens defined in `src/assets/styles/lab-blue.css` (danger/warning/info/
+// normal/neutral); fallback hexes below mirror those exact values for canvas rendering and for
+// tests that don't load the stylesheet. `info` stays a distinct brand/blue tint, never green;
+// `neutral` ("limits not configured") stays gray, never green either.
+const ZONE_FALLBACKS = Object.freeze({
+  danger: '#dc2626',
+  warning: '#d97706',
+  info: '#2563eb',
+  normal: '#16a34a',
+  neutral: '#94a3b8'
+});
+
+const ZONE_CSS_VARS = Object.freeze({
+  danger: '--sinoa-zone-danger',
+  warning: '--sinoa-zone-warning',
+  info: '--sinoa-zone-info',
+  normal: '--sinoa-zone-normal',
+  neutral: '--sinoa-zone-neutral'
+});
+
+export function resolveZoneTokens() {
+  return Object.fromEntries(
+    Object.entries(ZONE_CSS_VARS).map(([severity, cssVar]) => {
+      const line = readCssVar(cssVar, ZONE_FALLBACKS[severity]);
+      return [severity, { line, fill: hexToRgba(line, 0.16) }];
+    })
+  );
+}

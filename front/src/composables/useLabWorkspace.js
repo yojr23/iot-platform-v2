@@ -8,6 +8,7 @@ import {
     composeGraphSeries,
     computeStats,
 } from "@/components/charts/graphSeriesProjection";
+import { buildZonesViewModel } from "@/components/charts/graphZonesProjection";
 import { buildSensorChartViewModel } from "@/components/charts/sensorChartViewModel";
 import {
     getDashboardPreferences,
@@ -137,6 +138,10 @@ export function useLabWorkspace(devices) {
             labels: data.points.map(p => new Intl.DateTimeFormat("es-CO", {dateStyle: "medium", timeStyle: "medium", timeZone: "UTC", hour12: false}).format(new Date(p.reading_time)) + " UTC"),
             stats: data.stats,
             partial: data.partial,
+            // docs/implementation/graph-semantic-zones-plan.md — the sensor's server-owned bands
+            // (public bootstrap projection of RuleToGraphZones), normalized once here so
+            // SensorReadingChart.vue only maps an already-resolved view-model to pixels.
+            zones: buildZonesViewModel(sensor(selected.value)?.bands),
         };
     });
     const activeError = computed(() => {

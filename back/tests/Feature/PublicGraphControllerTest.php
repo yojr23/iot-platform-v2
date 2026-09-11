@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AlertRule;
 use App\Models\Device;
 use App\Models\Sensor;
 use App\Models\SensorReading;
@@ -265,6 +266,75 @@ class PublicGraphControllerTest extends TestCase
             ->assertJsonPath('truncated', false)
             ->assertJsonPath('returned_count', 1)
             ->assertJsonPath('stats.partial', false);
+    }
+
+    /**
+     * docs/implementation/graph-semantic-zones-plan.md (GRAPH-002) — bootstrap projects
+     * `RuleToGraphZones` per public sensor reduced to `{from,to,severity}` only.
+     */
+    public function test_bootstrap_sensor_carries_rule_derived_bands_with_no_rule_metadata_leak(): void
+    {
+        $sensorType = SensorType::factory()->create();
+        $public = $this->publicSensor(['sensor_type_id' => $sensorType->id]);
+        $rule = AlertRule::create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => null,
+            'sensor_id' => null,
+            'min_value' => null,
+            'max_value' => 30,
+            'severity' => 'danger',
+            'message' => 'Hot',
+            'name' => 'Danger',
+        ]);
+
+        $response = $this->getJson('/api/public/graph/bootstrap');
+
+        $response->assertOk()
+            ->assertJsonPath('devices.0.sensors.0.bands', [
+                ['from' => null, 'to' => 30.0, 'severity' => 'normal'],
+                ['from' => 30.0, 'to' => null, 'severity' => 'danger'],
+            ]);
+
+        $body = json_encode($response->json());
+        $this->assertStringNotContainsStringIgnoringCase('rule_id', $body);
+        $this->assertStringNotContainsStringIgnoringCase('"bound"', $body);
+        $this->assertStringNotContainsStringIgnoringCase('sensor_type_id', $body);
+        $this->assertStringNotContainsStringIgnoringCase('boundaries', $body);
+    }
+
+    public function test_bootstrap_sensor_with_no_rules_gets_neutral_bands_not_green(): void
+    {
+        $public = $this->publicSensor();
+
+        $response = $this->getJson('/api/public/graph/bootstrap');
+
+        $response->assertOk()
+            ->assertJsonPath('devices.0.sensors.0.bands', [
+                ['from' => null, 'to' => null, 'severity' => 'neutral'],
+            ]);
+    }
+
+    public function test_restricted_sensor_exposes_no_bands_at_all(): void
+    {
+        $sensorType = SensorType::factory()->create();
+        $this->restrictedSensor(['sensor_type_id' => $sensorType->id]);
+        AlertRule::create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => null,
+            'sensor_id' => null,
+            'min_value' => null,
+            'max_value' => 30,
+            'severity' => 'danger',
+            'message' => 'Hot',
+            'name' => 'Danger',
+        ]);
+        $this->publicSensor();
+
+        $response = $this->getJson('/api/public/graph/bootstrap');
+
+        $response->assertOk();
+        $sensorIds = collect($response->json('devices'))->pluck('sensors')->flatten(1)->pluck('id')->all();
+        $this->assertCount(1, $sensorIds);
     }
 
     public function test_public_graph_visibility_service_never_infers_from_operational_status(): void
