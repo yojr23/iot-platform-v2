@@ -58,7 +58,9 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                \Pdo\Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // \PDO::MYSQL_ATTR_SSL_CA is portable across PHP 8.0–8.4; \Pdo\Mysql (namespaced,
+                // 8.4+ only) fatals under the 8.2/8.3 CI runner when pdo_mysql is loaded.
+                \PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 
@@ -78,7 +80,9 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                \Pdo\Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // \PDO::MYSQL_ATTR_SSL_CA is portable across PHP 8.0–8.4; \Pdo\Mysql (namespaced,
+                // 8.4+ only) fatals under the 8.2/8.3 CI runner when pdo_mysql is loaded.
+                \PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 

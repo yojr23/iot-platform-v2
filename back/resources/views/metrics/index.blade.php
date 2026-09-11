@@ -144,7 +144,7 @@
         }
 
         // Gate 10 (PLAN.md Stage 10): no periodic state discovery. Refresh is user-triggered only
-        // (button click); the previous setInterval(loadMetrics, 5000) polling loop was removed.
+        // (button click); the previous 5-second auto-refresh polling loop was removed.
         refreshBtn?.addEventListener('click', loadMetrics);
     });
 </script>
