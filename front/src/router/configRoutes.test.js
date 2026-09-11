@@ -12,4 +12,11 @@ describe('configuration routes', () => {
       expect(route?.meta).toMatchObject({ requiresAuth: true, requiresAdmin: true });
     });
   });
+
+  it('allows any authenticated user to read metrics without admin requirement', () => {
+    const route = router.getRoutes().find((candidate) => candidate.name === 'metrics');
+
+    expect(route?.meta).toMatchObject({ requiresAuth: true });
+    expect(route?.meta?.requiresAdmin).toBeUndefined();
+  });
 });

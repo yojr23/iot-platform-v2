@@ -9,11 +9,12 @@
             </div>
             <div class="lab-actions">
                 <span
-                    v-if="auth.isAuthenticated"
+                    v-if="auth.isAuthenticated && canManageDashboard"
                     class="lab-save-state"
                     role="status"
                     >{{ saveLabels[saveState] }}</span
                 ><button
+                    v-if="canManageDashboard"
                     class="lab-button"
                     :disabled="
                         auth.isAuthenticated &&
@@ -23,6 +24,7 @@
                 >
                     <I name="save" /><span>Guardar</span></button
                 ><button
+                    v-if="canManageDashboard"
                     class="lab-button primary"
                     :disabled="!catalog.length"
                     @click="openAdd"
@@ -79,7 +81,7 @@
                         }}
                     </p>
                     <button
-                        v-if="catalog.length"
+                        v-if="canManageDashboard && catalog.length"
                         class="lab-button primary"
                         @click="openAdd"
                     >
@@ -329,6 +331,7 @@
                             Mis gráficas <span>({{ widgets.length }})</span>
                         </h2>
                         <button
+                            v-if="canManageDashboard"
                             class="lab-text-button"
                             @click="editing = !editing"
                         >
@@ -384,6 +387,7 @@
                         </div>
                     </div>
                     <button
+                        v-if="canManageDashboard"
                         class="lab-add-row"
                         :disabled="!catalog.length"
                         @click="openAdd"
@@ -552,6 +556,7 @@ const router = useRouter(),
     alerts = useAlertsStore();
 const {
     auth,
+    canManageDashboard,
     widgets,
     selectedId,
     selected,

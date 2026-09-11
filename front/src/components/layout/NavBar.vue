@@ -86,8 +86,11 @@ const laboratoryItems = [
   { label: 'Alertas', to: '/alerts' }
 ];
 
+const authenticatedItems = [
+  { label: 'Métricas', to: '/metrics' }
+];
+
 const adminItems = [
-  { label: 'Métricas', to: '/metrics' },
   { label: 'Configuración', to: '/config' }
 ];
 
@@ -103,6 +106,7 @@ const navItems = computed(() => {
   return [
     ...publicItems,
     ...laboratoryItems,
+    ...authenticatedItems,
     ...(authStore.user?.is_admin ? adminItems : [])
   ];
 });

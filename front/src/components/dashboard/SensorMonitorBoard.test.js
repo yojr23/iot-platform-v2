@@ -1,5 +1,5 @@
 import { createApp, nextTick } from 'vue';
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // PLAN.md Stage 6 — "Delete in the same cutover": pollTimer / startPolling / stopPolling /
@@ -224,5 +224,43 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     await flush();
     expect(details.open).toBe(true);
     unmount();
+  });
+
+  it('hides admin controls from standard users', async () => {
+    // Mount with authenticated non-admin user
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const authStore = useAuthStore();
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, is_admin: false };
+
+    const { default: SensorMonitorBoard } = await import('./SensorMonitorBoard.vue');
+    const el = document.createElement('div');
+    const app = createApp(SensorMonitorBoard, { devices });
+    app.use(pinia);
+    app.mount(el);
+    mountedApps.push(app);
+    await nextTick();
+    await flush();
+    await nextTick();
+
+    // Editar button should not be visible — look for button containing "Editar" text specifically
+    const allTextButtons = el.querySelectorAll('.lab-text-button');
+    const editButton = Array.from(allTextButtons).find(btn => btn.textContent.trim() === 'Editar');
+    expect(editButton).toBeUndefined();
+
+    // Save button with save-state indicator should not be visible
+    const saveIndicator = el.querySelector('.lab-save-state');
+    expect(saveIndicator).toBeNull();
+
+    // Guardar button should not be visible
+    const allButtons = el.querySelectorAll('button');
+    const saveBtn = Array.from(allButtons).find(btn => btn.textContent.includes('Guardar'));
+    expect(saveBtn).toBeUndefined();
+
+    app.unmount();
+    mountedApps.splice(mountedApps.indexOf(app), 1);
   });
 });

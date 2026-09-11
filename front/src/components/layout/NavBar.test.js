@@ -74,4 +74,13 @@ describe('NavBar guest vs authenticated alert badge refresh', () => {
 
     unmount();
   });
+
+  it('shows metrics to standard users but hides configuration', async () => {
+    const { el, unmount } = await mountNavBar({ authenticated: true, admin: false });
+
+    expect(el.textContent).toContain('Métricas');
+    expect(el.textContent).not.toContain('Configuración');
+
+    unmount();
+  });
 });

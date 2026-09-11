@@ -157,7 +157,7 @@ const router = createRouter({
           path: 'metrics',
           name: 'metrics',
           component: () => import('@/views/MetricsView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true }
         },
         {
           path: 'profile',

@@ -100,11 +100,11 @@ const links = computed(() => [
               { to: "/devices", label: "Dispositivos", icon: "device" },
               { to: "/sensors", label: "Sensores", icon: "sensor" },
               { to: "/alerts", label: "Alertas", icon: "bell" },
+              { to: "/metrics", label: "Métricas", icon: "chart" },
           ]
         : []),
     ...(auth.user?.is_admin
         ? [
-              { to: "/metrics", label: "Métricas", icon: "chart" },
               { to: "/config", label: "Configuración", icon: "grip" },
           ]
         : []),

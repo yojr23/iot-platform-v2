@@ -25,6 +25,7 @@ export function useLabWorkspace(devices) {
     const auth = useAuthStore(),
         live = useSensorReadingsStore(),
         queries = useGraphSeriesQueryStore();
+    const canManageDashboard = computed(() => Boolean(auth.user?.is_admin));
     const widgets = ref([]),
         selectedId = ref(""),
         editing = ref(false),
@@ -259,7 +260,7 @@ export function useLabWorkspace(devices) {
         mark();
     }
     async function save() {
-        if (!auth.isAuthenticated || saveState.value === "saving") return;
+        if (!canManageDashboard.value || !auth.isAuthenticated || saveState.value === "saving") return;
         const sent = snapshot();
         saveState.value = "saving";
         message.value = "";
@@ -336,7 +337,7 @@ export function useLabWorkspace(devices) {
     }
     watch(() => devices.value, init, { immediate: true });
     function beforeUnload(e) {
-        if (dirty.value) {
+        if (canManageDashboard.value && dirty.value) {
             e.preventDefault();
             e.returnValue = "";
         }
@@ -350,6 +351,7 @@ export function useLabWorkspace(devices) {
     });
     return {
         auth,
+        canManageDashboard,
         widgets,
         selectedId,
         selected,
