@@ -152,4 +152,43 @@ class RawReadingNormalizerTest extends TestCase
         $this->assertSame(1, $result['created']);
         $this->assertReadingRoundTripsToExpectedInstant($sensor, 'RFC3339 explicit-offset payload timestamp');
     }
+
+    public function test_multiple_payload_entries_do_not_issue_individual_case_insensitive_sensor_lookups(): void
+    {
+        $device = Device::factory()->create([
+            'serial_number' => 'node-batch-sensor-resolution',
+            'status' => true,
+            'is_active' => true,
+        ]);
+        Sensor::factory()->create(['device_id' => $device->id, 'name' => 'temperature']);
+        Sensor::factory()->create(['device_id' => $device->id, 'name' => 'ph']);
+
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => 'node-batch-sensor-resolution',
+            'payload' => [
+                'sensors' => [
+                    'TEMPERATURE' => ['value' => 21.5],
+                    'PH' => ['value' => 7.1],
+                ],
+            ],
+        ]);
+
+        $queries = [];
+        $capturingQueries = true;
+        DB::listen(function ($query) use (&$queries, &$capturingQueries): void {
+            if ($capturingQueries) {
+                $queries[] = $query->sql;
+            }
+        });
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+        $capturingQueries = false;
+
+        $this->assertSame(2, $result['created']);
+        $this->assertSame([], $result['skipped']);
+        $this->assertCount(2, SensorReading::query()->get());
+        $this->assertFalse(
+            collect($queries)->contains(fn (string $sql): bool => str_contains(strtolower($sql), 'lower(name) =')),
+        );
+    }
 }

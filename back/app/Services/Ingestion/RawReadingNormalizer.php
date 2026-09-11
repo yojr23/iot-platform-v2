@@ -58,6 +58,9 @@ class RawReadingNormalizer
 
         $sensorsPayload = (array) data_get($event->payload, 'sensors', []);
         $readingTime = data_get($event->payload, 'timestamp') ?? $event->received_at ?? now();
+        $sensorsByName = $device->sensors
+            ->groupBy(fn (Sensor $sensor): string => strtolower($sensor->name))
+            ->map(fn ($sensors): Sensor => $sensors->first());
 
         $created = 0;
         $skipped = [];
@@ -76,10 +79,7 @@ class RawReadingNormalizer
                 continue;
             }
 
-            $sensor = Sensor::query()
-                ->where('device_id', $device->id)
-                ->whereRaw('LOWER(name) = ?', [strtolower((string) $key)])
-                ->first();
+            $sensor = $sensorsByName->get(strtolower((string) $key));
 
             if (! $sensor) {
                 $skipped[] = (string) $key;

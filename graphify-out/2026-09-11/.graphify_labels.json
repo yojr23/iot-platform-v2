@@ -1,0 +1,22 @@
+{
+  "0": "Backend Client",
+  "1": "Domain Events",
+  "2": "Device Models",
+  "3": "Sensor Monitor UI",
+  "4": "Alert Models",
+  "5": "Alert Events",
+  "6": "Alert Store",
+  "7": "AlertRule Controller",
+  "8": "Sensor Controller",
+  "9": "Sensor API",
+  "10": "Test Factories",
+  "11": "Health/Feed Controllers",
+  "12": "User Roles",
+  "13": "App Layout",
+  "14": "Auth API",
+  "15": "API Tests",
+  "16": "Metrics",
+  "17": "IoT Data Script",
+  "18": "Dashboard API",
+  "19": "Password Reset"
+}

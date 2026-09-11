@@ -8,7 +8,7 @@ Monorepo IoT platform, three independently runnable parts:
 
 - `back/` — Laravel 12 API (PHP 8.2+), Sanctum auth, broadcasting, Eloquent observers/events, Redis.
 - `front/` — Vue 3 + Vite + Pinia + Bootstrap 5 SPA, consumes the API, subscribes to realtime via Laravel Echo / Pusher-compatible transport.
-- `ingestion_service/` — standalone Python service (MQTT/HTTP ingestion), independent venv, publishes raw sensor events to Redis Streams (`iot.raw-events`) and forwards to the backend.
+- `ingestion_service/` — standalone Python service (MQTT/HTTP raw ingestion), independent venv, forwards raw events to the Laravel backend.
 - `script_datos.py` (root) — Python simulator that POSTs synthetic sensor readings against the running backend, useful for local end-to-end testing.
 - `memory/`, `docs/` — technical/compliance documentation (ICONTEC/ISO alignment docs live in `docs/`, formal write-ups at repo root as `DOCUMENTACION_PROYECTO.md` / `ANALISIS_PROYECTO.md`).
 
@@ -79,25 +79,21 @@ Has its own `.venv` and `requirements.txt`; run `pytest` inside it for `tests/te
 
 Two parallel ingestion paths currently exist and are not yet unified:
 1. **Legacy/simple path**: `POST /api/sensors/{sensor}/readings` (IoT API-key auth) → `SensorApiController` → direct `SensorReading` persistence → `SensorReadingObserver` evaluates alert rules synchronously → `AlertObserver` broadcasts + sends email synchronously on creation.
-2. **Raw ingestion path** (newer, partial): `back/app/Services/Ingestion/RawSensorEventPublisher.php` persists a raw receipt and does `XADD` to the Redis stream `iot.raw-events`. **No consumer for this stream exists yet** — `ingestion_service/README.md` documents the consumer as future work. Don't assume readings published here become `SensorReading` rows automatically.
+2. **Raw ingestion path** (newer): `IngestionController` atomically persists `RawSensorEvent` and `RawEventOutbox`; `RawOutboxRelay` is the sole caller of `RawSensorEventPublisher`, which performs the Redis `XADD` to `iot.raw-events`. The `raw:consume` command runs the `raw-process-v1` consumer group, normalizes readings through `RawReadingNormalizer`, uses `raw_sensor_events.status` as the one-group idempotency ledger, reclaims idle pending deliveries, and sends terminal failures to the configured dead-letter stream.
 
 Auth: Sanctum tokens with abilities (`*` for admin, `read` otherwise); IoT device traffic uses a separate `X-Device-Key`/`api_key` scheme, not Sanctum. Admin-only endpoints are gated by the `admin` middleware. Rate limits are named and differentiated: `api-read` (120/min), `api-write` (60/min), `auth-login` (5/min).
 
 ### Frontend realtime model
 
-`front/src/realtime/{echo.js,useAlertsRealtime.js,useSensorRealtime.js}` wrap a single Laravel Echo/Pusher-JS connection (one Echo instance is meant to be reused, not one per component). Alongside this, the SPA still has **active polling timers that duplicate the same state**:
-- `components/layout/AppLayout.vue` — polls `GET /api/alerts/active` every 10s.
-- `components/dashboard/ActiveAlertsCard.vue` — polls the same endpoint every 5s.
-- `components/dashboard/SensorMonitorBoard.vue` — polls `GET /api/sensors/{id}/latest-readings` per visible monitor (default 2s).
+`front/src/realtime/{echo.js,useAlertsRealtime.js,useSensorRealtime.js}` wrap a single Laravel Echo/Pusher-JS connection (one Echo instance is meant to be reused, not one per component). Production Vue code no longer contains periodic polling timers that duplicate realtime state. Recovery is lifecycle-triggered (subscription/reconnect/visibility/auth lifecycle as applicable), and the current frontend tests validate those recovery paths. The test scripts are structural/source checks, not browser or end-to-end coverage.
 
-`audit.md` §7 has the full inventory and per-timer request-rate math; §12 has the proposed WebSocket-only recovery protocol (cursor/replay + snapshot, no polling fallback) if you're asked to remove these.
+The realtime modules own lifecycle-triggered recovery (snapshot/cursor handling as applicable); consult their source and tests when changing recovery behavior.
 
 State ownership target (not yet implemented): WebSocket events → Pinia store (domain projection) → Vue components. Don't add a fourth parallel state path (component-local polling) when touching a screen that already has a store + realtime composable for the same domain.
 
 ### Known gaps (don't assume otherwise)
 
-- No browser-based test suite (Playwright or similar) exists; `npm run test:phase*` are static/string checks only.
-- Raw Redis stream (`iot.raw-events`) has a producer but no consumer group / ack / retry / DLQ.
+- No browser-based test suite (Playwright or similar) exists; `npm run test:phase*` are static/string checks only. Current frontend tests validate lifecycle-triggered recovery without periodic polling.
 - Alert resolution and device status changes do not fully propagate through events yet (creation does; resolution/bulk-resolve and device status transitions are the known incomplete paths — `Eloquent::update()` bulk calls, e.g. `resolveAll()`, do not fire model observers).
 - `database/seeders/SystemSettingsSeeder.php` has historically carried real-looking SMTP credentials — check before reusing seeder output, rotate rather than assume it's synthetic.
 - `docs/api/openapi.yaml` / Postman collections can drift from actual routes; regenerate after route changes rather than trusting them blindly.

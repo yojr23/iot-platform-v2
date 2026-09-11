@@ -8,7 +8,7 @@ Servicio Python de ingesta inicial para eventos IoT crudos.
 - Validar estructura minima.
 - Normalizar al contrato de backend crudo.
 - Enviar a `POST /api/ingestion/events` en Laravel.
-- Mantener la separacion: ingesta cruda ahora, procesamiento despues.
+- Mantener la separacion: este servicio recibe MQTT y publica eventos crudos; el procesamiento lo realiza el consumidor backend.
 
 ## Modos
 
@@ -59,16 +59,18 @@ Si Mosquitto no esta listo en el entorno, el modo puede fallar al conectar.
 }
 ```
 
-## Contrato futuro de data_jobs_service (no implementado en esta fase)
+## Procesamiento backend de eventos crudos
 
-El modulo futuro consumira de Redis stream `iot.raw-events` y seguira este flujo:
+Este servicio Python no consume Redis ni transforma lecturas procesadas. Su responsabilidad termina al recibir el payload MQTT (o simulado), validarlo y publicarlo como evento crudo mediante `POST /api/ingestion/events` en Laravel. El backend ejecuta el comando `raw:consume` con el grupo `raw-process-v1` sobre el stream `iot.raw-events` y sigue este flujo:
 
-1. Leer mensaje de stream con `event_id`.
+1. Leer o reclamar un mensaje del stream con `event_id`.
 2. Consultar `raw_sensor_events` por `event_id`.
-3. Transformar payload multi-sensor a lecturas normalizadas.
-4. Resolver mapping `node_id + sensor_key -> sensor_id`.
-5. Guardar datos procesados.
-6. Activar/alimentar modulo de alertas.
-7. Marcar `raw_sensor_events.status`:
-   - `processed` con `processed_at`, o
-   - `failed` con detalle en `error`.
+3. Transformar el payload multi-sensor a lecturas normalizadas mediante `RawReadingNormalizer`.
+4. Resolver el mapping `node_id + sensor_key -> sensor_id`.
+5. Guardar los datos procesados y marcar `raw_sensor_events.status` como `processed` dentro de la misma transaccion; ese estado es el ledger de idempotencia del grupo.
+6. Tras errores reintentables, dejar la entrega pendiente para su reclamacion posterior; los fallos terminales se marcan como `failed` y se envian al stream dead-letter configurado.
+
+Los estados de `raw_sensor_events.status` son:
+   - `received` al aceptar y almacenar el evento, pendiente de procesamiento.
+   - `processed` con `processed_at` tras normalizar y guardar sus lecturas.
+   - `failed` con detalle en `error` tras agotar los reintentos.
