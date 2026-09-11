@@ -26,8 +26,12 @@
             <dd>{{ sensor?.id || id }}</dd>
             <dt>Tipo</dt>
             <dd>{{ sensor?.type?.name || sensor?.sensor_type?.name || '-' }}</dd>
+            <dt>Unidad</dt>
+            <dd>{{ sensor?.unit || sensor?.sensor_type?.unit || '-' }}</dd>
             <dt>Dispositivo</dt>
             <dd>{{ sensor?.device?.name || sensor?.device_name || '-' }}</dd>
+            <dt>Descripcion</dt>
+            <dd>{{ sensor?.description || '-' }}</dd>
             <dt>Estado</dt>
             <dd>
               <span class="badge" :class="sensor?.status ? 'text-bg-success' : 'text-bg-secondary'">

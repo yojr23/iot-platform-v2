@@ -151,29 +151,34 @@ export function useLabWorkspace(devices) {
             stats: h?.truncated ? h.stats : computeStats(windowPoints),
         };
     }
-    const activeData = computed(() => points(selected.value));
-    const viewModel = computed(() => {
-        const data = activeData.value;
+    // Full zoned chart view-model for ANY widget (not just the selected one), so the dashboard can
+    // render several charts big in parallel. Reuses the same projection + zone builder as before;
+    // `viewModel`/`activeError` below are just the selected-widget specialization of these.
+    // docs/implementation/graph-semantic-zones-plan.md — server-owned bands (public bootstrap
+    // projection of RuleToGraphZones) normalized once here so SensorReadingChart.vue only maps an
+    // already-resolved view-model to pixels.
+    function widgetViewModel(w) {
+        const data = points(w);
         return {
             ...buildSensorChartViewModel([...data.points].reverse(), {
-                unit: sensor(selected.value)?.unit || "",
+                unit: sensor(w)?.unit || "",
             }),
             labels: data.points.map(p => new Intl.DateTimeFormat("es-CO", {dateStyle: "medium", timeStyle: "medium", timeZone: "UTC", hour12: false}).format(new Date(p.reading_time)) + " UTC"),
             stats: data.stats,
             partial: data.partial,
-            // docs/implementation/graph-semantic-zones-plan.md — the sensor's server-owned bands
-            // (public bootstrap projection of RuleToGraphZones), normalized once here so
-            // SensorReadingChart.vue only maps an already-resolved view-model to pixels.
             zones: buildZonesViewModel({
-                zones: sensor(selected.value)?.bands,
-                boundaries: sensor(selected.value)?.boundaries,
+                zones: sensor(w)?.bands,
+                boundaries: sensor(w)?.boundaries,
             }),
         };
-    });
-    const activeError = computed(() => {
-        const h = history.value[selectedId.value];
+    }
+    function widgetError(w) {
+        const h = w ? history.value[w.id] : null;
         return h ? queries.resultForQuery(h.descriptor)?.error : "";
-    });
+    }
+    const activeData = computed(() => points(selected.value));
+    const viewModel = computed(() => widgetViewModel(selected.value));
+    const activeError = computed(() => widgetError(selected.value));
     function add(sensorId) {
         const s = catalog.value.find((s) => s.id === String(sensorId));
         if (!s) return;
@@ -354,6 +359,8 @@ export function useLabWorkspace(devices) {
         sensor,
         points,
         viewModel,
+        widgetViewModel,
+        widgetError,
         activeData,
         activeError,
         history,

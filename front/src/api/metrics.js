@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 
-export function getMetrics() {
-  return apiClient.get('/metrics');
+export function getMetrics(config = {}) {
+  return apiClient.get('/metrics', config);
 }
 

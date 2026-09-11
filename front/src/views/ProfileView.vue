@@ -1,18 +1,26 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <p class="section-kicker text-primary mb-2">Cuenta</p>
-        <h1 class="h3 mb-1">Perfil</h1>
-        <p class="text-muted mb-0">Datos de sesion, rol y fechas de registro.</p>
+        <h1 class="lab-resource-title">Mi cuenta</h1>
+        <p class="lab-resource-description">Consulta los datos de tu sesion, rol y registro.</p>
       </div>
-      <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
+      <div class="lab-resource-actions">
+        <button class="btn btn-outline-secondary lab-action" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
+      </div>
     </div>
 
     <BaseAlert v-if="error" variant="danger" :message="error" />
     <LoadingSpinner v-if="loading" label="Cargando perfil..." />
 
     <div v-if="!loading" class="content-panel p-3">
+      <div class="lab-profile-identity">
+        <span class="lab-profile-avatar"><I name="user" /></span>
+        <div>
+          <h2>{{ profile.name || 'Mi perfil' }}</h2>
+          <p>{{ profile.email || 'Sin correo registrado' }}</p>
+        </div>
+      </div>
       <div class="row g-3">
         <div class="col-12 col-lg-6">
           <p class="text-muted small mb-1">Nombre</p>
@@ -27,6 +35,10 @@
           <span class="badge" :class="profile.is_admin ? 'text-bg-primary' : 'text-bg-secondary'">
             {{ profile.role || '-' }}
           </span>
+        </div>
+        <div class="col-12 col-lg-4">
+          <p class="text-muted small mb-1">Departamento</p>
+          <p class="mb-0">{{ profile.department || '-' }}</p>
         </div>
         <div class="col-12 col-lg-4">
           <p class="text-muted small mb-1">Registro</p>
@@ -48,6 +60,7 @@ import { getProfile } from '@/api/profile';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 import { formatDate } from '@/utils/formatters';
 
 const profile = ref({});

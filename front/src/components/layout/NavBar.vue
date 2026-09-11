@@ -87,9 +87,6 @@ const laboratoryItems = [
 ];
 
 const adminItems = [
-  { label: 'Reglas', to: '/alert-rules' },
-  { label: 'Catalogos', to: '/labs' },
-  { label: 'Usuarios', to: '/users' },
   { label: 'Metricas', to: '/metrics' },
   { label: 'Configuracion', to: '/config' }
 ];

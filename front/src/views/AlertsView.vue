@@ -44,10 +44,12 @@ const filter = ref('all');
 const resolvingId = ref(null);
 const resolvingAll = ref(false);
 
-async function load() {
+async function load({ preserveSuccess = false } = {}) {
   loading.value = true;
   error.value = '';
-  success.value = '';
+  if (!preserveSuccess) {
+    success.value = '';
+  }
 
   try {
     if (filter.value === 'active') {
@@ -76,7 +78,7 @@ async function handleResolve(alert) {
   try {
     await alertsStore.resolveAlert(alert.id);
     success.value = 'Alerta resuelta correctamente.';
-    await load();
+    await load({ preserveSuccess: true });
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudo resolver la alerta.');
   } finally {
@@ -92,7 +94,7 @@ async function handleResolveAll() {
   try {
     const response = await alertsStore.resolveAll();
     success.value = response.data?.message || 'Alertas resueltas correctamente.';
-    await load();
+    await load({ preserveSuccess: true });
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron resolver las alertas.');
   } finally {

@@ -36,9 +36,9 @@
             <td>{{ rule.message }}</td>
             <td class="text-end">
               <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-primary" type="button" @click="$emit('edit', rule)">Editar</button>
-                <button class="btn btn-outline-danger" type="button" :disabled="deletingId === rule.id" @click="$emit('delete', rule)">
-                  Eliminar
+                <button class="btn btn-outline-primary lab-action" type="button" @click="$emit('edit', rule)"><I name="edit" />Editar</button>
+                <button class="btn btn-outline-danger lab-action" type="button" :disabled="deletingId === rule.id" @click="$emit('delete', rule)">
+                  <I name="trash" />Eliminar
                 </button>
               </div>
             </td>
@@ -51,6 +51,7 @@
 
 <script setup>
 import { formatNumber, severityLabel } from '@/utils/formatters';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 
 defineProps({
   rules: {

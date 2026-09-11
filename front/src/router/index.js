@@ -103,6 +103,30 @@ const router = createRouter({
           meta: { requiresAuth: true, requiresAdmin: true }
         },
         {
+          path: 'config/general',
+          name: 'config-general',
+          component: () => import('@/views/config/GeneralConfigView.vue'),
+          meta: { requiresAuth: true, requiresAdmin: true }
+        },
+        {
+          path: 'config/alerts',
+          name: 'config-alerts',
+          component: () => import('@/views/config/AlertConfigView.vue'),
+          meta: { requiresAuth: true, requiresAdmin: true }
+        },
+        {
+          path: 'config/email',
+          name: 'config-email',
+          component: () => import('@/views/config/EmailConfigView.vue'),
+          meta: { requiresAuth: true, requiresAdmin: true }
+        },
+        {
+          path: 'config/diagnostics',
+          name: 'config-diagnostics',
+          component: () => import('@/views/config/DiagnosticsConfigView.vue'),
+          meta: { requiresAuth: true, requiresAdmin: true }
+        },
+        {
           path: 'labs',
           name: 'labs',
           component: () => import('@/views/CatalogAdminView.vue'),

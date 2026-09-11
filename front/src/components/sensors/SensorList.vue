@@ -37,23 +37,23 @@
             </td>
             <td class="text-end">
               <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de sensor">
-                <RouterLink class="btn btn-outline-primary" :to="`/sensors/${sensor.id}`">Ver</RouterLink>
-                <button class="btn btn-outline-info" type="button" @click="$emit('export', sensor)">Exportar</button>
+                <RouterLink class="btn btn-outline-primary lab-action" :to="`/sensors/${sensor.id}`"><I name="eye" />Ver</RouterLink>
+                <button class="btn btn-outline-info lab-action" type="button" @click="$emit('export', sensor)"><I name="download" />Exportar</button>
                 <button
                   v-if="authStore.user?.is_admin"
-                  class="btn btn-outline-warning"
+                  class="btn btn-outline-warning lab-action"
                   type="button"
                   @click="$emit('edit', sensor)"
                 >
-                  Editar
+                  <I name="edit" />Editar
                 </button>
                 <button
                   v-if="authStore.user?.is_admin"
-                  class="btn btn-outline-danger"
+                  class="btn btn-outline-danger lab-action"
                   type="button"
                   @click="$emit('delete', sensor)"
                 >
-                  Eliminar
+                  <I name="trash" />Eliminar
                 </button>
               </div>
             </td>
@@ -71,6 +71,7 @@ import { useSensorRealtime } from '@/realtime/useSensorRealtime';
 import { useSensorReadingsStore } from '@/stores/sensorReadings';
 import { useAuthStore } from '@/stores/auth';
 import { formatDate, formatNumber, statusLabel } from '@/utils/formatters';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 
 const authStore = useAuthStore();
 const readingsStore = useSensorReadingsStore();

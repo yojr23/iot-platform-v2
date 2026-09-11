@@ -19,7 +19,7 @@ vi.mock('@/api/alerts', () => ({
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function mountNavBar({ authenticated = false } = {}) {
+async function mountNavBar({ authenticated = false, admin = false } = {}) {
   const { default: NavBar } = await import('./NavBar.vue');
   const el = document.createElement('div');
   const app = createApp(NavBar);
@@ -28,7 +28,7 @@ async function mountNavBar({ authenticated = false } = {}) {
     const { useAuthStore } = await import('@/stores/auth');
     const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User' };
+    authStore.user = { id: 1, name: 'Test User', is_admin: admin };
   }
   app.mount(el);
   await nextTick();
@@ -59,6 +59,18 @@ describe('NavBar guest vs authenticated alert badge refresh', () => {
     expect(fetchUnresolved).toHaveBeenCalledTimes(1);
     expect(fetchActiveAlerts).not.toHaveBeenCalled();
     expect(el.textContent).toContain('Sin conexion');
+
+    unmount();
+  });
+
+  it('keeps only metrics and settings in the administrator navigation', async () => {
+    const { el, unmount } = await mountNavBar({ authenticated: true, admin: true });
+
+    expect(el.textContent).toContain('Metricas');
+    expect(el.textContent).toContain('Configuracion');
+    expect(el.textContent).not.toContain('Reglas');
+    expect(el.textContent).not.toContain('Catalogos');
+    expect(el.textContent).not.toContain('Usuarios');
 
     unmount();
   });

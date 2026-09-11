@@ -6,8 +6,8 @@
         <p class="lab-resource-description">Configura los límites y las condiciones que generan alertas.</p>
       </div>
       <div class="lab-resource-actions">
-        <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
-        <button class="btn btn-primary" type="button" :disabled="metadataLoading" @click="openCreate">Nueva regla</button>
+        <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
+        <button class="btn btn-primary" type="button" :disabled="metadataLoading" @click="openCreate"><I name="plus" />Nueva regla</button>
       </div>
     </div>
 
@@ -15,7 +15,7 @@
     <BaseAlert v-if="success" variant="success" :message="success" />
 
     <div class="lab-resource-filters">
-      <label class="form-label" for="device_filter">Dispositivo</label>
+      <label class="form-label lab-resource-filter-label" for="device_filter"><I name="filter" />Dispositivo</label>
       <select
         id="device_filter"
         v-model="selectedDeviceId"
@@ -68,6 +68,7 @@ import AlertRuleList from '@/components/alert-rules/AlertRuleList.vue';
 import AlertRuleModal from '@/components/alert-rules/AlertRuleModal.vue';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 import { paginatedItems } from '@/utils/formatters';
 
 const rules = ref([]);

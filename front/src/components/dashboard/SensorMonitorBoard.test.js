@@ -98,6 +98,9 @@ describe('SensorMonitorBoard polling removal', () => {
 
   it('requests an exact bounded window when the operator changes range', async () => {
     const { el, unmount } = await mountBoard();
+    // Cards are mini previews by default; the range controls only render in the big view.
+    el.querySelector('.lab-spark-grid .lab-spark-title .lab-text-button').click();
+    await flush();
     fetchWindow.mockClear();
     [...el.querySelectorAll('.lab-ranges button')].find(b=>b.textContent==='1h').click();
     await flush();
@@ -109,6 +112,9 @@ describe('SensorMonitorBoard polling removal', () => {
 
   it('resets the selected sensor when its device changes', async () => {
     const { el, unmount } = await mountBoard();
+    // Open the first card's big view so its device/sensor selectors render.
+    el.querySelector('.lab-spark-grid .lab-spark-title .lab-text-button').click();
+    await flush();
     fetchWindow.mockClear();
 
     const select = el.querySelector('.lab-chart-selectors select');

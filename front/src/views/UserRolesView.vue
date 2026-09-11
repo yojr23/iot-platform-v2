@@ -1,12 +1,13 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <p class="section-kicker text-primary mb-2">Administracion</p>
-        <h1 class="h3 mb-1">Usuarios y roles</h1>
-        <p class="text-muted mb-0">Gestion de permisos administrativos de la SPA.</p>
+        <h1 class="lab-resource-title">Usuarios y roles</h1>
+        <p class="lab-resource-description">Gestiona permisos administrativos y responsabilidades del equipo.</p>
       </div>
-      <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
+      <div class="lab-resource-actions">
+        <button class="btn btn-outline-secondary lab-action" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
+      </div>
     </div>
 
     <BaseAlert v-if="error" variant="danger" :message="error" />
@@ -21,6 +22,7 @@
               <th>Usuario</th>
               <th>Email</th>
               <th>Rol</th>
+              <th>Departamento</th>
               <th>Registro</th>
               <th class="text-end">Accion</th>
             </tr>
@@ -34,16 +36,17 @@
                   {{ user.role }}
                 </span>
               </td>
+              <td>{{ user.department || '-' }}</td>
               <td>{{ formatDate(user.created_at) }}</td>
               <td class="text-end">
                 <button
-                  class="btn btn-sm"
+                  class="btn btn-sm lab-action"
                   :class="user.is_admin ? 'btn-outline-secondary' : 'btn-outline-primary'"
                   type="button"
                   :disabled="savingId === user.id"
                   @click="toggleRole(user)"
                 >
-                  {{ user.is_admin ? 'Quitar admin' : 'Hacer admin' }}
+                  <I :name="user.is_admin ? 'lock' : 'user'" />{{ user.is_admin ? 'Quitar admin' : 'Hacer admin' }}
                 </button>
               </td>
             </tr>
@@ -61,6 +64,7 @@ import { getUsers, updateUserRole } from '@/api/users';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 import { asArray, formatDate } from '@/utils/formatters';
 
 const users = ref([]);

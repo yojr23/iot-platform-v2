@@ -11,23 +11,24 @@
         {{ severityLabel(alert.alert_rule?.severity) }}
       </span>
     </td>
-    <td>{{ formatNumber(alert.sensor_reading?.value) }}</td>
+    <td>{{ formatNumber(alert.reading_value || alert.sensor_reading?.value) }} {{ alert.sensor?.unit || '' }}</td>
     <td>
       <span class="badge" :class="alert.resolved ? 'text-bg-secondary' : 'text-bg-danger'">
         {{ alert.resolved ? 'Resuelta' : 'Activa' }}
       </span>
+      <div v-if="alert.acknowledged_by" class="small text-muted mt-1">Por: {{ alert.acknowledged_by }}</div>
     </td>
     <td>{{ formatDate(alert.created_at) }}</td>
     <td class="text-end">
       <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de alerta">
-        <RouterLink class="btn btn-outline-primary" :to="`/alerts/${alert.id}`">Ver</RouterLink>
+        <RouterLink class="btn btn-outline-primary lab-action" :to="`/alerts/${alert.id}`"><I name="eye" />Ver</RouterLink>
         <button
-          class="btn btn-outline-success"
+          class="btn btn-outline-success lab-action"
           type="button"
           :disabled="alert.resolved || resolving"
           @click="$emit('resolve', alert)"
         >
-          Resolver
+          <I name="check" />Resolver
         </button>
       </div>
     </td>
@@ -38,6 +39,7 @@
 import { computed } from 'vue';
 
 import { formatDate, formatNumber, severityLabel } from '@/utils/formatters';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 
 const props = defineProps({
   alert: {

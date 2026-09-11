@@ -15,17 +15,19 @@
     </div>
 
     <div class="lab-resource-actions">
-      <button class="btn btn-sm btn-outline-secondary" type="button" :disabled="loading" @click="$emit('refresh')">
-        Actualizar
+      <button class="btn btn-sm btn-outline-secondary lab-action" type="button" :disabled="loading" @click="$emit('refresh')">
+        <I name="refresh" />Actualizar
       </button>
-      <button class="btn btn-sm btn-danger" type="button" :disabled="loading" @click="$emit('resolve-all')">
-        Resolver todas
+      <button class="btn btn-sm btn-danger lab-action" type="button" :disabled="loading" @click="$emit('resolve-all')">
+        <I name="check" />Resolver todas
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
+import I from '@/components/dashboard/lab/LabIcon.vue';
+
 defineProps({
   modelValue: {
     type: String,

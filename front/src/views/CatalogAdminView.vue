@@ -1,12 +1,13 @@
 <template>
-  <section>
-    <div class="d-flex justify-content-between align-items-start gap-2 mb-4">
+  <section class="lab-resource-page">
+    <div class="lab-toolbar lab-resource-toolbar">
       <div>
-        <p class="section-kicker text-primary mb-2">Catalogos</p>
-        <h1 class="h3 mb-1">{{ config.title }}</h1>
-        <p class="text-muted mb-0">{{ config.description }}</p>
+        <h1 class="lab-resource-title">{{ config.title }}</h1>
+        <p class="lab-resource-description">{{ config.description }}</p>
       </div>
-      <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
+      <div class="lab-resource-actions">
+        <button class="btn btn-outline-secondary lab-action" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
+      </div>
     </div>
 
     <BaseAlert v-if="error" variant="danger" :message="error" />
@@ -15,7 +16,7 @@
     <div class="row g-3">
       <div class="col-12 col-xl-4">
         <div class="content-panel p-3">
-          <h2 class="h5 mb-3">{{ editingId ? 'Editar' : 'Crear' }}</h2>
+          <h2 class="h5 mb-3"><I :name="editingId ? 'edit' : 'plus'" class="lab-section-icon" />{{ editingId ? 'Editar' : 'Crear' }}</h2>
           <form @submit.prevent="save">
             <div v-for="field in config.fields" :key="field.name" class="mb-3">
               <label class="form-label" :for="field.name">{{ field.label }}</label>
@@ -40,7 +41,7 @@
             </div>
 
             <div class="d-flex gap-2">
-              <BaseButton type="submit" :loading="saving">{{ editingId ? 'Guardar' : 'Crear' }}</BaseButton>
+              <BaseButton type="submit" :loading="saving"><I name="save" />{{ editingId ? 'Guardar' : 'Crear' }}</BaseButton>
               <button v-if="editingId" class="btn btn-outline-secondary" type="button" @click="resetForm">Cancelar</button>
             </div>
           </form>
@@ -66,15 +67,15 @@
                   <td v-for="column in config.columns" :key="column.key">{{ valueFor(item, column.key) }}</td>
                   <td class="text-end">
                     <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de catalogo">
-                      <button class="btn btn-outline-secondary" type="button" @click="edit(item)">Editar</button>
+                      <button class="btn btn-outline-secondary lab-action" type="button" @click="edit(item)"><I name="edit" />Editar</button>
                       <button
-                        class="btn btn-outline-danger"
+                        class="btn btn-outline-danger lab-action"
                         type="button"
                         :disabled="deletingId === item.id || inUse(item)"
                         :title="inUse(item) ? `No se puede eliminar: tiene ${item[config.usageKey]} asociados` : ''"
                         @click="remove(item)"
                       >
-                        Eliminar
+                        <I name="trash" />Eliminar
                       </button>
                     </div>
                   </td>
@@ -109,6 +110,7 @@ import { getApiErrorMessage, getValidationErrors, unwrapData } from '@/api/clien
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import BaseButton from '@/components/base/BaseButton.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 import { asArray, validationMessage } from '@/utils/formatters';
 
 const props = defineProps({
@@ -131,12 +133,18 @@ const catalogConfigs = {
       { name: 'name', label: 'Nombre' },
       { name: 'area', label: 'Area' },
       { name: 'process_line', label: 'Linea de proceso' },
-      { name: 'description', label: 'Descripcion', type: 'textarea', required: false }
+      { name: 'description', label: 'Descripcion', type: 'textarea', required: false },
+      { name: 'capacity_m3', label: 'Capacidad (m³)', type: 'number', required: false },
+      { name: 'operator', label: 'Responsable', required: false },
+      { name: 'status', label: 'Estado', required: false }
     ],
     columns: [
       { key: 'name', label: 'Nombre' },
       { key: 'area', label: 'Area' },
       { key: 'process_line', label: 'Linea' },
+      { key: 'operator', label: 'Responsable' },
+      { key: 'capacity_m3', label: 'Capacidad' },
+      { key: 'status', label: 'Estado' },
       { key: 'devices_count', label: 'Dispositivos' }
     ]
   },
@@ -151,14 +159,18 @@ const catalogConfigs = {
     fields: [
       { name: 'name', label: 'Nombre' },
       { name: 'unit', label: 'Unidad' },
-      { name: 'min_range', label: 'Rango minimo', type: 'number' },
-      { name: 'max_range', label: 'Rango maximo', type: 'number' }
+      { name: 'min_value', label: 'Rango minimo', type: 'number' },
+      { name: 'max_value', label: 'Rango maximo', type: 'number' },
+      { name: 'description', label: 'Descripcion', type: 'textarea', required: false },
+      { name: 'icon', label: 'Icono', required: false }
     ],
     columns: [
       { key: 'name', label: 'Nombre' },
       { key: 'unit', label: 'Unidad' },
-      { key: 'min_range', label: 'Min' },
-      { key: 'max_range', label: 'Max' },
+      { key: 'min_value', label: 'Min' },
+      { key: 'max_value', label: 'Max' },
+      { key: 'description', label: 'Descripcion' },
+      { key: 'icon', label: 'Icono' },
       { key: 'sensors_count', label: 'Sensores' }
     ]
   },
@@ -172,11 +184,15 @@ const catalogConfigs = {
     usageKey: 'devices_count',
     fields: [
       { name: 'name', label: 'Nombre' },
-      { name: 'description', label: 'Descripcion', type: 'textarea', required: false }
+      { name: 'description', label: 'Descripcion', type: 'textarea', required: false },
+      { name: 'protocol', label: 'Protocolo', required: false },
+      { name: 'refresh_interval_s', label: 'Intervalo (s)', type: 'number', required: false }
     ],
     columns: [
       { key: 'name', label: 'Nombre' },
       { key: 'description', label: 'Descripcion' },
+      { key: 'protocol', label: 'Protocolo' },
+      { key: 'refresh_interval_s', label: 'Intervalo' },
       { key: 'devices_count', label: 'Dispositivos' }
     ]
   }

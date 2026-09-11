@@ -7,9 +7,9 @@
       </div>
       <div class="lab-resource-actions">
         <button v-if="authStore.user?.is_admin" class="btn btn-primary" type="button" @click="openCreate">
-          Nuevo dispositivo
+          <I name="plus" />Nuevo dispositivo
         </button>
-        <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load">Actualizar</button>
+        <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
       </div>
     </div>
 
@@ -94,6 +94,7 @@ import BaseButton from '@/components/base/BaseButton.vue';
 import BaseInput from '@/components/base/BaseInput.vue';
 import BaseModal from '@/components/base/BaseModal.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import I from '@/components/dashboard/lab/LabIcon.vue';
 import DeviceFilters from '@/components/devices/DeviceFilters.vue';
 import DeviceList from '@/components/devices/DeviceList.vue';
 import { useAuthStore } from '@/stores/auth';

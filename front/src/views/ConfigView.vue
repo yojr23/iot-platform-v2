@@ -1,470 +1,101 @@
 <template>
-  <section class="lab-resource-page">
-    <div class="lab-toolbar lab-resource-toolbar">
+  <section class="lab-resource-page settings-page">
+    <div class="lab-toolbar lab-resource-toolbar settings-toolbar">
       <div>
-        <h1 class="lab-resource-title">Configuración del sistema</h1>
-        <p class="lab-resource-description">Alertas, correo, parámetros generales y accesos de administración.</p>
+        <p class="settings-eyebrow"><LabIcon name="settings" /> Administración</p>
+        <h1 class="lab-resource-title">Configuración</h1>
+        <p class="lab-resource-description">Consulta el estado del sistema y ajusta cada área desde una vista enfocada.</p>
       </div>
       <div class="lab-resource-actions">
-        <span class="badge rounded-pill" :class="isAdmin ? 'text-bg-primary' : 'text-bg-secondary'">
-          {{ isAdmin ? 'Administrador' : 'Solo lectura' }}
-        </span>
+        <span class="settings-role"><LabIcon name="shield" /> Administrador</span>
         <RouterLink class="btn btn-outline-secondary" to="/dashboard">Volver al dashboard</RouterLink>
       </div>
     </div>
 
-    <BaseAlert v-if="error" variant="danger" :message="error" />
-    <BaseAlert v-if="success" variant="success" :message="success" />
-    <LoadingSpinner v-if="loading" label="Cargando configuracion..." />
+    <LoadingSpinner v-if="loading" label="Cargando configuración..." />
+    <template v-else>
+      <BaseAlert v-if="loadNotice" variant="warning" :message="loadNotice" />
 
-    <div v-if="!loading" class="row g-3">
-      <div class="col-12">
-        <div class="content-panel p-3">
-          <h2 class="h5 mb-1">Configuración general</h2>
-          <p class="text-muted small mb-3">Valores visibles del frontend y referencia de entorno.</p>
-
-          <form @submit.prevent="saveGeneralConfig">
-            <div class="row g-3">
-              <div class="col-12 col-lg-6">
-                <BaseInput
-                  v-model="generalForm.app_name"
-                  label="Nombre de la aplicacion"
-                  name="app_name"
-                  :disabled="!isAdmin"
-                  :error="fieldError(generalErrors, 'app_name')"
-                />
-              </div>
-              <div class="col-12 col-lg-6">
-                <BaseInput
-                  v-model="generalForm.app_url"
-                  label="URL de la aplicacion"
-                  name="app_url"
-                  :disabled="!isAdmin"
-                  :error="fieldError(generalErrors, 'app_url')"
-                />
-              </div>
-            </div>
-
-            <BaseButton v-if="isAdmin" type="submit" class="mt-3" :loading="savingGeneral">Guardar general</BaseButton>
-          </form>
+      <section class="settings-summary" aria-labelledby="settings-summary-title">
+        <div class="settings-summary-heading">
+          <div><p class="settings-eyebrow">Resumen operativo</p><h2 id="settings-summary-title">Estado de configuración</h2></div>
+          <span class="settings-summary-name">{{ general.app_name || 'SINOA' }}</span>
         </div>
-      </div>
-
-      <div class="col-12 col-xl-6">
-        <div class="content-panel p-3">
-          <h2 class="h5 mb-3">Alertas</h2>
-
-          <form @submit.prevent="saveAlertConfig">
-            <div class="form-check form-switch mb-3">
-              <input id="mail_enabled" v-model="alertForm.mail_enabled" class="form-check-input" type="checkbox" />
-              <label class="form-check-label" for="mail_enabled">Notificaciones por email</label>
-            </div>
-
-            <div class="form-check form-switch mb-3">
-              <input id="alert_sound_enabled" v-model="alertForm.alert_sound_enabled" class="form-check-input" type="checkbox" />
-              <label class="form-check-label" for="alert_sound_enabled">Sonido de alerta</label>
-            </div>
-
-            <BaseInput
-              v-model="alertForm.alert_threshold"
-              label="Umbral general de alertas"
-              name="alert_threshold"
-              type="number"
-              :error="fieldError(alertErrors, 'alert_threshold')"
-              required
-            />
-
-            <BaseInput
-              v-model="alertForm.sensor_update_interval"
-              label="Intervalo de actualizacion de sensores (ms)"
-              name="sensor_update_interval"
-              type="number"
-              :error="fieldError(alertErrors, 'sensor_update_interval')"
-              required
-            />
-
-            <BaseInput
-              v-model="alertForm.danger_email_rate_limit_seconds"
-              label="Rate limit email critico (segundos)"
-              name="danger_email_rate_limit_seconds"
-              type="number"
-              :error="fieldError(alertErrors, 'danger_email_rate_limit_seconds')"
-              required
-            />
-
-            <BaseButton type="submit" :loading="savingAlerts">Guardar alertas</BaseButton>
-          </form>
-        </div>
-      </div>
-
-      <div class="col-12 col-xl-6">
-        <div class="content-panel p-3">
-          <h2 class="h5 mb-3">SMTP / Email</h2>
-
-          <div class="alert alert-light border small">
-            Contrasena configurada:
-            <strong>{{ emailForm.password_configured ? 'si' : 'no' }}</strong>.
-          </div>
-
-          <div class="alert alert-light border small">
-            Si usas Gmail como servidor SMTP, Google exige una
-            <strong>contrasena de aplicacion</strong> en lugar de la contrasena normal de la cuenta.
-            <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noopener">Como generar una contrasena de aplicacion</a>.
-          </div>
-
-          <form @submit.prevent="saveEmailConfig">
-            <div class="row g-3">
-              <div class="col-12 col-lg-6">
-                <BaseInput v-model="emailForm.mail_mailer" label="Mailer" name="mail_mailer" :error="fieldError(emailErrors, 'mail_mailer')" required />
-              </div>
-              <div class="col-12 col-lg-6">
-                <BaseInput v-model="emailForm.mail_encryption" label="Encriptacion" name="mail_encryption" :error="fieldError(emailErrors, 'mail_encryption')" required />
-              </div>
-              <div class="col-12 col-lg-8">
-                <BaseInput v-model="emailForm.mail_host" label="Host" name="mail_host" :error="fieldError(emailErrors, 'mail_host')" required />
-              </div>
-              <div class="col-12 col-lg-4">
-                <BaseInput v-model="emailForm.mail_port" label="Puerto" name="mail_port" type="number" :error="fieldError(emailErrors, 'mail_port')" required />
-              </div>
-              <div class="col-12">
-                <BaseInput v-model="emailForm.mail_username" label="Usuario SMTP" name="mail_username" type="email" :error="fieldError(emailErrors, 'mail_username')" required />
-              </div>
-              <div class="col-12">
-                <BaseInput
-                  v-model="emailForm.mail_password"
-                  label="Nueva contrasena SMTP"
-                  name="mail_password"
-                  type="password"
-                  autocomplete="new-password"
-                  :error="fieldError(emailErrors, 'mail_password')"
-                />
-              </div>
-              <div class="col-12 col-lg-6">
-                <BaseInput v-model="emailForm.mail_from_address" label="Remitente" name="mail_from_address" type="email" :error="fieldError(emailErrors, 'mail_from_address')" required />
-              </div>
-              <div class="col-12 col-lg-6">
-                <BaseInput v-model="emailForm.mail_from_name" label="Nombre remitente" name="mail_from_name" :error="fieldError(emailErrors, 'mail_from_name')" required />
-              </div>
-              <div class="col-12">
-                <BaseInput v-model="emailForm.mail_to" label="Destino de alertas" name="mail_to" type="email" :error="fieldError(emailErrors, 'mail_to')" required />
-              </div>
-            </div>
-
-            <div class="d-flex gap-2 mt-3">
-              <BaseButton type="submit" :loading="savingEmail">Guardar email</BaseButton>
-            </div>
-          </form>
-
-          <hr />
-
-          <form class="d-flex flex-column flex-lg-row gap-2" @submit.prevent="sendTestEmail">
-            <input v-model="testEmail" class="form-control" type="email" placeholder="correo@ejemplo.com" required />
-            <BaseButton type="submit" variant="outline-primary" :loading="testingEmail">Probar email</BaseButton>
-          </form>
-        </div>
-      </div>
-
-      <div class="col-12">
-        <div class="content-panel p-3">
-          <h2 class="h5 mb-3">Acciones de administración</h2>
-          <div class="row g-3">
-            <div v-for="action in adminActions" :key="action.label" class="col-12 col-md-6 col-xl-4">
-              <RouterLink :to="action.href" class="content-panel p-3 d-block h-100 text-decoration-none">
-                <div class="fw-semibold">{{ action.label }}</div>
-                <p class="text-muted small mb-0">{{ action.description }}</p>
-              </RouterLink>
-            </div>
+        <div class="settings-status-grid">
+          <div v-for="item in statusItems" :key="item.label" class="settings-status" :class="`is-${item.tone}`">
+            <span class="settings-status-icon"><LabIcon :name="item.icon" /></span>
+            <div><span>{{ item.label }}</span><strong>{{ item.value }}</strong></div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div v-if="systemInfo" class="col-12 col-xl-6">
-        <div class="content-panel p-3">
-          <h2 class="h5 mb-3">Informacion del sistema</h2>
-          <dl class="mb-0">
-            <dt>Version de PHP</dt>
-            <dd>{{ systemInfo.php_version || '-' }}</dd>
-            <dt>Version de Laravel</dt>
-            <dd>{{ systemInfo.laravel_version || '-' }}</dd>
-            <dt>Entorno</dt>
-            <dd>{{ systemInfo.environment || '-' }}</dd>
-            <dt>Motor de base de datos</dt>
-            <dd>{{ systemInfo.db_driver || '-' }}</dd>
-          </dl>
+      <section class="settings-list-panel" aria-labelledby="settings-areas-title">
+        <div class="settings-list-heading">
+          <div><p class="settings-eyebrow">Áreas del sistema</p><h2 id="settings-areas-title">Elige qué quieres ajustar</h2></div>
+          <span class="settings-list-caption">Cambios guardados por área</span>
         </div>
-      </div>
+        <div class="settings-section-list">
+          <RouterLink v-for="section in sections" :key="section.to" :to="section.to" class="settings-section-row">
+            <span class="settings-section-icon" :class="`is-${section.tone}`"><LabIcon :name="section.icon" /></span>
+            <span class="settings-section-copy"><strong>{{ section.title }}</strong><small>{{ section.description }}</small></span>
+            <span class="settings-section-state" :class="`is-${section.tone}`">{{ section.status }}</span>
+            <span class="settings-section-open">Abrir <LabIcon name="right" /></span>
+          </RouterLink>
+        </div>
+      </section>
 
-      <div class="col-12">
-        <div class="content-panel p-3">
-          <h2 class="h5 mb-3">Configuracion publica expuesta al frontend</h2>
-          <pre class="bg-light border rounded p-3 mb-0"><code>{{ publicConfig }}</code></pre>
+      <section class="settings-admin-panel" aria-labelledby="settings-admin-title">
+        <div><p class="settings-eyebrow">Gestión administrativa</p><h2 id="settings-admin-title">Recursos relacionados</h2><p>Estas acciones se mantienen fuera de la barra lateral para que la navegación operativa siga despejada.</p></div>
+        <div class="settings-admin-links">
+          <RouterLink v-for="action in adminActions" :key="action.to" :to="action.to"><LabIcon :name="action.icon" /><span>{{ action.label }}</span><LabIcon name="right" /></RouterLink>
         </div>
-      </div>
-    </div>
+      </section>
+    </template>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
-
-import {
-  getAlertConfig,
-  getEmailConfig,
-  getGeneralConfig,
-  getRuntimeConfig,
-  getSystemInfo,
-  testEmailConfig,
-  updateAlertConfig,
-  updateEmailConfig,
-  updateGeneralConfig
-} from '@/api/config';
-import { getApiErrorMessage, getValidationErrors, unwrapData } from '@/api/client';
+import { computed, onMounted, ref } from 'vue';
+import { getAlertConfig, getEmailConfig, getGeneralConfig, getRuntimeConfig, getSystemInfo } from '@/api/config';
+import { unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
-import BaseButton from '@/components/base/BaseButton.vue';
-import BaseInput from '@/components/base/BaseInput.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
-import { useAuthStore } from '@/stores/auth';
-import { validationMessage } from '@/utils/formatters';
+import LabIcon from '@/components/dashboard/lab/LabIcon.vue';
 
-const authStore = useAuthStore();
-const publicConfig = ref({});
-const systemInfo = ref(null);
-const loading = ref(false);
-const savingGeneral = ref(false);
-const savingAlerts = ref(false);
-const savingEmail = ref(false);
-const testingEmail = ref(false);
-const error = ref('');
-const success = ref('');
-const generalErrors = ref({});
-const alertErrors = ref({});
-const emailErrors = ref({});
-const testEmail = ref('');
-const appUrl = window.location.origin;
-const isAdmin = computed(() => Boolean(authStore.user?.is_admin));
-const adminActions = computed(() => [
-  {
-    label: 'Gestionar configuracion de email',
-    description: 'Servidor SMTP, credenciales, remitente y correo destino.',
-    href: '/config'
-  },
-  {
-    label: 'Gestionar tipos de sensores',
-    description: 'Crear y ajustar catalogos de sensores usados en reglas.',
-    href: '/sensor-types'
-  },
-  {
-    label: 'Gestionar tipos de dispositivos',
-    description: 'Mantener familias de equipos IoT disponibles.',
-    href: '/device-types'
-  },
-  {
-    label: 'Gestionar laboratorios',
-    description: 'Crear areas, laboratorios y lineas de proceso.',
-    href: '/labs'
-  },
-  {
-    label: 'Configurar reglas de alerta',
-    description: 'Definir umbrales por sensor, dispositivo y severidad.',
-    href: '/alert-rules'
-  },
-  {
-    label: 'Gestionar roles de usuarios',
-    description: 'Asignar o revocar permisos de administrador.',
-    href: '/users'
-  },
-  {
-    label: 'Metricas tecnicas',
-    description: 'Consultar rendimiento y telemetria interna del sistema.',
-    href: '/metrics'
-  }
+const loading = ref(true);
+const loadNotice = ref('');
+const general = ref({});
+const alerts = ref(null);
+const email = ref(null);
+const diagnostics = ref(null);
+
+const statusItems = computed(() => [
+  { label: 'Aplicación', value: general.value.app_name ? 'Configurada' : 'Requiere revisión', icon: 'settings', tone: general.value.app_name ? 'success' : 'warning' },
+  { label: 'Alertas', value: alerts.value ? (alerts.value.mail_enabled ? 'Correo activo' : 'Sin correo') : 'No disponible', icon: 'bell', tone: alerts.value ? (alerts.value.mail_enabled ? 'success' : 'warning') : 'neutral' },
+  { label: 'Correo', value: email.value ? (email.value.password_configured ? 'Listo para usar' : 'Falta contraseña') : 'No disponible', icon: 'mail', tone: email.value ? (email.value.password_configured ? 'success' : 'warning') : 'neutral' },
+  { label: 'Diagnóstico', value: diagnostics.value?.environment || 'No disponible', icon: 'server', tone: diagnostics.value ? 'info' : 'neutral' }
 ]);
-
-const generalForm = reactive({
-  app_name: '',
-  app_url: ''
-});
-
-const alertForm = reactive({
-  mail_enabled: false,
-  alert_sound_enabled: false,
-  alert_threshold: 0,
-  sensor_update_interval: 1000,
-  danger_email_rate_limit_seconds: 0
-});
-
-const emailForm = reactive({
-  mail_mailer: 'smtp',
-  mail_host: '',
-  mail_port: 587,
-  mail_username: '',
-  mail_password: '',
-  mail_encryption: 'tls',
-  mail_from_address: '',
-  mail_from_name: '',
-  mail_to: '',
-  password_configured: false
-});
+const sections = computed(() => [
+  { to: '/config/general', icon: 'settings', title: 'General', description: 'Nombre visible y URL de la aplicación.', status: general.value.app_name ? 'Configurado' : 'Revisar', tone: general.value.app_name ? 'success' : 'warning' },
+  { to: '/config/alerts', icon: 'bell', title: 'Alertas', description: 'Correo, sonido, umbrales e intervalos de actualización.', status: alerts.value ? (alerts.value.mail_enabled ? 'Activo' : 'Revisar') : 'No disponible', tone: alerts.value?.mail_enabled ? 'success' : alerts.value ? 'warning' : 'neutral' },
+  { to: '/config/email', icon: 'mail', title: 'Correo', description: 'Servidor SMTP, remitente, destino y envío de prueba.', status: email.value?.password_configured ? 'Listo' : email.value ? 'Revisar' : 'No disponible', tone: email.value?.password_configured ? 'success' : email.value ? 'warning' : 'neutral' },
+  { to: '/config/diagnostics', icon: 'server', title: 'Diagnóstico', description: 'Versiones y entorno del servicio en modo de solo lectura.', status: diagnostics.value ? 'Disponible' : 'No disponible', tone: diagnostics.value ? 'info' : 'neutral' }
+]);
+const adminActions = [
+  { to: '/sensor-types', label: 'Tipos de sensores', icon: 'sensor' }, { to: '/device-types', label: 'Tipos de dispositivos', icon: 'device' }, { to: '/labs', label: 'Laboratorios', icon: 'database' }, { to: '/alert-rules', label: 'Reglas de alerta', icon: 'alert' }, { to: '/users', label: 'Usuarios y roles', icon: 'user' }
+];
 
 async function load() {
-  loading.value = true;
-  error.value = '';
-
-  try {
-    const runtimeResponse = await getRuntimeConfig();
-    publicConfig.value = unwrapData(runtimeResponse) || {};
-
-    // General form round-trips app_name via the dedicated admin endpoint (runtime omits
-    // app_name); fall back to runtime/defaults if that call fails.
-    try {
-      const generalResponse = await getGeneralConfig();
-      const general = unwrapData(generalResponse) || {};
-      generalForm.app_name = general.app_name || publicConfig.value.app_name || 'iot-platform-v2';
-      generalForm.app_url = general.app_url || publicConfig.value.app_url || appUrl;
-    } catch (generalError) {
-      generalForm.app_name = publicConfig.value.app_name || 'iot-platform-v2';
-      generalForm.app_url = publicConfig.value.app_url || appUrl;
-    }
-
-    try {
-      const alertResponse = await getAlertConfig();
-      Object.assign(alertForm, unwrapData(alertResponse) || {});
-    } catch (configError) {
-      error.value = getApiErrorMessage(configError, 'La configuracion de alertas requiere permisos adicionales.');
-    }
-
-    try {
-      const emailResponse = await getEmailConfig();
-      Object.assign(emailForm, unwrapData(emailResponse) || {}, { mail_password: '' });
-      testEmail.value = emailForm.mail_to || '';
-    } catch (emailError) {
-      error.value = getApiErrorMessage(emailError, 'La configuracion email requiere permisos adicionales.');
-    }
-  } catch (requestError) {
-    error.value = getApiErrorMessage(requestError, 'No se pudo cargar la configuracion publica.');
-  } finally {
-    loading.value = false;
-  }
+  loading.value = true; loadNotice.value = '';
+  const results = await Promise.allSettled([getRuntimeConfig(), getGeneralConfig(), getAlertConfig(), getEmailConfig(), getSystemInfo()]);
+  const [runtimeResult, generalResult, alertResult, emailResult, diagnosticsResult] = results;
+  const runtime = runtimeResult.status === 'fulfilled' ? unwrapData(runtimeResult.value) || {} : {};
+  general.value = generalResult.status === 'fulfilled' ? unwrapData(generalResult.value) || runtime : runtime;
+  alerts.value = alertResult.status === 'fulfilled' ? unwrapData(alertResult.value) || {} : null;
+  email.value = emailResult.status === 'fulfilled' ? unwrapData(emailResult.value) || {} : null;
+  diagnostics.value = diagnosticsResult.status === 'fulfilled' ? unwrapData(diagnosticsResult.value) || {} : null;
+  if (results.some((result) => result.status === 'rejected')) loadNotice.value = 'Algunos estados no están disponibles ahora. Puedes abrir cada área para revisarla o reintentar más tarde.';
+  loading.value = false;
 }
-
-function alertPayload() {
-  return {
-    mail_enabled: Boolean(alertForm.mail_enabled),
-    alert_sound_enabled: Boolean(alertForm.alert_sound_enabled),
-    alert_threshold: Number(alertForm.alert_threshold),
-    sensor_update_interval: Number(alertForm.sensor_update_interval),
-    danger_email_rate_limit_seconds: Number(alertForm.danger_email_rate_limit_seconds)
-  };
-}
-
-function emailPayload() {
-  const payload = {
-    mail_mailer: emailForm.mail_mailer,
-    mail_host: emailForm.mail_host,
-    mail_port: Number(emailForm.mail_port),
-    mail_username: emailForm.mail_username,
-    mail_encryption: emailForm.mail_encryption,
-    mail_from_address: emailForm.mail_from_address,
-    mail_from_name: emailForm.mail_from_name,
-    mail_to: emailForm.mail_to
-  };
-
-  if (emailForm.mail_password) {
-    payload.mail_password = emailForm.mail_password;
-  }
-
-  return payload;
-}
-
-async function saveGeneralConfig() {
-  savingGeneral.value = true;
-  error.value = '';
-  success.value = '';
-  generalErrors.value = {};
-
-  try {
-    const response = await updateGeneralConfig({
-      app_name: generalForm.app_name,
-      app_url: generalForm.app_url
-    });
-    const data = unwrapData(response) || {};
-    Object.assign(publicConfig.value, data);
-    Object.assign(generalForm, data);
-    success.value = response.data?.message || 'Configuracion general actualizada.';
-  } catch (requestError) {
-    generalErrors.value = getValidationErrors(requestError);
-    error.value = getApiErrorMessage(requestError, 'No se pudo guardar la configuracion general.');
-  } finally {
-    savingGeneral.value = false;
-  }
-}
-
-async function saveAlertConfig() {
-  savingAlerts.value = true;
-  error.value = '';
-  success.value = '';
-  alertErrors.value = {};
-
-  try {
-    const response = await updateAlertConfig(alertPayload());
-    Object.assign(alertForm, unwrapData(response) || {});
-    success.value = response.data?.message || 'Configuracion de alertas actualizada.';
-  } catch (requestError) {
-    alertErrors.value = getValidationErrors(requestError);
-    error.value = getApiErrorMessage(requestError, 'No se pudo guardar la configuracion de alertas.');
-  } finally {
-    savingAlerts.value = false;
-  }
-}
-
-async function saveEmailConfig() {
-  savingEmail.value = true;
-  error.value = '';
-  success.value = '';
-  emailErrors.value = {};
-
-  try {
-    const response = await updateEmailConfig(emailPayload());
-    Object.assign(emailForm, unwrapData(response) || {}, { mail_password: '' });
-    success.value = response.data?.message || 'Configuracion de email actualizada.';
-  } catch (requestError) {
-    emailErrors.value = getValidationErrors(requestError);
-    error.value = getApiErrorMessage(requestError, 'No se pudo guardar la configuracion de email.');
-  } finally {
-    savingEmail.value = false;
-  }
-}
-
-async function sendTestEmail() {
-  testingEmail.value = true;
-  error.value = '';
-  success.value = '';
-
-  try {
-    const response = await testEmailConfig({ test_email: testEmail.value });
-    success.value = response.data?.message || 'Email de prueba enviado.';
-  } catch (requestError) {
-    error.value = getApiErrorMessage(requestError, 'No fue posible enviar el email de prueba.');
-  } finally {
-    testingEmail.value = false;
-  }
-}
-
-function fieldError(errors, field) {
-  return validationMessage(errors, field);
-}
-
-async function loadSystemInfo() {
-  try {
-    const response = await getSystemInfo();
-    systemInfo.value = unwrapData(response) || null;
-  } catch {
-    systemInfo.value = null;
-  }
-}
-
-onMounted(() => {
-  load();
-  loadSystemInfo();
-});
+onMounted(load);
 </script>

@@ -30,7 +30,8 @@ const route = useRoute();
 const usesLabShell = computed(() => [
   'dashboard', 'devices', 'device-detail', 'sensors', 'sensor-detail',
   'alerts', 'alert-detail', 'alert-rules',
-  'config', 'labs', 'sensor-types', 'device-types', 'users', 'metrics', 'profile'
+  'config', 'config-general', 'config-alerts', 'config-email', 'config-diagnostics',
+  'labs', 'sensor-types', 'device-types', 'users', 'metrics', 'profile'
 ].includes(route?.name));
 
 import AlertToast from '@/components/alerts/AlertToast.vue';

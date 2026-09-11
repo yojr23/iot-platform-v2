@@ -104,9 +104,6 @@ const links = computed(() => [
         : []),
     ...(auth.user?.is_admin
         ? [
-              { to: "/alert-rules", label: "Reglas de alerta", icon: "bell" },
-              { to: "/labs", label: "Catálogos", icon: "device" },
-              { to: "/users", label: "Usuarios", icon: "user" },
               { to: "/metrics", label: "Métricas", icon: "chart" },
               { to: "/config", label: "Configuración", icon: "grip" },
           ]

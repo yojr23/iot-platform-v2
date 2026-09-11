@@ -22,12 +22,18 @@
             <dd>{{ device?.device_type?.name || '-' }}</dd>
             <dt>Laboratorio</dt>
             <dd>{{ device?.lab?.name || '-' }}</dd>
+            <dt>Ubicacion</dt>
+            <dd>{{ device?.location || '-' }}</dd>
             <dt>IP</dt>
             <dd>{{ device?.ip_address || '-' }}</dd>
-            <dt>MAC</dt>
-            <dd>{{ device?.mac_address || '-' }}</dd>
+            <dt>Firmware</dt>
+            <dd><span class="badge text-bg-light border">{{ device?.firmware_version || '-' }}</span></dd>
+            <dt>Fecha instalacion</dt>
+            <dd>{{ device?.install_date || '-' }}</dd>
+            <dt>Descripcion</dt>
+            <dd>{{ device?.description || '-' }}</dd>
             <dt>Ultima comunicacion</dt>
-            <dd>{{ formatDate(device?.last_communication) }}</dd>
+            <dd>{{ formatDate(device?.last_seen || device?.last_communication) }}</dd>
             <dt>Estado</dt>
             <dd class="d-flex align-items-center gap-2 flex-wrap">
               <span class="badge" :class="effectiveDevice?.status && effectiveDevice?.is_active ? 'text-bg-success' : 'text-bg-secondary'">

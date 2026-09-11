@@ -1,5 +1,5 @@
 <template>
-    <div class="lab-workspace">
+    <div class="lab-workspace" data-testid="sensor-monitor-board">
         <div class="lab-toolbar">
             <div class="lab-title">
                 <h1>Mi tablero</h1>
@@ -68,155 +68,7 @@
                         >Tu tablero es temporal</span
                     >
                 </div>
-                <article v-if="selected" class="lab-card lab-main-chart">
-                    <div class="lab-chart-selectors">
-                        <label
-                            ><span class="visually-hidden">Dispositivo</span
-                            ><select
-                                :value="selected.device_id"
-                                @change="changeDevice($event.target.value)"
-                            >
-                                <option
-                                    v-for="d in devices"
-                                    :value="d.id"
-                                    :key="d.id"
-                                >
-                                    {{ d.name }}
-                                </option>
-                            </select></label
-                        ><label
-                            ><span class="visually-hidden">Sensor</span
-                            ><select
-                                :value="selected.sensor_id"
-                                @change="changeSensor($event.target.value)"
-                            >
-                                <option
-                                    v-for="s in catalog.filter(
-                                        (s) =>
-                                            s.device_id === selected.device_id,
-                                    )"
-                                    :value="s.id"
-                                    :key="s.id"
-                                >
-                                    {{ s.name }}
-                                </option>
-                            </select></label
-                        ><span class="lab-chart-caption">{{
-                            selectedSensor?.unit
-                        }}</span>
-                    </div>
-                    <div class="lab-reading-row">
-                        <div class="lab-reading">
-                            <span>{{ number(latest?.value) }}</span
-                            ><span class="lab-unit">{{
-                                selectedSensor?.unit
-                            }}</span
-                            ><span
-                                v-if="selectedState"
-                                class="lab-zone-badge"
-                                :class="selectedState"
-                                role="status"
-                                >{{ severityLabel(selectedState) }}</span
-                            >
-                        </div>
-                        <div class="lab-connection">
-                            <span
-                                :class="[
-                                    'lab-connection-label',
-                                    { connected: connection === 'connected' },
-                                ]"
-                                ><span class="lab-dot" />{{
-                                    connection === "connected"
-                                        ? "Transporte conectado"
-                                        : "Sin conexión en vivo"
-                                }}</span
-                            ><small
-                                >Último dato ·
-                                {{ time(latest?.reading_time) }}</small
-                            >
-                        </div>
-                    </div>
-                    <div class="lab-chart-tools">
-                        <span
-                            >{{ selectedSensor?.name }}
-                            <span class="lab-muted"
-                                >({{ selectedSensor?.unit }})</span
-                            ></span
-                        >
-                        <div
-                            class="lab-ranges"
-                            role="group"
-                            aria-label="Rango de tiempo"
-                        >
-                            <button
-                                v-for="(_, r) in ranges"
-                                :key="r"
-                                :aria-pressed="selected.range === r"
-                                :class="{ active: selected.range === r }"
-                                @click="changeRange(r)"
-                            >
-                                {{ r }}
-                            </button>
-                        </div>
-                    </div>
-                    <div class="lab-realtime-row">
-                        <button
-                            type="button"
-                            class="lab-button lab-realtime-toggle"
-                            :class="{ active: realtimeEnabled }"
-                            :aria-pressed="realtimeEnabled"
-                            @click="toggleRealtime"
-                        >
-                            <span
-                                class="lab-dot"
-                                :class="{ off: !realtimeEnabled }"
-                                aria-hidden="true"
-                            /><span>{{
-                                realtimeEnabled ? "Tiempo real" : "Pausado"
-                            }}</span>
-                        </button>
-                    </div>
-                    <SensorReadingChart
-                        v-bind="displayViewModel"
-                        :loading="history[selected.id]?.loading"
-                        :error="activeError"
-                    />
-                    <button
-                        v-if="activeError"
-                        class="lab-button"
-                        @click="load(selected)"
-                    >
-                        Reintentar
-                    </button>
-                    <details class="lab-readings-table">
-                        <summary>
-                            Consultar últimas lecturas <I name="down" />
-                        </summary>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Hora (UTC)</th>
-                                    <th>Valor</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr
-                                    v-for="p in activeData.points
-                                        .slice(-8)
-                                        .reverse()"
-                                    :key="p.id"
-                                >
-                                    <td>{{ time(p.reading_time) }}</td>
-                                    <td>
-                                        {{ number(p.value) }}
-                                        {{ selectedSensor?.unit }}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </details>
-                </article>
-                <div v-else class="lab-card lab-empty">
+                <div v-if="!widgets.length" class="lab-card lab-empty">
                     <I name="chart" />
                     <h2>Tu próximo dato empieza aquí</h2>
                     <p>
@@ -234,12 +86,126 @@
                         Agregar gráfica
                     </button>
                 </div>
-                <div class="lab-spark-grid">
+                <article
+                    v-for="w in expandedWidgets"
+                    :key="w.id"
+                    class="lab-card lab-main-chart"
+                    :class="{ selected: w.id === selectedId }"
+                >
+                    <div class="lab-spark-title">
+                        <span class="lab-sensor-icon"
+                            ><I :name="icon(sensor(w)?.name)"
+                        /></span>
+                        <div>
+                            <strong>{{ sensor(w)?.name }}</strong
+                            ><small>{{ sensor(w)?.deviceName }}</small>
+                        </div>
+                        <button
+                            type="button"
+                            class="lab-text-button"
+                            :aria-pressed="true"
+                            @click="toggleBig(w.id)"
+                        >
+                            Ver mini
+                        </button>
+                    </div>
+                    <div class="lab-chart-selectors">
+                        <label
+                            ><span class="visually-hidden">Dispositivo</span
+                            ><select
+                                :value="w.device_id"
+                                @change="
+                                    select(w.id);
+                                    changeDevice($event.target.value);
+                                "
+                            >
+                                <option
+                                    v-for="d in devices"
+                                    :value="d.id"
+                                    :key="d.id"
+                                >
+                                    {{ d.name }}
+                                </option>
+                            </select></label
+                        ><label
+                            ><span class="visually-hidden">Sensor</span
+                            ><select
+                                :value="w.sensor_id"
+                                @change="
+                                    select(w.id);
+                                    changeSensor($event.target.value);
+                                "
+                            >
+                                <option
+                                    v-for="s in catalog.filter(
+                                        (s) => s.device_id === w.device_id,
+                                    )"
+                                    :value="s.id"
+                                    :key="s.id"
+                                >
+                                    {{ s.name }}
+                                </option>
+                            </select></label
+                        >
+                    </div>
+                    <div class="lab-reading-row">
+                        <div class="lab-reading">
+                            <span>{{ number(widgetLatest(w)?.value) }}</span
+                            ><span class="lab-unit">{{ sensor(w)?.unit }}</span
+                            ><span
+                                v-if="widgetState(w)"
+                                class="lab-zone-badge"
+                                :class="widgetState(w)"
+                                role="status"
+                                >{{ severityLabel(widgetState(w)) }}</span
+                            >
+                        </div>
+                    </div>
+                    <div class="lab-chart-tools">
+                        <span
+                            >{{ sensor(w)?.name }}
+                            <span class="lab-muted"
+                                >({{ sensor(w)?.unit }})</span
+                            ></span
+                        >
+                        <div
+                            class="lab-ranges"
+                            role="group"
+                            aria-label="Rango de tiempo"
+                        >
+                            <button
+                                v-for="(_, r) in ranges"
+                                :key="r"
+                                :aria-pressed="w.range === r"
+                                :class="{ active: w.range === r }"
+                                @click="
+                                    select(w.id);
+                                    changeRange(r);
+                                "
+                            >
+                                {{ r }}
+                            </button>
+                        </div>
+                    </div>
+                    <SensorReadingChart
+                        v-bind="widgetViewModel(w)"
+                        :loading="history[w.id]?.loading"
+                        :error="widgetError(w)"
+                    />
                     <button
-                        v-for="w in secondary"
+                        v-if="widgetError(w)"
+                        class="lab-button"
+                        @click="load(w)"
+                    >
+                        Reintentar
+                    </button>
+                </article>
+                <div v-if="miniWidgets.length" class="lab-spark-grid">
+                    <article
+                        v-for="w in miniWidgets"
                         :key="w.id"
                         class="lab-card lab-spark"
-                        @click="select(w.id)"
+                        :class="{ selected: w.id === selectedId }"
                     >
                         <div class="lab-spark-title">
                             <span class="lab-sensor-icon"
@@ -249,25 +215,34 @@
                                 <strong>{{ sensor(w)?.name }}</strong
                                 ><small>{{ sensor(w)?.deviceName }}</small>
                             </div>
-                            <I name="right" />
+                            <button
+                                type="button"
+                                class="lab-text-button"
+                                :aria-pressed="false"
+                                @click="toggleBig(w.id)"
+                            >
+                                Ver grande
+                            </button>
                         </div>
-                        <div class="lab-spark-value">
-                            {{ number(points(w).points.at(-1)?.value) }}
-                            <small>{{ sensor(w)?.unit }}</small>
-                        </div>
-                        <svg
-                            viewBox="0 0 280 45"
-                            preserveAspectRatio="none"
-                            aria-hidden="true"
-                        >
-                            <path
-                                :d="spark(w)"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.8"
-                            />
-                        </svg>
-                    </button>
+                        <button class="lab-spark-body" @click="select(w.id)">
+                            <div class="lab-spark-value">
+                                {{ number(widgetLatest(w)?.value) }}
+                                <small>{{ sensor(w)?.unit }}</small>
+                            </div>
+                            <svg
+                                viewBox="0 0 280 45"
+                                preserveAspectRatio="none"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    :d="spark(w)"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                />
+                            </svg>
+                        </button>
+                    </article>
                 </div>
                 <section
                     v-if="auth.isAuthenticated"
@@ -561,13 +536,13 @@ const {
     saveState,
     message,
     removed,
-    connection,
     catalog,
     sensor,
     points,
     viewModel,
+    widgetViewModel,
+    widgetError,
     activeData,
-    activeError,
     history,
     dirty,
     add,
@@ -584,25 +559,55 @@ const {
 const selectedSensor = computed(() => sensor(selected.value)),
     latest = computed(() =>
         activeData.value.points.filter((p) => p.value !== null).at(-1),
-    ),
-    secondary = computed(() =>
-        widgets.value.filter((w) => w.id !== selectedId.value).slice(0, 3),
     );
 const critical = computed(() =>
     alerts.activeAlerts.find((a) => a.alert_rule?.severity === "danger"),
 );
-// GRAPH-011/GRAPH-012: the selected sensor's own state, from ITS OWN bands + ITS OWN current
-// value only — never from `alerts` (the store above), so a critical alert on some other sensor
-// can never bleed into this badge or the chart background.
-const selectedState = computed(() =>
-    sensorSemanticState(
-        {
-            zones: selectedSensor.value?.bands,
-            boundaries: selectedSensor.value?.boundaries,
-        },
-        latest.value?.value,
-    ),
+// Per-card view: each widget is a mini preview by default; toggle expands it to the full zoned
+// chart in place. Multiple can be expanded at once (parallel big graphs). Selection (for the
+// sidebar detail) is independent — interacting with a card's controls also selects it.
+const expanded = ref(new Set());
+const expandedWidgets = computed(() =>
+    widgets.value.filter((w) => expanded.value.has(w.id)),
 );
+const miniWidgets = computed(() =>
+    widgets.value.filter((w) => !expanded.value.has(w.id)),
+);
+// Whenever the widget list changes: prune expanded ids that no longer exist, and keep at least
+// one card big by default (expand the first if none is big). Keyed on the id list so it fires on
+// init reassignment AND on add/remove mutations.
+watch(
+    () => widgets.value.map((w) => w.id).join(","),
+    () => {
+        const ids = new Set(widgets.value.map((w) => w.id));
+        const stillBig = [...expanded.value].filter((id) => ids.has(id));
+        if (widgets.value.length && stillBig.length === 0) {
+            expanded.value = new Set([widgets.value[0].id]);
+        } else if (stillBig.length !== expanded.value.size) {
+            expanded.value = new Set(stillBig);
+        }
+    },
+    { immediate: true },
+);
+function toggleBig(id) {
+    const next = new Set(expanded.value);
+    if (next.has(id)) {
+        if (next.size <= 1) return; // keep at least one card big
+        next.delete(id);
+    } else {
+        next.add(id);
+    }
+    expanded.value = next;
+}
+const widgetLatest = (w) =>
+    points(w).points.filter((p) => p.value !== null).at(-1);
+// GRAPH-011/GRAPH-012: a card's semantic zone comes from ITS OWN bands + ITS OWN current value
+// only — never from `alerts`, so a critical alert on another sensor can't bleed into this badge.
+const widgetState = (w) =>
+    sensorSemanticState(
+        { zones: sensor(w)?.bands, boundaries: sensor(w)?.boundaries },
+        widgetLatest(w)?.value,
+    );
 // C1: summary cards. Authenticated users get the authoritative system-wide
 // counts from GET /dashboard/metrics (mount-time snapshot, no polling refresh
 // by design). Alertas activas stays wired to the alerts store instead so it
@@ -651,26 +656,6 @@ const summaryCards = computed(() => {
         },
     ];
 });
-// C2: pause/resume toggle. Component-local buffer in front of the chart —
-// the store/composable keep merging live readings as always, this just
-// stops handing new snapshots to the chart while paused, then catches up
-// immediately on resume. Switching sensor/range is a deliberate action, not
-// a live event, so it always refreshes the display even while paused.
-const realtimeEnabled = ref(true);
-const displayViewModel = ref(viewModel.value);
-watch(viewModel, (v) => {
-    if (realtimeEnabled.value) displayViewModel.value = v;
-});
-watch(
-    () => selected.value?.id,
-    () => {
-        displayViewModel.value = viewModel.value;
-    },
-);
-function toggleRealtime() {
-    realtimeEnabled.value = !realtimeEnabled.value;
-    if (realtimeEnabled.value) displayViewModel.value = viewModel.value;
-}
 const number = (v) =>
     v == null
         ? "—"
@@ -786,16 +771,42 @@ onBeforeRouteLeave(
     color: var(--sinoa-text-muted);
     margin-bottom: 6px;
 }
-.lab-realtime-row {
+/* Per-card mini/grande view (parallel graphs). An expanded card spans the whole grid row so its
+   full chart is not squeezed into a spark-sized column; the mini body resets default button chrome. */
+.lab-spark-grid .lab-card.lab-main-chart {
+    grid-column: 1 / -1;
+}
+.lab-card.selected {
+    outline: 2px solid var(--sinoa-primary, #2563eb);
+    outline-offset: 2px;
+}
+.lab-spark-body {
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: 10px;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
 }
-.lab-realtime-toggle {
-    min-height: 44px;
+/* value on the left, sparkline fills the rest and is tall enough to read */
+.lab-spark-body .lab-spark-value {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
-.lab-realtime-toggle .lab-dot.off {
-    background: #94a3b8;
+.lab-spark-body svg {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: 60px;
+    color: var(--sinoa-primary, #2563eb);
+}
+.lab-spark-title .lab-text-button[aria-pressed="true"] {
+    color: var(--sinoa-primary, #2563eb);
 }
 /* GRAPH-011 — selected-sensor semantic state badge. Reuses the --sinoa-zone-* tokens
    (src/assets/styles/lab-blue.css) so its colors match the chart's plot-area background exactly. */

@@ -710,9 +710,7 @@ export function labDemoPlugin() {
                 }
 
                 // --- Metrics ---
-                if (p === "/metrics") {
-                    return send(res, 200, { data: { total_sensors: all.length, total_devices: devices.length, active_alerts: alerts.filter((a) => !a.resolved).length, total_labs: labs.length, readings_today: 4287, uptime_percent: 98.3, online_devices: devices.filter((d) => d.status === "online").length, offline_devices: devices.filter((d) => d.status === "offline").length, total_alert_rules: alertRules.length, enabled_rules: alertRules.filter((r) => r.enabled).length } });
-                }
+                if (p === "/metrics") return send(res, 200, { data: { total_sensors: all.length, total_devices: devices.length, active_alerts: alerts.filter((a) => !a.resolved).length, total_labs: labs.length, readings_today: 4287, uptime_percent: 98.3, online_devices: devices.filter((d) => d.status === "online").length, offline_devices: devices.filter((d) => d.status === "offline").length, total_alert_rules: alertRules.length, enabled_rules: alertRules.filter((r) => r.enabled).length } });
 
                 return send(res, 404, {
                     message:
