@@ -34,7 +34,10 @@ final class MigrationIntegrityTest extends TestCase
         'system_settings',
         'raw_sensor_events',
         'domain_event_outboxes',
-        'raw_event_outbox',
+        // Table name is plural (`raw_event_outboxes`), per the standard Laravel convention used by
+        // every other table in this list — see
+        // database/migrations/2026_09_07_000003_create_raw_event_outbox_table.php.
+        'raw_event_outboxes',
     ];
 
     public function test_migrations_directory_exists(): void

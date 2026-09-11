@@ -40,15 +40,11 @@ class DomainEventPublisher
             'payload' => json_encode($outbox->payload ?? [], JSON_THROW_ON_ERROR),
         ];
 
-        $args = [$streamName, '*'];
-
-        foreach ($fields as $key => $value) {
-            $args[] = $key;
-            $args[] = $value;
-        }
-
         try {
-            Redis::command('xadd', $args);
+            // phpredis signature: xAdd(key, id, array $fields) — fields is ONE associative
+            // array, not flattened key/value positional args (that raised "xadd() expects at
+            // most 6 arguments, N given" and broke every domain-event publish at runtime).
+            Redis::command('xadd', [$streamName, '*', $fields]);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
             Log::info('DomainEventPublisher:publish completed', [

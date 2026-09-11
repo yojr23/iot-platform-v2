@@ -462,10 +462,13 @@ class DomainEventBroadcastConsumerTest extends TestCase
 
         $this->assertSame(1, $stats['acked']);
         Event::assertDispatched(NewSensorReading::class, function (NewSensorReading $event) {
-            $channels = $event->broadcastOn();
-            $this->assertIsArray($channels);
-            $this->assertCount(1, $channels);
-            $this->assertInstanceOf(PrivateChannel::class, $channels[0]);
+            // `NewSensorReading::broadcastOn()` collapses a single-channel result to a bare
+            // channel instance rather than a one-element array (see
+            // `test_new_sensor_reading_broadcast_on_honors_audience_flags` above, which pins this
+            // down directly) — a restricted sensor here only gets the private channel, so this
+            // must accept the same single-channel shape, not require an array.
+            $channel = $event->broadcastOn();
+            $this->assertInstanceOf(PrivateChannel::class, $channel);
 
             return true;
         });

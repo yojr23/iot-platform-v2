@@ -37,6 +37,13 @@ class AlertTransportAuthorizationTest extends TestCase
             'broadcasting.connections.pusher.options.host' => 'api-mt1.pusher.com',
             'broadcasting.connections.pusher.options.useTLS' => true,
         ]);
+
+        // `routes/channels.php` registers its `Broadcast::channel()` callbacks against whichever
+        // broadcaster is booted at that time (the app's default `null` driver). Switching
+        // `broadcasting.default` to `pusher` above happens after boot, so the pusher broadcaster
+        // instance has zero channels registered unless we re-require the routes file now that the
+        // config points at `pusher`.
+        require base_path('routes/channels.php');
     }
 
     public function test_guest_is_denied_active_alerts(): void

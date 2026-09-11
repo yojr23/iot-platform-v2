@@ -107,7 +107,11 @@ class PublicGraphController extends Controller
             'duration_ms' => $durationMs,
         ]);
 
-        return response()->json($result);
+        // JSON_PRESERVE_ZERO_FRACTION: without it, PHP's json_encode (serialize_precision=-1)
+        // renders an integer-valued float like 10.0 as "10", so a client (or this suite's
+        // assertSame(10.0, ...)) would receive/decode an int and silently lose the "this is a
+        // measured float" contract for point values and stats.
+        return response()->json($result, 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     /**

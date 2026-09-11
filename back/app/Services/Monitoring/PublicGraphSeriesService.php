@@ -79,28 +79,6 @@ final class PublicGraphSeriesService
             $toLocal = $fromLocal->addHours(self::MAX_WINDOW_HOURS);
         }
 
-        $readingsCountEstimate = $this->estimateReadingCount($sensor, $fromLocal, $toLocal);
-        if ($readingsCountEstimate > $sampleLimit) {
-            Log::warning('PublicGraphSeriesService:series early truncation — window exceeds sample limit', [
-                'sensor_id' => $sensor->id,
-                'estimated_count' => $readingsCountEstimate,
-                'sample_limit' => $sampleLimit,
-                'suggestion' => 'Use aggregation to reduce point count',
-            ]);
-
-            return [
-                'window' => [
-                    'from' => $this->toWireFormat($fromUtc),
-                    'to' => $this->toWireFormat($toUtc),
-                ],
-                'points' => [],
-                'stats' => ['min' => null, 'max' => null, 'mean' => null, 'count' => 0, 'partial' => true],
-                'truncated' => true,
-                'returned_count' => 0,
-                'message' => "Window estimated at {$readingsCountEstimate} points, exceeding the {$sampleLimit} limit. Use aggregation to reduce point count.",
-            ];
-        }
-
         $fromLocalStr = $fromLocal->format('Y-m-d H:i:s');
         $toLocalStr = $toLocal->format('Y-m-d H:i:s');
 
@@ -148,15 +126,6 @@ final class PublicGraphSeriesService
     private function getSampleLimit(): int
     {
         return (int) config('graph.sample_limit', self::DEFAULT_SAMPLE_LIMIT);
-    }
-
-    private function estimateReadingCount(Sensor $sensor, CarbonImmutable $fromLocal, CarbonImmutable $toLocal): int
-    {
-        return $sensor->readings()
-            ->where('reading_time', '>=', $fromLocal->format('Y-m-d H:i:s'))
-            ->where('reading_time', '<', $toLocal->format('Y-m-d H:i:s'))
-            ->where('reading_time', '<=', now())
-            ->count();
     }
 
     /**

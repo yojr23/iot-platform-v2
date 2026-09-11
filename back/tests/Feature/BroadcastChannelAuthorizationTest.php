@@ -38,6 +38,13 @@ class BroadcastChannelAuthorizationTest extends TestCase
             'broadcasting.connections.pusher.options.host' => 'api-mt1.pusher.com',
             'broadcasting.connections.pusher.options.useTLS' => true,
         ]);
+
+        // `routes/channels.php` registers its `Broadcast::channel()` callbacks against whichever
+        // broadcaster is booted at that time (the app's default `null` driver). Switching
+        // `broadcasting.default` to `pusher` above happens after boot, so the pusher broadcaster
+        // instance has zero channels registered unless we re-require the routes file now that the
+        // config points at `pusher`.
+        require base_path('routes/channels.php');
     }
 
     public function test_unauthenticated_request_is_denied(): void
@@ -56,8 +63,12 @@ class BroadcastChannelAuthorizationTest extends TestCase
     {
         $user = User::factory()->create();
         $sensor = Sensor::factory()->create();
+        // The route is `auth:sanctum`; `actingAs()` only populates the `web` session guard, so the
+        // broadcaster's `$request->user()` would resolve to null. Authenticate with a real Sanctum
+        // PAT instead, matching how the SPA actually calls this endpoint (front/src/realtime/echo.js).
+        $token = $user->createToken('broadcast-test', ['read'])->plainTextToken;
 
-        $response = $this->actingAs($user)->postJson('/api/broadcasting/auth', [
+        $response = $this->withToken($token)->postJson('/api/broadcasting/auth', [
             'channel_name' => 'private-sensor.'.$sensor->id,
             'socket_id' => '1234.1234',
         ]);
@@ -89,8 +100,9 @@ class BroadcastChannelAuthorizationTest extends TestCase
     {
         $user = User::factory()->create();
         $nonexistentSensorId = Sensor::query()->max('id') + 1000;
+        $token = $user->createToken('broadcast-test', ['read'])->plainTextToken;
 
-        $response = $this->actingAs($user)->postJson('/api/broadcasting/auth', [
+        $response = $this->withToken($token)->postJson('/api/broadcasting/auth', [
             'channel_name' => 'private-sensor.'.$nonexistentSensorId,
             'socket_id' => '1234.1234',
         ]);
@@ -140,14 +152,15 @@ class BroadcastChannelAuthorizationTest extends TestCase
     {
         $user = User::factory()->create();
         $other = User::factory()->create();
+        $token = $user->createToken('broadcast-test', ['read'])->plainTextToken;
 
-        $ownChannel = $this->actingAs($user)->postJson('/api/broadcasting/auth', [
+        $ownChannel = $this->withToken($token)->postJson('/api/broadcasting/auth', [
             'channel_name' => 'private-App.Models.User.'.$user->id,
             'socket_id' => '1234.1234',
         ]);
         $ownChannel->assertOk()->assertJsonStructure(['auth']);
 
-        $othersChannel = $this->actingAs($user)->postJson('/api/broadcasting/auth', [
+        $othersChannel = $this->withToken($token)->postJson('/api/broadcasting/auth', [
             'channel_name' => 'private-App.Models.User.'.$other->id,
             'socket_id' => '1234.1234',
         ]);

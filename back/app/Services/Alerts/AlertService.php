@@ -111,7 +111,7 @@ class AlertService
                 continue;
             }
 
-            DB::transaction(function () use ($reading, $alertRule) use (&$alertsCreated): void {
+            DB::transaction(function () use ($reading, $alertRule, &$alertsCreated): void {
                 $alert = Alert::create([
                     'sensor_reading_id' => $reading->id,
                     'alert_rule_id' => $alertRule->id,

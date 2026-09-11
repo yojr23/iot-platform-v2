@@ -37,15 +37,10 @@ class RawSensorEventPublisher
             'status' => (string) $event->status,
         ];
 
-        $args = [$streamName, '*'];
-
-        foreach ($fields as $key => $value) {
-            $args[] = $key;
-            $args[] = $value;
-        }
-
         try {
-            Redis::command('xadd', $args);
+            // phpredis signature: xAdd(key, id, array $fields) — fields is ONE associative
+            // array, not flattened key/value positional args.
+            Redis::command('xadd', [$streamName, '*', $fields]);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
             Log::info('RawSensorEventPublisher:publish completed', [

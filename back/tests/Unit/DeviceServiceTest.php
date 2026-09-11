@@ -6,6 +6,7 @@ use App\Models\DeviceStatusLog;
 use App\Models\DeviceType;
 use App\Models\Lab;
 use App\Services\DeviceService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -40,14 +41,23 @@ class DeviceServiceTest extends TestCase
         $this->assertNotNull($log->changed_at);
     }
 
-    public function test_create_device_returns_null_when_persistence_fails(): void
+    /**
+     * `createDevice()` never actually receives incomplete data from a real caller —
+     * `DeviceController::store()` validates `serial_number` as `required` before calling the
+     * service, and catches `Throwable` around the call to turn a persistence failure into a
+     * flashed error redirect. There is no null-check on the returned `Device` anywhere in that
+     * caller, so making the service swallow the failure and return `null` here would just move the
+     * crash to `$device->id` in the controller instead of fixing anything. The correct contract is
+     * "let the persistence exception surface", which the controller already handles.
+     */
+    public function test_create_device_throws_when_required_column_is_missing(): void
     {
         $service = new DeviceService();
 
-        $device = $service->createDevice([
+        $this->expectException(QueryException::class);
+
+        $service->createDevice([
             'name' => 'Incomplete Device',
         ]);
-
-        $this->assertNull($device);
     }
 }

@@ -207,7 +207,10 @@ class Phase2ApiEndpointsTest extends TestCase
             ->assertJsonMissingPath('alert_threshold')
             ->assertJsonMissingPath('sensor_update_interval');
 
-        $this->assertSame(['alert_sound_enabled'], array_keys($response->json()));
+        // `app_url` is an intentional runtime key, not a leak — `ConfigGeneralUpdateTest::
+        // test_admin_can_update_general_config_and_it_round_trips_via_runtime()` pins down that
+        // `/api/config/runtime` must reflect the general config's `app_url` after an update.
+        $this->assertSame(['alert_sound_enabled', 'app_url'], array_keys($response->json()));
         $this->assertStringNotContainsString('super-secret-password', $response->getContent());
     }
 

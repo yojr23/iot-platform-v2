@@ -12,6 +12,7 @@ use App\Models\SystemSetting;
 use App\Services\Notifications\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -31,6 +32,15 @@ class NotificationServiceRateLimitTest extends TestCase
 
     private function makeDangerAlert(): Alert
     {
+        // `AlertObserver::created()` (fired below by both the auto-created and any manually
+        // created `Alert`) dispatches `SendDangerAlertEmailJob::dispatch()->afterCommit()`. Without
+        // `Queue::fake()`, the `sync` queue used by this test run executes that job immediately —
+        // stealing this test's own `Mail::shouldReceive()` expectation and pre-acquiring the very
+        // rate-limit cache key these assertions are about — before the test even reaches its own
+        // explicit `notifyDangerAlertByEmail()` calls (see AlertEmailAsyncDeliveryTest, which faces
+        // the same job and always `Queue::fake()`s for exactly this reason).
+        Queue::fake();
+
         $sensorType = SensorType::factory()->create();
         $device = Device::factory()->create();
         $sensor = Sensor::factory()->create([
@@ -49,16 +59,20 @@ class NotificationServiceRateLimitTest extends TestCase
             'name' => 'Danger Rule',
         ]);
 
+        // `SensorReading::factory()->create()` fires `SensorReadingObserver`, which delegates to
+        // `AlertService::createAlertsForReading()` and already creates an `Alert` for this
+        // reading/rule pair (value 80 exceeds the rule's max_value 50). Stage 2's
+        // `alerts.sensor_reading_id`+`alert_rule_id` unique constraint means a second, manual
+        // `Alert::create()` for the same pair would collide with that auto-created row — so fetch
+        // the one the real ingestion path already produced instead of duplicating it.
         $reading = SensorReading::factory()->create([
             'sensor_id' => $sensor->id,
             'value' => 80,
         ]);
 
-        return Alert::create([
-            'sensor_reading_id' => $reading->id,
-            'alert_rule_id' => $rule->id,
-            'resolved' => false,
-        ]);
+        return Alert::where('sensor_reading_id', $reading->id)
+            ->where('alert_rule_id', $rule->id)
+            ->firstOrFail();
     }
 
     public function test_a_failed_send_releases_the_rate_limit_so_a_retry_is_not_suppressed(): void
