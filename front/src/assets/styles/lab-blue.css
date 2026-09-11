@@ -1170,7 +1170,8 @@
         gap: 8px;
     }
     .lab-chart-selectors label {
-        width: 50%;
+        flex: 1;
+        width: auto;
         max-width: none;
     }
     .lab-chart-selectors select {

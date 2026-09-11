@@ -204,4 +204,25 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     expect(expandedCards[1].classList.contains('selected')).toBe(true);
     unmount();
   });
+
+  it('updates wide flag on resize so the details panel opens/closes correctly', async () => {
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1440 });
+    const { el, unmount } = await mountBoard();
+    await flush();
+    // At 1440px, the details <details> should have open attribute (wide = true).
+    const details = el.querySelector('.lab-details');
+    expect(details).toBeTruthy();
+    expect(details.open).toBe(true);
+    // Simulate resize to 768px — wide should become false.
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 768 });
+    window.dispatchEvent(new Event('resize'));
+    await flush();
+    expect(details.open).toBe(false);
+    // Back to 1440px — wide should become true again.
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1440 });
+    window.dispatchEvent(new Event('resize'));
+    await flush();
+    expect(details.open).toBe(true);
+    unmount();
+  });
 });

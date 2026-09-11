@@ -604,7 +604,11 @@ const critical = computed(() =>
 // synced with expansion — selecting a widget also expands it so gráfica + lectura + inspector
 // always agree (DOCX "Mis gráficas sincroniza gráfico, lectura e inspector").
 const isMobile = ref(window.innerWidth < 768);
-function onResize() { isMobile.value = window.innerWidth < 768; }
+const wide = ref(window.innerWidth >= 992);
+function onResize() {
+    isMobile.value = window.innerWidth < 768;
+    wide.value = window.innerWidth >= 992;
+}
 onMounted(() => window.addEventListener('resize', onResize));
 onBeforeUnmount(() => window.removeEventListener('resize', onResize));
 
@@ -743,7 +747,6 @@ const dialog = ref(null),
     newDevice = ref(""),
     newSensor = ref(""),
     dragged = ref("");
-const wide = ref(window.innerWidth >= 992);
 watch(
     newDevice,
     (d) =>
