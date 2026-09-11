@@ -1,17 +1,27 @@
 services:
   db:
     image: mysql:8.0
+    # Gate 10 (Task 3.1): explicit ROW-based binlog so Debezium can capture the outbox tables.
+    # 7-day retention bounds the connector's outage-recovery window.
     command:
+      - --server-id=184054
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
+      - --binlog-expire-logs-seconds=604800
       - --log-bin-trust-function-creators=1
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-iot_platform}
       MYSQL_USER: ${DB_USERNAME:-iot_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-iot_password}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+      # Consumed by infra/mysql/init/01-create-cdc-user.sh (Task 3.2). Required, no default.
+      DEBEZIUM_DB_PASSWORD: ${DEBEZIUM_DB_PASSWORD:?DEBEZIUM_DB_PASSWORD is required}
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - db_data:/var/lib/mysql
+      - ./infra/mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD:-root_password}"]
       interval: 10s
@@ -142,9 +152,12 @@ services:
     networks:
       - iot-platform
 
-  # Stage 3 durable ingestion workers (PLAN.md Stage 3.2/3.3, ADR-1). Both reuse the back image and
-  # the same phpredis/DB env. Run under the `workers` profile: `docker compose --profile workers up`.
-  outbox-relay:
+  # Durable ingestion workers + Gate 10 CDC pipeline (PLAN.md Stage 3/4/10, ADR-G1). All reuse the
+  # back image and the same phpredis/DB env. Run under the `workers` profile:
+  # `docker compose --profile workers up`. The periodic outbox relays (outbox-relay,
+  # domain-outbox-relay) were retired at Gate 10 — publication is now binlog-driven (debezium +
+  # outbox-cdc-consumer), no `--interval` sweep remains.
+  raw-consumer:
     build:
       context: ./back
       dockerfile: Dockerfile
@@ -167,29 +180,9 @@ services:
       INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
       DOMAIN_EVENTS_STREAM: ${DOMAIN_EVENTS_STREAM:-iot.domain-events}
       DOMAIN_EVENTS_CONSUMER_GROUP: ${DOMAIN_EVENTS_CONSUMER_GROUP:-browser-delivery-v1}
-    command: php artisan ingestion:relay-outbox --interval=2
-    restart: unless-stopped
-    volumes:
-      - ./back:/var/www/back
-      - back_vendor:/var/www/back/vendor
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      back:
-        condition: service_healthy
-    profiles:
-      - workers
-    networks:
-      - iot-platform
-
-  raw-consumer:
-    build:
-      context: ./back
-      dockerfile: Dockerfile
-    working_dir: /var/www/back
-    environment: *worker_env
+      CDC_RAW_OUTBOX_STREAM: ${CDC_RAW_OUTBOX_STREAM:-iot-cdc.iot_platform.raw_event_outboxes}
+      CDC_DOMAIN_OUTBOX_STREAM: ${CDC_DOMAIN_OUTBOX_STREAM:-iot-cdc.iot_platform.domain_event_outboxes}
+      CDC_OUTBOX_CONSUMER_GROUP: ${CDC_OUTBOX_CONSUMER_GROUP:-outbox-publish-v1}
     command: php artisan raw:consume --block=5000
     restart: unless-stopped
     volumes:
@@ -207,13 +200,41 @@ services:
     networks:
       - iot-platform
 
-  domain-outbox-relay:
+  # Gate 10: MySQL binlog -> Redis CDC streams. Debezium never writes to iot.raw-events /
+  # iot.domain-events directly (those carry app-defined envelopes); it writes iot-cdc.<db>.<table>,
+  # which outbox-cdc-consumer republishes through the existing publishers.
+  debezium:
+    image: quay.io/debezium/server:3.5
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-iot_platform}
+      DEBEZIUM_DB_USER: ${DEBEZIUM_DB_USER:-debezium}
+      DEBEZIUM_DB_PASSWORD: ${DEBEZIUM_DB_PASSWORD:?DEBEZIUM_DB_PASSWORD is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./cdc/application.properties:/debezium/conf/application.properties:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - workers
+    networks:
+      - iot-platform
+
+  # Gate 10: the single final publication owner. Drains the CDC streams with a blocking
+  # XREADGROUP + XAUTOCLAIM lease recovery — no periodic DB discovery, no interval sweep.
+  outbox-cdc-consumer:
     build:
       context: ./back
       dockerfile: Dockerfile
     working_dir: /var/www/back
     environment: *worker_env
-    command: php artisan domain:relay-outbox --interval=2
+    command: php artisan cdc:consume-outboxes --block=5000
     restart: unless-stopped
     volumes:
       - ./back:/var/www/back
@@ -223,8 +244,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      back:
-        condition: service_healthy
+      debezium:
+        condition: service_started
     profiles:
       - workers
     networks:

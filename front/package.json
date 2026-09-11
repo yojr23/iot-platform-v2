@@ -16,6 +16,8 @@
     "audit:baseline": "node .audit-e2e/run-all.mjs",
     "audit:events": "node .audit-e2e/event-injection.mjs",
     "audit:network": "node .audit-e2e/network-assertion.mjs",
+    "audit:network:live": "node .audit-e2e/network-assertion-live.mjs",
+    "audit:no-polling:source": "node scripts/verify-no-polling.mjs",
     "dev:demo": "vite --mode demo --host 127.0.0.1"
   },
   "dependencies": {

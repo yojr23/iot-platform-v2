@@ -1,10 +1,12 @@
-// Stage 0.8 (PLAN.md) — permanent no-polling network assertion.
+// SIMULATED_NETWORK_REGRESSION — fast mocked no-polling check for development.
 //
-// audit.md §7 / §21: observe network for >= 3x the longest current recurring-timer interval
-// and assert there is no recurring latest-state REST traffic. Today this MUST fail (RED) —
-// AppLayout.vue's 10s active-alerts timer and SensorMonitorBoard.vue's ~2s latest-reading
-// poll are both still present. That red result is the correct, expected Stage 0 baseline,
-// not a harness bug. After Stages 6/7 delete those timers, this same script should go green.
+// This runs against a MOCKED API (mockApi) so it can catch a reintroduced polling timer quickly
+// without booting the full stack. It is NOT Gate-10 deployment evidence — the live proof lives in
+// network-assertion-live.mjs, which runs against the real Vue/Laravel/MySQL/Redis/Debezium stack.
+//
+// audit.md §7 / §21: observe network for >= 3x the longest historical recurring-timer interval and
+// assert there is no recurring latest-state REST traffic. This should now pass (GREEN): the polling
+// timers (AppLayout active-alerts, SensorMonitorBoard latest-reading) were removed at Stages 6/7.
 //
 // Run: node .audit-e2e/network-assertion.mjs
 import fs from 'node:fs';
@@ -25,9 +27,7 @@ const OBSERVE_MS = LONGEST_TIMER_MS * 3 + 3000; // headroom for the initial one-
 // CRUD and resume commands allowed").
 const ALLOWED_ONE_SHOT = [
   /\/auth\/me$/,
-  /\/dashboard\/public$/,
-  /\/dashboard\/preferences$/,
-  /\/config\/public$/
+  /\/dashboard\/preferences$/
 ];
 
 function isRecurring(hits, windowMs) {

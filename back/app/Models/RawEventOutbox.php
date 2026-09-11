@@ -8,10 +8,10 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Transactional outbox row for `raw_sensor_events` (PLAN.md Stage 3.1, ADR-1).
  *
- * One row per raw receipt, written in the same DB transaction as its `RawSensorEvent`. The relay
- * (`App\Services\Ingestion\RawOutboxRelay`) claims `pending`/lease-expired rows and republishes
- * them via the existing `RawSensorEventPublisher` transport; it never invents a second publish
- * path.
+ * One row per raw receipt, written in the same DB transaction as its `RawSensorEvent`. Gate 10:
+ * the committed row is captured from the MySQL binlog by Debezium and published by
+ * `App\Services\Ingestion\Cdc\CdcOutboxStreamConsumer` via the existing `RawSensorEventPublisher`
+ * transport; there is no periodic DB relay any more.
  */
 class RawEventOutbox extends Model
 {

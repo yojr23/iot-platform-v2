@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreRawIngestionEventRequest;
-use App\Jobs\RelayRawOutboxJob;
 use App\Models\RawEventOutbox;
 use App\Models\RawSensorEvent;
 use Illuminate\Http\JsonResponse;
@@ -19,8 +18,9 @@ use Throwable;
  * Existing owner retired/delegated: this controller no longer calls
  * `RawSensorEventPublisher::publish()` synchronously (G0D row B6) — that dual-write gap (201
  * returned even when XADD failed) is closed by never depending on a synchronous publish here at
- * all. Publishing is now owned solely by `App\Services\Ingestion\RawOutboxRelay`, invoked via the
- * `RelayRawOutboxJob` wake-up hint and the `ingestion:relay-outbox` discovery loop.
+ * all. Gate 10: publishing is now triggered by MySQL binlog CDC (Debezium) captured onto a Redis
+ * CDC stream and drained by `cdc:consume-outboxes`. This handler only commits the business row +
+ * outbox row in one transaction; it dispatches nothing. No wake-up job, no polling relay.
  * Compatibility window: none — the response body already only ever claimed `status: 'received'`,
  * so no client-visible contract changes; only the internal delivery mechanism changed.
  */
@@ -75,11 +75,9 @@ class IngestionController extends Controller
             ], 500);
         }
 
-        // Low-latency wake-up hint only (ADR-1). If this dispatch is lost — process crash, queue
-        // outage — the row is not stranded: `ingestion:relay-outbox`'s durable discovery loop
-        // claims lease-expired/pending rows independently of this hint ever firing.
-        RelayRawOutboxJob::dispatch()->afterCommit();
-
+        // Gate 10: no wake-up dispatch. The committed RawEventOutbox row is captured from the MySQL
+        // binlog by Debezium and drained by `cdc:consume-outboxes`. Delivery no longer depends on
+        // any in-request dispatch or periodic DB discovery loop.
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
         Log::info('Ingestion store success', $context + [

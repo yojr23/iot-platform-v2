@@ -10,8 +10,9 @@ use Illuminate\Database\Eloquent\Model;
  * `App\Models\RawEventOutbox` (Stage 3). One row per emitted fact (`alert.resolved`,
  * `device.status.changed`, ...), written in the same DB transaction as the aggregate mutation by
  * its transition owner (`App\Services\Alerts\AlertLifecycleService`, `App\Services\DeviceService`).
- * `App\Services\Ingestion\DomainOutboxRelay` claims and publishes rows exactly like
- * `RawOutboxRelay` does for the raw pipeline; it never invents a second publish path.
+ * Gate 10: the committed row is captured from the MySQL binlog by Debezium and published by
+ * `App\Services\Ingestion\Cdc\CdcOutboxStreamConsumer` via the existing `DomainEventPublisher`
+ * transport; there is no periodic DB relay any more.
  */
 class DomainEventOutbox extends Model
 {

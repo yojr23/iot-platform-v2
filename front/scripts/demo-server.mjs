@@ -7,32 +7,195 @@ export function labDemoPlugin() {
     return {
         name: "sinoa-local-demo",
         configureServer(server) {
+            const epoch = Date.now();
             const devices = [
                 {
                     id: 1,
                     name: "Reactor 1",
+                    location: "Planta Baja - Zona A",
+                    serial_number: "SR-REACT-001",
+                    firmware_version: "3.2.1",
+                    ip_address: "192.168.1.101",
+                    lab_id: 1,
+                    device_type_id: 1,
+                    status: "online",
+                    last_seen: new Date(epoch - 30000).toISOString(),
+                    install_date: "2024-06-15",
+                    description: "Reactor biológico principal de oxigenación",
                     sensors: [
-                        { id: 1, name: "Temperatura", unit: "°C" },
-                        { id: 2, name: "Presión", unit: "bar" },
+                        { id: 1, name: "Temperatura", unit: "°C", description: "Temperatura del reactor", sensor_type_id: 1 },
+                        { id: 2, name: "Presión", unit: "bar", description: "Presión interna del reactor", sensor_type_id: 2 },
+                        { id: 11, name: "OD Reactor 1", unit: "mg/L", description: "Oxígeno disuelto en reactor", sensor_type_id: 6 },
                     ],
                 },
                 {
                     id: 2,
                     name: "Cámara A",
-                    sensors: [{ id: 3, name: "Humedad", unit: "%" }],
+                    location: "Planta Baja - Zona B",
+                    serial_number: "SR-CAM-002",
+                    firmware_version: "3.1.0",
+                    ip_address: "192.168.1.102",
+                    lab_id: 1,
+                    device_type_id: 2,
+                    status: "online",
+                    last_seen: new Date(epoch - 45000).toISOString(),
+                    install_date: "2024-07-20",
+                    description: "Cámara de control ambiental",
+                    sensors: [
+                        { id: 3, name: "Humedad", unit: "%", description: "Humedad relativa ambiente", sensor_type_id: 3 },
+                        { id: 12, name: "pH Cámara A", unit: "pH", description: "pH de la solución de lavado", sensor_type_id: 5 },
+                    ],
                 },
                 {
                     id: 3,
                     name: "Tanque B",
-                    sensors: [{ id: 4, name: "Nivel", unit: "%" }],
+                    location: "Planta Alta - Zona C",
+                    serial_number: "SR-TANK-003",
+                    firmware_version: "3.2.1",
+                    ip_address: "192.168.1.103",
+                    lab_id: 2,
+                    device_type_id: 2,
+                    status: "online",
+                    last_seen: new Date(epoch - 120000).toISOString(),
+                    install_date: "2024-03-10",
+                    description: "Tanque de buffer de proceso",
+                    sensors: [
+                        { id: 4, name: "Nivel", unit: "%", description: "Nivel de llenado del tanque", sensor_type_id: 4 },
+                        { id: 13, name: "Conductividad B", unit: "μS/cm", description: "Conductividad del buffer", sensor_type_id: 7 },
+                    ],
+                },
+                {
+                    id: 4,
+                    name: "Estación Meta 4",
+                    location: "Exterior - Zona D",
+                    serial_number: "SR-META-004",
+                    firmware_version: "3.0.5",
+                    ip_address: "192.168.1.104",
+                    lab_id: 3,
+                    device_type_id: 1,
+                    status: "online",
+                    last_seen: new Date(epoch - 60000).toISOString(),
+                    install_date: "2025-01-05",
+                    description: "Estación de monitoreo exterior multiparamétrica",
+                    sensors: [
+                        { id: 5, name: "pH Exterior", unit: "pH", description: "pH del efluente", sensor_type_id: 5 },
+                        { id: 6, name: "OD Exterior", unit: "mg/L", description: "Oxígeno disuelto efluente", sensor_type_id: 6 },
+                        { id: 14, name: "Turbidez Ext", unit: "NTU", description: "Turbidez del efluente", sensor_type_id: 8 },
+                    ],
+                },
+                {
+                    id: 5,
+                    name: "Bomba Principal",
+                    location: "Planta Baja - Zona E",
+                    serial_number: "SR-PUMP-005",
+                    firmware_version: "3.2.1",
+                    ip_address: "192.168.1.105",
+                    lab_id: 4,
+                    device_type_id: 4,
+                    status: "online",
+                    last_seen: new Date(epoch - 15000).toISOString(),
+                    install_date: "2024-09-01",
+                    description: "Bomba de recirculación principal",
+                    sensors: [
+                        { id: 7, name: "Caudal Bomba", unit: "L/min", description: "Caudal de recirculación", sensor_type_id: 10 },
+                        { id: 15, name: "Presión Bomba", unit: "bar", description: "Presión de salida de la bomba", sensor_type_id: 2 },
+                    ],
+                },
+                {
+                    id: 6,
+                    name: "Clarificador",
+                    location: "Planta Baja - Zona F",
+                    serial_number: "SR-CLAR-006",
+                    firmware_version: "3.1.8",
+                    ip_address: "192.168.1.106",
+                    lab_id: 4,
+                    device_type_id: 2,
+                    status: "offline",
+                    last_seen: new Date(epoch - 3600000).toISOString(),
+                    install_date: "2024-04-22",
+                    description: "Clarificador de sedimentación secundaria",
+                    sensors: [
+                        { id: 8, name: "Turbidez Clarif.", unit: "NTU", description: "Turbidez del clarificador", sensor_type_id: 8 },
+                        { id: 16, name: "Nivel Clarif.", unit: "%", description: "Nivel de lodos del clarificador", sensor_type_id: 4 },
+                    ],
+                },
+                {
+                    id: 7,
+                    name: "Nodo 7",
+                    location: "Planta Alta - Zona G",
+                    serial_number: "SR-NODE-007",
+                    firmware_version: "3.2.0",
+                    ip_address: "192.168.1.107",
+                    lab_id: 5,
+                    device_type_id: 1,
+                    status: "online",
+                    last_seen: new Date(epoch - 20000).toISOString(),
+                    install_date: "2025-02-14",
+                    description: "Nodo de análisis en laboratorio",
+                    sensors: [
+                        { id: 9, name: "ORP Laboratorio", unit: "mV", description: "Potencial de oxidación-reducción", sensor_type_id: 9 },
+                        { id: 17, name: "Conductividad Lab", unit: "μS/cm", description: "Conductividad de muestra", sensor_type_id: 7 },
+                    ],
+                },
+                {
+                    id: 8,
+                    name: "Estación Efluente",
+                    location: "Exterior - Zona H",
+                    serial_number: "SR-EFF-008",
+                    firmware_version: "3.2.1",
+                    ip_address: "192.168.1.108",
+                    lab_id: 3,
+                    device_type_id: 1,
+                    status: "online",
+                    last_seen: new Date(epoch - 10000).toISOString(),
+                    install_date: "2025-03-01",
+                    description: "Estación de monitoreo de efluente final",
+                    sensors: [
+                        { id: 10, name: "pH Efluente", unit: "pH", description: "pH del efluente tratado", sensor_type_id: 5 },
+                        { id: 18, name: "Caudal Efluente", unit: "L/min", description: "Caudal de descarga", sensor_type_id: 10 },
+                        { id: 19, name: "OD Efluente", unit: "mg/L", description: "Oxígeno disuelto efluente final", sensor_type_id: 6 },
+                    ],
                 },
             ];
+            // Synthetic graph-safe configuration for the labelled demo only.
+            // The production bootstrap obtains these intervals from RuleToGraphZones.
+            const demoLimits = {
+                1: [20, 28, 30],
+                2: [0.8, 1.2, 1.4],
+                3: [40, 70, 80],
+                4: [20, 80, 90],
+                5: [6, 8.5, 9],
+                6: [2, 4, 5],
+                7: [50, 150, 250],
+                8: [15, 50, 100],
+                9: [100, 250, 400],
+                10: [100, 300, 450],
+                11: [4, 5.5, 7],
+                12: [6.5, 7.5, 8.5],
+                13: [500, 1500, 3000],
+                14: [20, 60, 120],
+                15: [0.6, 1.0, 1.3],
+                16: [30, 60, 85],
+                17: [200, 800, 2500],
+                18: [80, 200, 400],
+                19: [3, 5, 6.5],
+            };
+            for (const device of devices) {
+                for (const sensor of device.sensors) {
+                    const [min, warning, danger] = demoLimits[sensor.id];
+                    sensor.bands = [
+                        { from: null, to: min, severity: "warning" },
+                        { from: min, to: warning, severity: "normal" },
+                        { from: warning, to: danger, severity: "warning" },
+                        { from: danger, to: null, severity: "danger" },
+                    ];
+                }
+            }
             const all = devices.flatMap((d) =>
                 d.sensors.map((s) => ({ ...s, device: d })),
             );
             const tokens = new Set(),
                 socketAuth = new Map();
-            const epoch = Date.now();
             let layout = null;
             mkdirSync(".demo-data", { recursive: true });
             try {
@@ -42,12 +205,15 @@ export function labDemoPlugin() {
             } catch {}
             const value = (id, t) => {
                 const x = t / 10000;
+                // Each sensor has a base + two harmonic components for realistic oscillation
+                const bases =   [0, 27.4, 1.03, 63.2, 68.1, 7.2, 3.8, 180, 250, 5.2, 350, 5.5, 7.0, 1200, 45, 0.95, 70, 1800, 150, 4.1, 280];
+                const amp1 =    [0, 0.8,  0.04, 1.4,  1.8,  0.3, 0.5, 30,  40,  0.4, 60,  0.2, 0.15, 400, 15,  0.05, 20,  300,  30,  0.3, 50];
+                const freq1 =   [0, 0.18, 0.18, 0.18, 0.18, 0.15, 0.22, 0.12, 0.10, 0.20, 0.08, 0.14, 0.16, 0.06, 0.11, 0.19, 0.13, 0.07, 0.14, 0.17, 0.09];
+                const amp2 =    [0, 0.14, 0.007, 0.22, 0.3, 0.06, 0.08, 5, 7, 0.07, 10, 0.04, 0.03, 80, 3, 0.01, 4, 60, 5, 0.06, 10];
+                const freq2 =   [0, 0.89, 0.89, 0.89, 0.89, 0.75, 0.95, 0.60, 0.50, 0.80, 0.40, 0.85, 0.90, 0.30, 0.55, 0.88, 0.70, 0.35, 0.65, 0.82, 0.45];
+                const i = Math.min(id, bases.length - 1);
                 return Number(
-                    (
-                        [0, 27.4, 1.03, 63.2, 68.1][id] +
-                        Math.sin(x * 0.18 + id) * [0, 0.8, 0.04, 1.4, 1.8][id] +
-                        Math.sin(x * 0.89) * [0, 0.14, 0.007, 0.22, 0.3][id]
-                    ).toFixed(2),
+                    (bases[i] + Math.sin(x * freq1[i] + id) * amp1[i] + Math.sin(x * freq2[i]) * amp2[i]).toFixed(2),
                 );
             };
             const alerts = [
@@ -55,12 +221,14 @@ export function labDemoPlugin() {
                     id: 1,
                     resolved: false,
                     alert_rule: {
-                        message: "Température élevée",
+                        message: "Temperatura alta",
                         severity: "danger",
                     },
-                    device: { id: 7, name: "Nodo 7" },
-                    sensor: { name: "Temperatura" },
+                    device: { id: 1, name: "Reactor 1" },
+                    sensor: { id: 1, name: "Temperatura", unit: "°C" },
                     created_at: new Date(epoch - 180000).toISOString(),
+                    acknowledged_by: null,
+                    reading_value: 31.2,
                 },
                 {
                     id: 2,
@@ -70,46 +238,116 @@ export function labDemoPlugin() {
                         severity: "warning",
                     },
                     device: { id: 3, name: "Tanque B" },
-                    sensor: { name: "Presión" },
+                    sensor: { id: 2, name: "Presión", unit: "bar" },
                     created_at: new Date(epoch - 720000).toISOString(),
+                    acknowledged_by: null,
+                    reading_value: 1.45,
+                },
+                {
+                    id: 3,
+                    resolved: false,
+                    alert_rule: {
+                        message: "pH bajo en efluente",
+                        severity: "danger",
+                    },
+                    device: { id: 8, name: "Estación Efluente" },
+                    sensor: { id: 10, name: "pH Efluente", unit: "pH" },
+                    created_at: new Date(epoch - 1200000).toISOString(),
+                    acknowledged_by: "Operador",
+                    reading_value: 5.8,
+                },
+                {
+                    id: 4,
+                    resolved: true,
+                    resolved_at: new Date(epoch - 3600000).toISOString(),
+                    alert_rule: {
+                        message: "Turbidez elevada",
+                        severity: "warning",
+                    },
+                    device: { id: 6, name: "Clarificador" },
+                    sensor: { id: 8, name: "Turbidez Clarif.", unit: "NTU" },
+                    created_at: new Date(epoch - 5400000).toISOString(),
+                    acknowledged_by: "Admin Demo",
+                    reading_value: 55.3,
+                },
+                {
+                    id: 5,
+                    resolved: false,
+                    alert_rule: {
+                        message: "Oxígeno disuelto bajo",
+                        severity: "danger",
+                    },
+                    device: { id: 4, name: "Estación Meta 4" },
+                    sensor: { id: 6, name: "OD Exterior", unit: "mg/L" },
+                    created_at: new Date(epoch - 300000).toISOString(),
+                    acknowledged_by: null,
+                    reading_value: 1.8,
+                },
+                {
+                    id: 6,
+                    resolved: true,
+                    resolved_at: new Date(epoch - 7200000).toISOString(),
+                    alert_rule: {
+                        message: "Caudal bajo en bomba",
+                        severity: "warning",
+                    },
+                    device: { id: 5, name: "Bomba Principal" },
+                    sensor: { id: 7, name: "Caudal Bomba", unit: "L/min" },
+                    created_at: new Date(epoch - 9000000).toISOString(),
+                    acknowledged_by: "Operador",
+                    reading_value: 45.2,
                 },
             ];
-            alerts[0].alert_rule.message = "Temperatura alta";
             const labs = [
-                { id: 1, name: "Reactor Biologico A", area: "Tratamiento Secundario", process_line: "Oxigenacion", description: "Reactor aerobio principal" },
-                { id: 2, name: "Reactor Biologico B", area: "Tratamiento Secundario", process_line: "Nitrificacion", description: "Reactor de soporte" },
-                { id: 3, name: "Tanque de Ajuste pH", area: "Pretratamiento", process_line: "Neutralizacion", description: "Ajuste de pH de entrada" },
-                { id: 4, name: "Clarificador", area: "Sedimentacion", process_line: "Clarificacion", description: "Separacion de solidos" },
-                { id: 5, name: "Laboratorio de Control", area: "Analitica", process_line: "Monitoreo", description: "Validacion de calidad" },
+                { id: 1, name: "Reactor Biologico A", area: "Tratamiento Secundario", process_line: "Oxigenacion", description: "Reactor aerobio principal", capacity_m3: 500, operator: "Ing. Carlos Mendoza", status: "active" },
+                { id: 2, name: "Reactor Biologico B", area: "Tratamiento Secundario", process_line: "Nitrificacion", description: "Reactor de soporte", capacity_m3: 350, operator: "Ing. Laura Vega", status: "active" },
+                { id: 3, name: "Tanque de Ajuste pH", area: "Pretratamiento", process_line: "Neutralizacion", description: "Ajuste de pH de entrada", capacity_m3: 200, operator: "Téc. Roberto Silva", status: "active" },
+                { id: 4, name: "Clarificador", area: "Sedimentacion", process_line: "Clarificacion", description: "Separacion de solidos", capacity_m3: 800, operator: "Ing. Ana Torres", status: "maintenance" },
+                { id: 5, name: "Laboratorio de Control", area: "Analitica", process_line: "Monitoreo", description: "Validacion de calidad", capacity_m3: null, operator: "Biol. María Rojas", status: "active" },
+                { id: 6, name: "Estación de Bombeo", area: "Hidráulica", process_line: "Recirculación", description: "Bombeo de retorno de lodos", capacity_m3: 100, operator: "Téc. Juan Pérez", status: "active" },
+                { id: 7, name: "Desinfección UV", area: "Tratamiento Terciario", process_line: "Desinfección", description: "Eliminación microbiana", capacity_m3: 150, operator: "Ing. Diego López", status: "active" },
             ];
             const sensorTypes = [
-                { id: 1, name: "Temperatura", unit: "\u00b0C", min_value: 0, max_value: 100 },
-                { id: 2, name: "Presi\u00f3n", unit: "bar", min_value: 0, max_value: 10 },
-                { id: 3, name: "Humedad", unit: "%", min_value: 0, max_value: 100 },
-                { id: 4, name: "Nivel", unit: "%", min_value: 0, max_value: 100 },
-                { id: 5, name: "pH", unit: "pH", min_value: 0, max_value: 14 },
-                { id: 6, name: "Oxígeno Disuelto", unit: "mg/L", min_value: 0, max_value: 20 },
-                { id: 7, name: "Conductividad", unit: "μS/cm", min_value: 0, max_value: 5000 },
-                { id: 8, name: "Turbidez", unit: "NTU", min_value: 0, max_value: 500 },
-                { id: 9, name: "ORP", unit: "mV", min_value: -500, max_value: 500 },
-                { id: 10, name: "Caudal", unit: "L/min", min_value: 0, max_value: 500 },
+                { id: 1, name: "Temperatura", unit: "°C", min_value: 0, max_value: 100, description: "Temperatura ambiente o de proceso", icon: "thermometer" },
+                { id: 2, name: "Presión", unit: "bar", min_value: 0, max_value: 10, description: "Presión manométrica", icon: "gauge" },
+                { id: 3, name: "Humedad", unit: "%", min_value: 0, max_value: 100, description: "Humedad relativa del aire", icon: "droplet" },
+                { id: 4, name: "Nivel", unit: "%", min_value: 0, max_value: 100, description: "Nivel de llenado de tanque", icon: "level" },
+                { id: 5, name: "pH", unit: "pH", min_value: 0, max_value: 14, description: "Potencial de hidrógeno", icon: "ph" },
+                { id: 6, name: "Oxígeno Disuelto", unit: "mg/L", min_value: 0, max_value: 20, description: "Concentración de oxígeno disuelto", icon: "oxygen" },
+                { id: 7, name: "Conductividad", unit: "μS/cm", min_value: 0, max_value: 5000, description: "Capacidad de conducción eléctrica", icon: "conductivity" },
+                { id: 8, name: "Turbidez", unit: "NTU", min_value: 0, max_value: 500, description: "Nivel de turbidez del agua", icon: "turbidity" },
+                { id: 9, name: "ORP", unit: "mV", min_value: -500, max_value: 500, description: "Potencial de oxidación-reducción", icon: "orp" },
+                { id: 10, name: "Caudal", unit: "L/min", min_value: 0, max_value: 500, description: "Flujo volumétrico", icon: "flow" },
+                { id: 11, name: "Sólidos Disueltos", unit: "ppm", min_value: 0, max_value: 2000, description: "Total de sólidos disueltos", icon: "solids" },
+                { id: 12, name: "Nitrógeno Total", unit: "mg/L", min_value: 0, max_value: 50, description: "Nitrógeno total Kjeldahl", icon: "nitrogen" },
+                { id: 13, name: "Fósforo Total", unit: "mg/L", min_value: 0, max_value: 10, description: "Fósforo total", icon: "phosphorus" },
             ];
             const deviceTypes = [
-                { id: 1, name: "Estación de Monitoreo", description: "Nodo multiparamétrico" },
-                { id: 2, name: "Controlador", description: "Controlador de proceso" },
-                { id: 3, name: "Analizador", description: "Analizador en línea" },
-                { id: 4, name: "Bomba", description: "Bomba de recirculación" },
+                { id: 1, name: "Estación de Monitoreo", description: "Nodo multiparamétrico", protocol: "MQTT", refresh_interval_s: 5 },
+                { id: 2, name: "Controlador", description: "Controlador de proceso", protocol: "Modbus TCP", refresh_interval_s: 2 },
+                { id: 3, name: "Analizador", description: "Analizador en línea", protocol: "Modbus RTU", refresh_interval_s: 10 },
+                { id: 4, name: "Bomba", description: "Bomba de recirculación", protocol: "OPC-UA", refresh_interval_s: 1 },
+                { id: 5, name: "Válvula", description: "Válvula de control", protocol: "HART", refresh_interval_s: 1 },
+                { id: 6, name: "Sensor Puro", description: "Sensor de un solo parámetro", protocol: "4-20mA", refresh_interval_s: 3 },
             ];
             const demoUsers = [
-                { id: 1, name: "Admin Demo", email: "demo@sinoa.local", is_admin: true },
-                { id: 2, name: "Operador", email: "operador@sinoa.local", is_admin: false },
-                { id: 3, name: "Visor", email: "visor@sinoa.local", is_admin: false },
+                { id: 1, name: "Admin Demo", email: "demo@sinoa.local", is_admin: true, role: "Administrador", department: "Ingeniería", created_at: "2025-01-15T10:00:00Z" },
+                { id: 2, name: "Operador", email: "operador@sinoa.local", is_admin: false, role: "Operador", department: "Operaciones", created_at: "2025-02-20T08:00:00Z" },
+                { id: 3, name: "Visor", email: "visor@sinoa.local", is_admin: false, role: "Visor", department: "Calidad", created_at: "2025-03-10T14:00:00Z" },
+                { id: 4, name: "Ing. Carlos Mendoza", email: "carlos@sinoa.local", is_admin: false, role: "Supervisor", department: "Ingeniería", created_at: "2025-01-20T09:00:00Z" },
+                { id: 5, name: "Biol. María Rojas", email: "maria@sinoa.local", is_admin: false, role: "Técnico", department: "Laboratorio", created_at: "2025-04-05T11:00:00Z" },
             ];
             const alertRules = [
-                { id: 1, name: "Temp alta Reactor A", sensor_type_id: 1, device_id: 1, condition: ">", threshold: 28, severity: "danger", enabled: true, message: "Temperatura fuera de rango alto" },
-                { id: 2, name: "pH bajo Tanque", sensor_type_id: 5, device_id: 2, condition: "<", threshold: 6.5, severity: "warning", enabled: true, message: "pH por debajo del umbral" },
-                { id: 3, name: "Turbidez alta", sensor_type_id: 8, device_id: 6, condition: ">", threshold: 100, severity: "danger", enabled: true, message: "Turbidez excesiva en clarificador" },
-                { id: 4, name: "OD bajo Reactor A", sensor_type_id: 6, device_id: 1, condition: "<", threshold: 2, severity: "danger", enabled: false, message: "Oxígeno disuelto crítico" },
+                { id: 1, name: "Temp alta Reactor A", sensor_type_id: 1, device_id: 1, condition: ">", threshold: 28, severity: "danger", enabled: true, message: "Temperatura fuera de rango alto", cooldown_minutes: 5 },
+                { id: 2, name: "pH bajo Tanque", sensor_type_id: 5, device_id: 2, condition: "<", threshold: 6.5, severity: "warning", enabled: true, message: "pH por debajo del umbral", cooldown_minutes: 10 },
+                { id: 3, name: "Turbidez alta Clarif.", sensor_type_id: 8, device_id: 6, condition: ">", threshold: 100, severity: "danger", enabled: true, message: "Turbidez excesiva en clarificador", cooldown_minutes: 5 },
+                { id: 4, name: "OD bajo Reactor A", sensor_type_id: 6, device_id: 1, condition: "<", threshold: 2, severity: "danger", enabled: false, message: "Oxígeno disuelto crítico", cooldown_minutes: 15 },
+                { id: 5, name: "Presión alta Bomba", sensor_type_id: 2, device_id: 5, condition: ">", threshold: 1.3, severity: "warning", enabled: true, message: "Presión de salida elevada", cooldown_minutes: 5 },
+                { id: 6, name: "Caudal bajo Bomba", sensor_type_id: 10, device_id: 5, condition: "<", threshold: 60, severity: "danger", enabled: true, message: "Caudal insuficiente en recirculación", cooldown_minutes: 10 },
+                { id: 7, name: "Nivel alto Clarif.", sensor_type_id: 4, device_id: 6, condition: ">", threshold: 85, severity: "warning", enabled: true, message: "Nivel de lodos alto en clarificador", cooldown_minutes: 15 },
+                { id: 8, name: "Conductividad alta", sensor_type_id: 7, device_id: 3, condition: ">", threshold: 3000, severity: "danger", enabled: true, message: "Conductividad fuera de especificación", cooldown_minutes: 10 },
+                { id: 9, name: "pH Efluente bajo", sensor_type_id: 5, device_id: 8, condition: "<", threshold: 6.0, severity: "danger", enabled: true, message: "pH de efluente fuera de norma", cooldown_minutes: 5 },
+                { id: 10, name: "ORP bajo Laboratorio", sensor_type_id: 9, device_id: 7, condition: "<", threshold: 0, severity: "warning", enabled: true, message: "ORP negativo en laboratorio", cooldown_minutes: 20 },
             ];
             let nextId = 100;
             const authorized = (req) =>
@@ -340,13 +578,13 @@ export function labDemoPlugin() {
                         return send(res, 200, { data: { id: did, status: body.status ? "online" : "offline", is_active: body.status } });
                     }
                     if (req.method === "POST") return send(res, 200, { data: device });
-                    return send(res, 200, { data: { ...device, status: "online", lab: labs[0], device_type: deviceTypes[0] } });
+                    return send(res, 200, { data: { ...device, status: device.status, lab: labs.find((l) => l.id === device.lab_id) || labs[0], device_type: deviceTypes.find((t) => t.id === device.device_type_id) || deviceTypes[0] } });
                 }
                 if (p === "/devices" && req.method === "POST") {
                     return send(res, 200, { data: { id: ++nextId, ...body, status: "online" } });
                 }
                 if (p === "/devices/status-snapshot") {
-                    return send(res, 200, { data: devices.map((d) => ({ device_id: d.id, status: "online", is_active: true, changed_at: new Date().toISOString() })) });
+                    return send(res, 200, { data: devices.map((d) => ({ device_id: d.id, status: d.status, is_active: d.status === "online", changed_at: d.last_seen, ip_address: d.ip_address, firmware_version: d.firmware_version })) });
                 }
 
                 // --- Alert detail + resolve ---
@@ -473,7 +711,7 @@ export function labDemoPlugin() {
 
                 // --- Metrics ---
                 if (p === "/metrics") {
-                    return send(res, 200, { data: { total_sensors: all.length, total_devices: devices.length, active_alerts: alerts.filter((a) => !a.resolved).length, total_labs: labs.length, readings_today: 1247, uptime_percent: 99.7 } });
+                    return send(res, 200, { data: { total_sensors: all.length, total_devices: devices.length, active_alerts: alerts.filter((a) => !a.resolved).length, total_labs: labs.length, readings_today: 4287, uptime_percent: 98.3, online_devices: devices.filter((d) => d.status === "online").length, offline_devices: devices.filter((d) => d.status === "offline").length, total_alert_rules: alertRules.length, enabled_rules: alertRules.filter((r) => r.enabled).length } });
                 }
 
                 return send(res, 404, {

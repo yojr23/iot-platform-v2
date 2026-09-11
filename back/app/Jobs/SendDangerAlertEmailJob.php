@@ -22,8 +22,7 @@ use Illuminate\Support\Facades\Log;
  * alert.resolved/device.status.changed/sensor.reading.created today, alert-triggered email has no
  * existing consumer to route through, and standing up a new consumer group for a single email send
  * is the exact over-engineering audit.md §15a already rejected for comparable cases — a plain
- * Laravel queued job (same mechanism as `RelayDomainOutboxJob`/`RelayRawOutboxJob`) is the smallest
- * fix that gets email off the request path.
+ * Laravel queued job is the smallest fix that gets email off the request path.
  * Existing owner retired/delegated: `AlertObserver::created()` no longer calls
  * `NotificationService::notifyDangerAlertByEmail()` synchronously; it now dispatches this job
  * `afterCommit()`. `NotificationService` remains the sole owner of notification policy/mapping.

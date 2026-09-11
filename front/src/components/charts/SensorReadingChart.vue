@@ -143,7 +143,11 @@ const yDomain = computed(() => {
   const observed = props.series.filter((value) => Number.isFinite(value));
   const values = [...observed, ...props.zones.domainValues];
   if (!values.length) return { min: undefined, max: undefined };
-  return { min: Math.min(...values), max: Math.max(...values) };
+  const min = Math.min(...values), max = Math.max(...values);
+  // Leave room beyond configured boundaries so the outer warning/critical
+  // bands remain visible even when every reading is inside the normal range.
+  const padding = props.zones.domainValues.length ? (max - min || Math.abs(max) || 1) * 0.1 : 0;
+  return { min: min - padding, max: max + padding };
 });
 
 const chartData = computed(() => ({

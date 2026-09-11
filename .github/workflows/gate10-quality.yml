@@ -1,0 +1,80 @@
+name: gate10-quality
+
+# Gate 10 (PLAN.md Task 12) — enforce the no-polling architecture on every push/PR.
+# Note: the mocked network harness is NOT accepted as Gate-10 proof here. The live no-polling proof
+# (front/.audit-e2e/network-assertion-live.mjs) requires the full real stack and runs separately.
+
+on:
+  push:
+    branches: [refraccion, main]
+  pull_request:
+    branches: [refraccion, main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: back
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, redis
+          coverage: none
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Run test suite (isolated SQLite)
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+        run: php artisan test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: front
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Production build
+        run: npm run build
+      - name: Static no-polling gate
+        run: npm run audit:no-polling:source
+
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No retired relay commands or services exist
+        run: |
+          set -e
+          ! test -f back/app/Console/Commands/RelayRawOutbox.php
+          ! test -f back/app/Console/Commands/RelayDomainOutbox.php
+          ! test -f back/app/Jobs/RelayRawOutboxJob.php
+          ! test -f back/app/Jobs/RelayDomainOutboxJob.php
+          ! test -f back/app/Services/Ingestion/RawOutboxRelay.php
+          ! test -f back/app/Services/Ingestion/DomainOutboxRelay.php
+          ! grep -qE '^\s*(outbox-relay|domain-outbox-relay):' docker-compose.yml
+          ! grep -qE 'relay-outbox --interval' docker-compose.yml
+      - name: CDC configuration exists
+        run: |
+          set -e
+          test -f cdc/application.properties
+          test -f back/app/Services/Ingestion/Cdc/CdcOutboxStreamConsumer.php
+          test -f back/app/Console/Commands/ConsumeCdcOutboxes.php
+          grep -q 'debezium:' docker-compose.yml
+          grep -q 'outbox-cdc-consumer:' docker-compose.yml

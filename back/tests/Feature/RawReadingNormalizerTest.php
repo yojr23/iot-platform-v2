@@ -153,18 +153,41 @@ class RawReadingNormalizerTest extends TestCase
         $this->assertReadingRoundTripsToExpectedInstant($sensor, 'RFC3339 explicit-offset payload timestamp');
     }
 
-    public function test_multiple_payload_entries_do_not_issue_individual_case_insensitive_sensor_lookups(): void
+    public function test_sensor_resolution_is_unicode_case_insensitive(): void
     {
         $device = Device::factory()->create([
-            'serial_number' => 'node-batch-sensor-resolution',
+            'serial_number' => 'unicode-node',
             'status' => true,
             'is_active' => true,
         ]);
-        Sensor::factory()->create(['device_id' => $device->id, 'name' => 'temperature']);
-        Sensor::factory()->create(['device_id' => $device->id, 'name' => 'ph']);
+        $sensor = Sensor::factory()->create([
+            'device_id' => $device->id,
+            'name' => 'HÚMEDAD',
+        ]);
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => 'unicode-node',
+            'payload' => ['sensors' => ['húmedad' => ['value' => 73.5]]],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertSame(1, $result['created']);
+        $this->assertSame([], $result['skipped']);
+        $this->assertDatabaseHas('sensor_readings', ['sensor_id' => $sensor->id, 'value' => 73.5]);
+    }
+
+    public function test_payload_keys_resolve_to_the_exact_matching_sensor_regardless_of_payload_order(): void
+    {
+        $device = Device::factory()->create([
+            'serial_number' => 'node-exact-mapping',
+            'status' => true,
+            'is_active' => true,
+        ]);
+        $temperatureSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'temperature']);
+        $phSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'ph']);
 
         $event = RawSensorEvent::factory()->create([
-            'node_id' => 'node-batch-sensor-resolution',
+            'node_id' => 'node-exact-mapping',
             'payload' => [
                 'sensors' => [
                     'TEMPERATURE' => ['value' => 21.5],
@@ -173,22 +196,73 @@ class RawReadingNormalizerTest extends TestCase
             ],
         ]);
 
-        $queries = [];
-        $capturingQueries = true;
-        DB::listen(function ($query) use (&$queries, &$capturingQueries): void {
-            if ($capturingQueries) {
-                $queries[] = $query->sql;
-            }
-        });
-
         $result = app(RawReadingNormalizer::class)->normalize($event);
-        $capturingQueries = false;
 
         $this->assertSame(2, $result['created']);
         $this->assertSame([], $result['skipped']);
-        $this->assertCount(2, SensorReading::query()->get());
-        $this->assertFalse(
-            collect($queries)->contains(fn (string $sql): bool => str_contains(strtolower($sql), 'lower(name) =')),
-        );
+        $this->assertDatabaseHas('sensor_readings', ['sensor_id' => $temperatureSensor->id, 'value' => 21.5]);
+        $this->assertDatabaseHas('sensor_readings', ['sensor_id' => $phSensor->id, 'value' => 7.1]);
+    }
+
+    public function test_sensor_resolution_query_count_does_not_scale_with_payload_size(): void
+    {
+        $device = Device::factory()->create([
+            'serial_number' => 'node-query-count',
+            'status' => true,
+            'is_active' => true,
+        ]);
+        foreach (range(1, 20) as $i) {
+            Sensor::factory()->create(['device_id' => $device->id, 'name' => "sensor-{$i}"]);
+        }
+
+        $singleKeyEvent = RawSensorEvent::factory()->create([
+            'node_id' => 'node-query-count',
+            'payload' => ['sensors' => ['sensor-1' => ['value' => 1.0]]],
+        ]);
+
+        $countSensorSelects = fn (): int => collect(DB::getQueryLog())
+            ->filter(fn (array $q): bool => (bool) preg_match('/^select .* from ["`]?sensors["`]?\b/i', $q['query']))
+            ->count();
+
+        DB::enableQueryLog();
+        app(RawReadingNormalizer::class)->normalize($singleKeyEvent);
+        $singleKeySensorSelects = $countSensorSelects();
+        DB::flushQueryLog();
+
+        $allKeysPayload = collect(range(1, 20))
+            ->mapWithKeys(fn (int $i): array => ["sensor-{$i}" => ['value' => (float) $i]])
+            ->all();
+        $manyKeysEvent = RawSensorEvent::factory()->create([
+            'node_id' => 'node-query-count',
+            'payload' => ['sensors' => $allKeysPayload],
+        ]);
+
+        app(RawReadingNormalizer::class)->normalize($manyKeysEvent);
+        $manyKeysSensorSelects = $countSensorSelects();
+        DB::disableQueryLog();
+
+        $this->assertSame(1, $singleKeySensorSelects);
+        $this->assertSame(1, $manyKeysSensorSelects);
+    }
+
+    public function test_ambiguous_sensor_names_throw(): void
+    {
+        $device = Device::factory()->create([
+            'serial_number' => 'node-ambiguous',
+            'status' => true,
+            'is_active' => true,
+        ]);
+        Sensor::factory()->create(['device_id' => $device->id, 'name' => 'Temp']);
+        Sensor::factory()->create(['device_id' => $device->id, 'name' => 'TEMP']);
+
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => 'node-ambiguous',
+            'payload' => ['sensors' => ['temp' => ['value' => 21.5]]],
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('ambiguous sensor names');
+
+        app(RawReadingNormalizer::class)->normalize($event);
     }
 }

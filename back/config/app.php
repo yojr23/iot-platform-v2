@@ -141,6 +141,14 @@ return [
     'domain_events_stream' => env('DOMAIN_EVENTS_STREAM', 'iot.domain-events'),
     'domain_events_consumer_group' => env('DOMAIN_EVENTS_CONSUMER_GROUP', 'browser-delivery-v1'),
 
+    // Gate 10 (PLAN.md Stage 10 / ADR-G1): Debezium Server captures the two outbox tables from the
+    // MySQL binlog onto these dedicated CDC streams. `cdc:consume-outboxes` is their sole consumer
+    // group and the single final publication owner into iot.raw-events / iot.domain-events. These
+    // replace the retired periodic `SELECT pending` relays — no DB discovery loop remains.
+    'cdc_raw_outbox_stream' => env('CDC_RAW_OUTBOX_STREAM', 'iot-cdc.iot_platform.raw_event_outboxes'),
+    'cdc_domain_outbox_stream' => env('CDC_DOMAIN_OUTBOX_STREAM', 'iot-cdc.iot_platform.domain_event_outboxes'),
+    'cdc_outbox_consumer_group' => env('CDC_OUTBOX_CONSUMER_GROUP', 'outbox-publish-v1'),
+
     'front_url' => env('FRONT_URL', 'http://localhost:5173'),
 
 ];

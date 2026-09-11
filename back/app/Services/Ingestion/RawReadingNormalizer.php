@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\RawSensorEvent;
 use App\Models\Sensor;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -58,9 +59,22 @@ class RawReadingNormalizer
 
         $sensorsPayload = (array) data_get($event->payload, 'sensors', []);
         $readingTime = data_get($event->payload, 'timestamp') ?? $event->received_at ?? now();
-        $sensorsByName = $device->sensors
-            ->groupBy(fn (Sensor $sensor): string => strtolower($sensor->name))
-            ->map(fn ($sensors): Sensor => $sensors->first());
+
+        $groupedSensors = $device->sensors()
+            ->get(['id', 'device_id', 'name'])
+            ->groupBy(fn (Sensor $sensor): string => $this->canonicalSensorName($sensor->name));
+
+        $ambiguousNames = $groupedSensors
+            ->filter(fn ($sensors): bool => $sensors->count() > 1)
+            ->keys();
+
+        if ($ambiguousNames->isNotEmpty()) {
+            throw new RuntimeException(
+                'RawReadingNormalizer: ambiguous sensor names for device ['.$device->id.']: '.$ambiguousNames->implode(', ')
+            );
+        }
+
+        $sensorsByName = $groupedSensors->map(fn ($sensors): Sensor => $sensors->first());
 
         $created = 0;
         $skipped = [];
@@ -79,7 +93,7 @@ class RawReadingNormalizer
                 continue;
             }
 
-            $sensor = $sensorsByName->get(strtolower((string) $key));
+            $sensor = $sensorsByName->get($this->canonicalSensorName((string) $key));
 
             if (! $sensor) {
                 $skipped[] = (string) $key;
@@ -110,5 +124,10 @@ class RawReadingNormalizer
         }
 
         return ['created' => $created, 'skipped' => $skipped];
+    }
+
+    private function canonicalSensorName(string $name): string
+    {
+        return Str::lower(trim($name));
     }
 }

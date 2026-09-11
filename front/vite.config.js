@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), "");
 
     return {
+        // Normal development and the demo may run together. Their different
+        // defines must not overwrite each other's optimized dependencies.
+        cacheDir: `node_modules/.vite-${mode}`,
         define:
             mode === "demo"
                 ? {
