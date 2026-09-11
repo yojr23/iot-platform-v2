@@ -29,10 +29,10 @@
 - Modify: `front/src/components/layout/NavBar.test.js`
 - Create: `front/src/router/configRoutes.test.js`
 
-- [ ] **Step 1: Write failing tests** for four named protected configuration routes and for an administrator navbar that omits Reglas, Catálogos and Usuarios while retaining Métricas and Configuración.
-- [ ] **Step 2: Run the tests and verify they fail** because the subroutes and the filtered administration menu do not exist.
-- [ ] **Step 3: Add the four lazy configuration routes and remove the three administration links from both menu definitions.**
-- [ ] **Step 4: Run the focused tests and verify they pass.**
+- [x] **Step 1: Write failing tests** for four named protected configuration routes and for an administrator navbar that omits Reglas, Catálogos and Usuarios while retaining Métricas and Configuración.
+- [x] **Step 2: Run the tests and verify they fail** because the subroutes and the filtered administration menu do not exist.
+- [x] **Step 3: Add the four lazy configuration routes and remove the three administration links from both menu definitions.**
+- [x] **Step 4: Run the focused tests and verify they pass.**
 
 ### Task 2: Settings hub and focused functional views
 
@@ -44,10 +44,10 @@
 - Create: `front/src/views/config/DiagnosticsConfigView.vue`
 - Create: `front/src/views/ConfigView.test.js`
 
-- [ ] **Step 1: Write failing tests** that expect the hub to render General, Alertas, Correo and Diagnóstico links after partial API responses, and each focused route to expose its existing save/test behavior.
-- [ ] **Step 2: Run the tests and verify they fail** because the focused modules do not exist and the hub still owns forms.
-- [ ] **Step 3: Implement the hub and views.** The hub loads endpoint summaries independently; focused views load their own section, submit the existing payload shape, show existing alert feedback, and include a return link.
-- [ ] **Step 4: Run the focused tests and verify they pass.**
+- [x] **Step 1: Write failing tests** that expect the hub to render General, Alertas, Correo and Diagnóstico links after partial API responses, and each focused route to expose its existing save/test behavior.
+- [x] **Step 2: Run the tests and verify they fail** because the focused modules do not exist and the hub still owns forms.
+- [x] **Step 3: Implement the hub and views.** The hub loads endpoint summaries independently; focused views load their own section, submit the existing payload shape, show existing alert feedback, and include a return link.
+- [x] **Step 4: Run the focused tests and verify they pass.**
 
 ### Task 3: Lab Blue visual treatment and verification
 
@@ -55,7 +55,7 @@
 - Modify: `front/src/assets/styles/lab-resources.css`
 - Modify: `front/src/components/dashboard/lab/LabIcon.vue`
 
-- [ ] **Step 1: Add narrow configuration styles** for icon-tinted status summary, accessible list rows, hover/focus behavior, and mobile stacking without changing unrelated resource surfaces.
-- [ ] **Step 2: Add only the icon names used by the new views in the existing stroke style.**
-- [ ] **Step 3: Run `npm run test:unit` and `npm run build` from `front`.**
-- [ ] **Step 4: Run the demo server and verify desktop and mobile rendering plus hub → each screen navigation and email test submission.**
+- [x] **Step 1: Add narrow configuration styles** for icon-tinted status summary, accessible list rows, hover/focus behavior, and mobile stacking without changing unrelated resource surfaces.
+- [x] **Step 2: Add only the icon names used by the new views in the existing stroke style.**
+- [x] **Step 3: Run `npm run test:unit` and `npm run build` from `front`.**
+- [x] **Step 4: Run the demo server and verify desktop and mobile rendering plus hub → each screen navigation and email test submission.**

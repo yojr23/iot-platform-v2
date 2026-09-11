@@ -463,6 +463,7 @@
 .settings-diagnostics dd { color: #334155; font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 500; margin: 0; text-align: right; }
 @media (max-width: 767px) {
   .settings-toolbar, .settings-summary-heading, .settings-list-heading { align-items: flex-start; flex-direction: column; }
+  .settings-toolbar > div:first-child { flex: 0 1 auto; }
   .settings-toolbar .lab-resource-actions { width: 100%; }
   .settings-role { display: none; }
   .settings-summary, .settings-list-panel, .settings-form-panel, .settings-diagnostics { padding: 16px; }

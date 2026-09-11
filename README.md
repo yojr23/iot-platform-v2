@@ -30,26 +30,24 @@ graphify-out/       Grafo de código generado; no editar manualmente
 
 ### Ingesta y entrega al navegador
 
-~~~mermaid
+```mermaid
 flowchart LR
-    Producer[Dispositivo MQTT o ingestion_service] -->|POST /api/ingestion/events<br/>X-Ingestion-Token| Ingest[IngestionController]
-    Ingest -->|misma transacción| Raw[(raw_sensor_events)]
-    Ingest -->|misma transacción| RawOutbox[(raw_event_outboxes)]
-    RawOutbox -->|binlog| Debezium[Debezium Server]
-    Debezium --> CdcStream[(Redis: iot-cdc.*)]
-    CdcStream --> CdcConsumer[cdc:consume-outboxes]
-    CdcConsumer --> RawStream[(Redis: iot.raw-events)]
-    RawStream --> RawConsumer[raw:consume]
-    RawConsumer --> Readings[(sensor_readings)]
-    RawConsumer --> DomainOutbox[(domain_event_outboxes)]
-    DomainOutbox -->|binlog| Debezium
-    Debezium --> DomainCdc[(Redis: iot-cdc.*)]
-    DomainCdc --> CdcConsumer
-    CdcConsumer --> DomainStream[(Redis: iot.domain-events)]
-    DomainStream --> DomainConsumer[domain:consume]
-    DomainConsumer --> Broadcast[Pusher-compatible broadcasting]
-    Broadcast --> SPA[SPA Vue]
-~~~
+    Producer["Dispositivo MQTT o ingestion_service"] --> Ingest["IngestionController"]
+    Ingest --> Raw[("raw_sensor_events")]
+    Ingest --> RawOutbox[("raw_event_outboxes")]
+    RawOutbox --> Debezium["Debezium Server"]
+    Debezium --> CdcStream[("Redis: iot-cdc.*")]
+    CdcStream --> CdcConsumer["cdc:consume-outboxes"]
+    CdcConsumer --> RawStream[("Redis: iot.raw-events")]
+    RawStream --> RawConsumer["raw:consume"]
+    RawConsumer --> Readings[("sensor_readings")]
+    RawConsumer --> DomainOutbox[("domain_event_outboxes")]
+    DomainOutbox --> Debezium
+    CdcConsumer --> DomainStream[("Redis: iot.domain-events")]
+    DomainStream --> DomainConsumer["domain:consume"]
+    DomainConsumer --> Broadcast["Broadcasting Pusher-compatible"]
+    Broadcast --> SPA["SPA Vue"]
+```
 
 El contrato de confirmación de POST /api/ingestion/events sólo afirma que el recibo crudo quedó persistido (status: received); no afirma que haya sido publicado o procesado. El consumidor crudo normaliza lecturas y usa raw_sensor_events.status como ledger del grupo. Los consumidores emplean grupos de Redis, XREADGROUP, XAUTOCLAIM, ACK y DLQ para recuperar entregas pendientes. Véase [docs/INGESTION_PIPELINE.md](docs/INGESTION_PIPELINE.md).
 
@@ -57,22 +55,22 @@ La vía compatible POST /api/sensors/{sensor}/readings sigue existiendo para dis
 
 ### Lectura de gráficas y tiempo real
 
-~~~mermaid
+```mermaid
 flowchart TB
-    Guest[Invitado] --> Bootstrap[GET /api/public/graph/bootstrap]
-    Bootstrap --> Visibility[PublicGraphVisibility]
-    Visibility --> PublicSensors[Sensores con public_monitoring_enabled = true]
-    Guest --> PublicSeries[GET /api/public/graph/sensors/{id}/series]
-    PublicSeries --> SeriesService[PublicGraphSeriesService]
-    SeriesService --> Readings[(sensor_readings)]
+    Guest["Invitado"] --> Bootstrap["GET /api/public/graph/bootstrap"]
+    Bootstrap --> Visibility["PublicGraphVisibility"]
+    Visibility --> PublicSensors["Sensores con public_monitoring_enabled = true"]
+    Guest --> PublicSeries["GET /api/public/graph/sensors/{id}/series"]
+    PublicSeries --> SeriesService["PublicGraphSeriesService"]
+    SeriesService --> Readings[("sensor_readings")]
 
-    User[Usuario con Sanctum] --> PrivateSeries[GET /api/sensors/{id}/series]
+    User["Usuario con Sanctum"] --> PrivateSeries["GET /api/sensors/{id}/series"]
     PrivateSeries --> SeriesService
-    Broadcast --> PublicChannel[Canal público sensor.{id}<br/>sólo lectura pública]
-    Broadcast --> PrivateChannels[Canales privados: sensor.{id}, alerts, device-status]
+    Broadcast["Broadcasting"] --> PublicChannel["Canal público sensor.{id}"]
+    Broadcast --> PrivateChannels["Canales privados: sensor.{id}, alerts, device-status"]
     PublicChannel --> Guest
     PrivateChannels --> User
-~~~
+```
 
 Las ventanas de serie se solicitan con límites temporales y el frontend identifica/cancela solicitudes históricas por consumidor. La recuperación de tiempo real es una carga acotada desencadenada por suscripción, reconexión, visibilidad o autenticación; el código de producto no utiliza polling periódico de estado. El detector fuente front/scripts/verify-no-polling.mjs forma parte de la verificación.
 
@@ -167,7 +165,7 @@ La alineación documental o técnica no equivale a una certificación emitida po
 
 ### Modelo de dominio persistido
 
-~~~mermaid
+```mermaid
 erDiagram
     LAB ||--o{ DEVICE : ubica
     DEVICE_TYPE ||--o{ DEVICE : clasifica
@@ -178,13 +176,13 @@ erDiagram
     SENSOR_READING ||--o{ ALERT : puede_disparar
     RAW_SENSOR_EVENT ||--|| RAW_EVENT_OUTBOX : publica
     DOMAIN_EVENT_OUTBOX }o--|| SENSOR_READING : puede_referenciar
-~~~
+```
 
 Las tablas de outbox y las lecturas se crean mediante migraciones de back/database/migrations. El diagrama expresa relaciones usadas por el modelo; no pretende enumerar cada columna ni declarar claves de negocio que no estén representadas por el código.
 
 ### Capas y propietarios
 
-~~~mermaid
+```mermaid
 flowchart TB
     subgraph Client["Cliente"]
         SPA["SPA Vue"]
@@ -224,13 +222,13 @@ flowchart TB
     Events --> SPA
     Services --> Queue
     Queue --> Mail
-~~~
+```
 
 El flujo de entrega durable y el broadcasting son propietarios distintos: cdc:consume-outboxes transforma cambios CDC de outbox en streams de aplicación; raw:consume procesa recibos; domain:consume convierte hechos de dominio en eventos de navegador.
 
 ### Ciclo de alerta
 
-~~~mermaid
+```mermaid
 flowchart TD
     Reading["Lectura creada"] --> Rules["AlertService evalúa reglas aplicables"]
     Rules --> InRange{"¿La regla se incumple?"}
@@ -245,13 +243,13 @@ flowchart TD
     Stream --> Private["Canal privado alerts"]
     Private --> User["Sesión autenticada"]
     Job --> Mail["Proveedor SMTP configurado"]
-~~~
+```
 
 La creación de una alerta y la escritura del hecho de dominio son responsabilidad de AlertService. AlertObserver no hace broadcast síncrono; para correo de peligro despacha un job después del commit. La entrega del job depende de un worker de cola disponible.
 
 ### Autenticación, roles y broadcasting
 
-~~~mermaid
+```mermaid
 flowchart LR
     Guest["Invitado"] --> PublicGraph["Bootstrap y serie pública"]
     Guest --> Login["Login / registro / recuperación"]
@@ -262,7 +260,7 @@ flowchart LR
     Admin["Usuario admin"] --> AdminApi["Catálogos, reglas, roles y configuración"]
     PublicFlag["public_monitoring_enabled"] --> PublicSensor["sensor.{id} público"]
     PublicSensor --> Guest
-~~~
+```
 
 Los nombres Pusher resultantes incluyen el prefijo private- para canales privados. El frontend administra las suscripciones mediante front/src/realtime/channelRegistry.js; una suscripción no convierte a la aplicación en un sistema con ACL por recurso.
 
@@ -449,7 +447,7 @@ Esta sección conserva el nivel de detalle del README anterior, pero sus diagram
 
 ### Contexto del sistema
 
-~~~mermaid
+```mermaid
 flowchart LR
     Device[Dispositivo IoT] --> MQTT[Broker MQTT opcional]
     MQTT --> Adapter[ingestion_service Python]
@@ -465,24 +463,24 @@ flowchart LR
     Admin[Usuario autenticado] --> Browser
     Guest[Invitado] --> Browser
     Workers --> Mail[Cola/SMTP para alertas danger]
-~~~
+```
 
 El broker MQTT no forma parte del perfil Compose. ingestion_service puede simular o recibir MQTT y actúa como adaptador HTTP; no sustituye a los consumidores Laravel ni a Debezium.
 
 ### Contenedores y procesos declarados
 
-~~~mermaid
+```mermaid
 flowchart TB
     subgraph Compose[Docker Compose]
-        Front[front: Vite SPA]
-        Back[back: Laravel HTTP]
-        DB[(db: MySQL)]
-        Redis[(redis)]
-        Queue[queue: worker Laravel<br/>perfil queue]
-        Debezium[debezium<br/>perfil workers]
-        Cdc[outbox-cdc-consumer<br/>perfil workers]
-        Raw[raw-consumer<br/>perfil workers]
-        Domain[domain-event-consumer<br/>perfil workers]
+        Front["front: Vite SPA"]
+        Back["back: Laravel HTTP"]
+        DB[("db: MySQL")]
+        Redis[("redis")]
+        Queue["queue: worker Laravel (perfil queue)"]
+        Debezium["debezium (perfil workers)"]
+        Cdc["outbox-cdc-consumer (perfil workers)"]
+        Raw["raw-consumer (perfil workers)"]
+        Domain["domain-event-consumer (perfil workers)"]
     end
     Front --> Back
     Back --> DB
@@ -495,44 +493,44 @@ flowchart TB
     Raw --> Redis
     Domain --> Redis
     Domain --> Back
-~~~
+```
 
 El perfil base no arranca Queue ni los cuatro componentes de workers. Por eso una instalación para ingestión durable debe habilitar workers, y una instalación que quiera entregar correo en cola debe habilitar queue.
 
 ### Ejecución local por responsabilidades
 
-~~~mermaid
+```mermaid
 flowchart LR
-    TerminalA[Terminal A<br/>Laravel HTTP] --> API[/api]
-    TerminalB[Terminal B<br/>Vite] --> SPA[SPA]
-    TerminalC[Terminal C<br/>ingestion_service] --> API
-    TerminalD[Terminal D<br/>Debezium] --> Stream[(iot-cdc.*)]
-    TerminalE[Terminal E<br/>cdc:consume-outboxes] --> Stream
-    TerminalF[Terminal F<br/>raw:consume] --> Stream
-    TerminalG[Terminal G<br/>domain:consume] --> Stream
-    TerminalH[Terminal H<br/>queue:work opcional] --> SMTP[SMTP]
-~~~
+    TerminalA["Terminal A: Laravel HTTP"] --> API["/api"]
+    TerminalB["Terminal B: Vite"] --> SPA["SPA"]
+    TerminalC["Terminal C: ingestion_service"] --> API
+    TerminalD["Terminal D: Debezium"] --> Stream[("iot-cdc.*")]
+    TerminalE["Terminal E: cdc:consume-outboxes"] --> Stream
+    TerminalF["Terminal F: raw:consume"] --> Stream
+    TerminalG["Terminal G: domain:consume"] --> Stream
+    TerminalH["Terminal H: queue:work opcional"] --> SMTP["SMTP"]
+```
 
 El comando Composer dev ofrece una conveniencia distinta: inicia HTTP, queue:listen, pail y Vite en paralelo. No inicia MySQL, Redis, Debezium ni los consumidores raw/domain/CDC.
 
 ### Mapa de rutas por audiencia
 
-~~~mermaid
+```mermaid
 flowchart TB
-    Root[/ y /dashboard] --> Redirect[Redirección a FRONT_URL/dashboard]
-    Public[Invitado] --> PublicGraph[/api/public/graph/*]
-    Public --> Health[/api/health]
-    Device[Dispositivo/API key] --> Iot[/api/iot/sensors<br/>/api/sensors/{sensor}/readings]
-    Producer[Productor raw/token] --> RawIn[/api/ingestion/events]
-    User[Sanctum] --> AuthApi[/api/auth/me y logout]
-    User --> Operations[/api/dashboard, devices, sensors, alerts]
-    Admin[Sanctum + admin] --> AdminApi[/api/config, alert-rules, tipos, labs, users, metrics]
-    Legacy[Sesión web verificada] --> Blade[Administración/compatibilidad Blade]
-~~~
+    Root["/ y /dashboard"] --> Redirect["Redirección a FRONT_URL/dashboard"]
+    Public["Invitado"] --> PublicGraph["/api/public/graph/*"]
+    Public --> Health["/api/health"]
+    Device["Dispositivo con API key"] --> Iot["/api/iot/sensors y /api/sensors/{sensor}/readings"]
+    Producer["Productor raw con token"] --> RawIn["/api/ingestion/events"]
+    User["Sanctum"] --> AuthApi["/api/auth/me y logout"]
+    User --> Operations["/api/dashboard, devices, sensors y alerts"]
+    Admin["Sanctum + admin"] --> AdminApi["/api/config, alert-rules, tipos, labs, users y metrics"]
+    Legacy["Sesión web verificada"] --> Blade["Administración y compatibilidad Blade"]
+```
 
 ### Autenticación y autorización de API
 
-~~~mermaid
+```mermaid
 sequenceDiagram
     participant U as Usuario
     participant SPA as SPA
@@ -551,30 +549,30 @@ sequenceDiagram
         S->>API: usuario autenticado
         API->>API: middleware admin
     end
-~~~
+```
 
 El registro, recuperación y restablecimiento de contraseña están bajo el limiter auth-login. La verificación de correo usa URL firmada. La autorización de canales privados se procesa en /api/broadcasting/auth con auth:sanctum.
 
 ### Permisos de broadcasting
 
-~~~mermaid
+```mermaid
 flowchart LR
     Reading[Evento sensor.reading.created] --> Visibility{public_monitoring_enabled}
-    Visibility -->|sí| PublicChannel[Canal público sensor.{id}]
-    Visibility -->|no| PrivateSensor[Canal privado sensor.{id}]
-    Alert[alert.triggered / alert.resolved] --> PrivateAlerts[Canal privado alerts]
-    Status[device.status.changed] --> PrivateStatus[Canal privado device-status]
-    PublicChannel --> Guest[Invitado]
-    PrivateSensor --> Auth[Autenticado]
+    Visibility -->|sí| PublicChannel["Canal público sensor.{id}"]
+    Visibility -->|no| PrivateSensor["Canal privado sensor.{id}"]
+    Alert["alert.triggered / alert.resolved"] --> PrivateAlerts["Canal privado alerts"]
+    Status["device.status.changed"] --> PrivateStatus["Canal privado device-status"]
+    PublicChannel --> Guest["Invitado"]
+    PrivateSensor --> Auth["Autenticado"]
     PrivateAlerts --> Auth
     PrivateStatus --> Auth
-~~~
+```
 
 Los canales privados verifican que el usuario esté autenticado. No hay modelo de propiedad o ACL fina por sensor, alerta o dispositivo: una persona autenticada puede suscribirse a la entidad existente según las reglas definidas en routes/channels.php.
 
 ### Decisión de alerta y publicación
 
-~~~mermaid
+```mermaid
 flowchart TD
     Reading[Lectura normalizada] --> Service[SensorReadingService]
     Service --> Rules[AlertService evalúa reglas]
@@ -584,17 +582,17 @@ flowchart TD
     Alert --> DomainOutbox[(domain_event_outboxes)]
     Alert --> Observer[AlertObserver]
     Observer --> Danger{severidad danger}
-    Danger -->|sí| Job[SendDangerAlertEmailJob<br/>después del commit]
-    Danger -->|no| NoMail[sin correo]
+    Danger -->|sí| Job["SendDangerAlertEmailJob después del commit"]
+    Danger -->|no| NoMail["sin correo"]
     DomainOutbox --> DomainEvent[alert.triggered]
-    DomainEvent --> Browser[domain:consume y broadcasting]
-~~~
+    DomainEvent --> Browser["domain:consume y broadcasting"]
+```
 
 No se deduce de este flujo que un correo fue enviado: el job requiere una configuración SMTP válida y un worker de colas que lo procese.
 
 ### Fallos, reintentos y fronteras de confirmación
 
-~~~mermaid
+```mermaid
 flowchart TD
     Request[POST raw] --> Valid{token y payload válidos}
     Valid -->|no| Reject[respuesta HTTP de error]
@@ -606,14 +604,14 @@ flowchart TD
     Pending --> Claim[XAUTOCLAIM / reintento]
     Claim --> Terminal{error terminal}
     Terminal -->|sí| DLQ[(iot.dead-letter-events)]
-    Terminal -->|no| Consume[ACK después de procesar]
-~~~
+    Terminal -->|no| Consume["ACK después de procesar"]
+```
 
 La respuesta 201 solamente está al lado de la transacción de aceptación. Un incidente posterior se diagnostica en outboxes, binlog/Debezium, streams, consumidores, DLQ y logs, no se interpreta como una reversión de la respuesta original.
 
 ### Recorrido de una serie histórica
 
-~~~mermaid
+```mermaid
 sequenceDiagram
     participant View as vista Vue
     participant Query as graphSeriesQuery
@@ -630,9 +628,104 @@ sequenceDiagram
     end
     API->>DB: consulta acotada por rango
     DB-->>View: serie y metadatos
-~~~
+```
 
 La capa de consulta no usa polling para estado de producto. Una carga de recuperación puede producirse como respuesta a eventos de ciclo de vida de tiempo real; es una acción delimitada, no un temporizador periódico.
+
+## Mapas operativos adicionales
+
+Los siguientes mapas complementan los anteriores. Cada uno usa sólo rutas, procesos o estados que están declarados en el código fuente y Compose.
+
+### Guardia de navegación de la SPA
+
+```mermaid
+flowchart TD
+    Destination["Destino de ruta"] --> Initialized{"Auth inicializada"}
+    Initialized -->|no| Initialize["initializeAuth"]
+    Initialize --> Evaluate{"Evaluar meta de ruta"}
+    Initialized -->|sí| Evaluate
+    Evaluate -->|requiresAuth sin sesión| Login["Redirigir a login con redirect"]
+    Evaluate -->|requiresAdmin sin admin| Dashboard["Redirigir a dashboard con denied=admin"]
+    Evaluate -->|publicOnly con sesión| Dashboard
+    Evaluate -->|permitido| View["Cargar vista"]
+```
+
+Fuente: front/src/router/index.js. La guardia de cliente mejora la navegación, pero el middleware del backend conserva la autoridad de acceso.
+
+### Dependencias de salud de Docker Compose
+
+```mermaid
+flowchart TD
+    DB[("db: MySQL")] --> DBReady{"db healthy"}
+    Redis[("redis")] --> RedisReady{"redis healthy"}
+    DBReady --> Back["back"]
+    RedisReady --> Back
+    Back --> BackReady{"back healthy"}
+    BackReady --> Front["front"]
+    BackReady --> Queue["queue: perfil queue"]
+    DBReady --> Debezium["debezium: perfil workers"]
+    RedisReady --> Debezium
+    Debezium --> Cdc["outbox-cdc-consumer"]
+    BackReady --> Raw["raw-consumer"]
+    BackReady --> Domain["domain-event-consumer"]
+```
+
+Fuente: docker-compose.yml. Las flechas representan dependencias de inicio declaradas, no la dirección del tráfico ni una garantía de que los perfiles opcionales estén activos.
+
+### Modos del adaptador Python de ingesta
+
+```mermaid
+flowchart LR
+    Start["ingestion_service: app.main"] --> Mode{"Modo de entrada"}
+    Mode -->|simulate| Sample["Construir payload de ejemplo"]
+    Mode -->|mqtt| Subscribe["Conectar y suscribir MQTT"]
+    Subscribe --> Parse["Parsear JSON"]
+    Sample --> Validate["Validar payload"]
+    Parse --> Validate
+    Validate --> Event["Construir evento raw"]
+    Event --> Request["POST de ingesta raw"]
+    Request --> Token["X-Ingestion-Token"]
+    Token --> Backend["Laravel responde received"]
+    Validate --> Invalid["PayloadValidationError"]
+    Request --> ClientError["BackendClientError"]
+```
+
+Fuente: ingestion_service/app/main.py, mqtt_client.py y backend_client.py. El adaptador entrega eventos al endpoint raw; no procesa directamente Redis Streams ni crea lecturas normalizadas.
+
+### Recuperación de consumidores CDC y raw
+
+```mermaid
+flowchart TD
+    Read["XREADGROUP o XAUTOCLAIM"] --> Process["Procesar y publicar"]
+    Process --> Result{"¿Éxito?"}
+    Result -->|sí| Mark["Registrar entrega o estado"]
+    Mark --> Ack["XACK"]
+    Result -->|no| Attempts{"¿Error terminal?"}
+    Attempts -->|no| Pending["Mantener pendiente para reclamación"]
+    Pending --> Read
+    Attempts -->|sí| DeadLetter[("iot.dead-letter-events")]
+```
+
+Fuente: CdcOutboxStreamConsumer.php y RawStreamConsumer.php. La semántica es al menos una vez: hay reintento y reclamación, no una promesa de exactly-once.
+
+### Selección de frontera para una solicitud API
+
+```mermaid
+flowchart TD
+    Request["Solicitud API"] --> Kind{"Capacidad solicitada"}
+    Kind -->|gráfica pública| Public["Visibilidad pública y throttle:api-read"]
+    Kind -->|ingesta raw| Raw["ingestion.token y throttle:api-write"]
+    Kind -->|IoT compatible| Iot["API key y throttle"]
+    Kind -->|operación de usuario| Sanctum["auth:sanctum"]
+    Kind -->|administración| Admin["auth:sanctum y admin"]
+    Public --> Response["Respuesta"]
+    Raw --> Response
+    Iot --> Response
+    Sanctum --> Response
+    Admin --> Response
+```
+
+Fuente: back/routes/api.php. La etiqueta de cada rama resume middlewares declarados; las validaciones internas del controlador siguen aplicando cuando existen.
 
 ## Inventario de API con contratos de acceso
 
