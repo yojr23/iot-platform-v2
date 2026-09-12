@@ -16,7 +16,7 @@ class AuthApiHeadlessTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_api_register_creates_unverified_user_returns_token_and_sends_verification_email(): void
+    public function test_api_register_creates_an_unverified_user_without_a_private_access_token(): void
     {
         Notification::fake();
 
@@ -31,10 +31,12 @@ class AuthApiHeadlessTest extends TestCase
         $user = User::where('email', 'usuario.api@gmail.com')->firstOrFail();
 
         $response->assertCreated()
-            ->assertJsonPath('token_type', 'Bearer')
+            ->assertJsonPath('message', 'Usuario registrado correctamente. Verifica tu correo electrónico.')
+            ->assertJsonPath('verification_required', true)
             ->assertJsonPath('user.id', $user->id)
             ->assertJsonPath('user.email_verified', false)
-            ->assertJsonStructure(['access_token']);
+            ->assertJsonMissingPath('access_token')
+            ->assertJsonMissingPath('token_type');
 
         $this->assertNull($user->email_verified_at);
 
@@ -47,6 +49,40 @@ class AuthApiHeadlessTest extends TestCase
                 return str_contains($mailMessage->actionUrl, '/api/auth/verify-email/'.$user->id.'/');
             }
         );
+    }
+
+    public function test_unverified_user_token_cannot_access_private_iot_routes(): void
+    {
+        $user = User::factory()->unverified()->create();
+        $token = $user->createToken('test-client', ['read'])->plainTextToken;
+
+        foreach ([
+            '/api/devices',
+            '/api/sensors',
+            '/api/alerts',
+            '/api/dashboard/metrics',
+        ] as $route) {
+            $this->withToken($token)
+                ->getJson($route)
+                ->assertForbidden();
+        }
+    }
+
+    public function test_verified_user_token_can_access_permitted_private_iot_routes(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('test-client', ['read'])->plainTextToken;
+
+        foreach ([
+            '/api/devices',
+            '/api/sensors',
+            '/api/alerts',
+            '/api/dashboard/metrics',
+        ] as $route) {
+            $this->withToken($token)
+                ->getJson($route)
+                ->assertOk();
+        }
     }
 
     public function test_api_register_rejects_disallowed_email_domain(): void

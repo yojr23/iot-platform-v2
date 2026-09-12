@@ -125,8 +125,6 @@ class AuthApiController extends Controller
 
             event(new Registered($user));
 
-            $tokenName = $validated['device_name'] ?? 'spa-client';
-            $plainTextToken = $user->createToken($tokenName, ['read'])->plainTextToken;
         } catch (Throwable $e) {
             Log::error('Auth register error', $context + [
                 'exception' => $e->getMessage(),
@@ -146,8 +144,10 @@ class AuthApiController extends Controller
             'duration_ms' => $durationMs,
         ]);
 
-        return response()->json($this->tokenResponse($user, $plainTextToken) + [
+        return response()->json([
             'message' => 'Usuario registrado correctamente. Verifica tu correo electrónico.',
+            'verification_required' => true,
+            'user' => $this->userPayload($user),
         ], 201);
     }
 
