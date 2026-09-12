@@ -22,7 +22,11 @@ class SensorResource extends JsonResource
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
             'unit' => $this->sensorType?->unit,
-            'sensor_type' => $this->whenLoaded('sensorType'),
+            'sensor_type' => $this->whenLoaded('sensorType', fn () => [
+                'id' => $this->sensorType->id,
+                'name' => $this->sensorType->name,
+                'unit' => $this->sensorType->unit,
+            ]),
             'device' => new DeviceResource($this->whenLoaded('device')),
             'latest_readings' => $this->whenLoaded('readings'),
             // D4 (front_rebuild_plan/MAIN_PARITY_GAPS_PLAN.md): backed by Sensor::latestReading(),

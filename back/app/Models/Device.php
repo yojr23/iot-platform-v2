@@ -10,9 +10,13 @@ class Device extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name', 'serial_number', 'device_type_id', 'lab_id', 
+        'name', 'serial_number', 'device_type_id', 'lab_id',
         'status', 'is_active', 'ip_address', 'mac_address', 'last_communication'
     ];
+
+    // SEC-BOLA-002/SEC-CONFIG-001: defense-in-depth so api_key never leaks through an
+    // accidental toArray()/toJson() outside DeviceResource's explicit one-time reveal.
+    protected $hidden = ['api_key'];
 
     protected $attributes = [
         'status' => true,
