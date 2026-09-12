@@ -2,17 +2,14 @@
 
 namespace App\Observers;
 
+use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Models\SensorReading;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
- * PLAN.md Stage 4.3 (G0D row B2) scope note: unchanged this stage. `checkForAlert()` still
- * delegates to `App\Services\Alerts\AlertService` (the sole rule-evaluation owner) exactly as
- * before. The raw-ingestion consumer (`RawReadingNormalizer`, Stage 3) creates readings through the
- * same `Sensor::readings()->create()` call, so this observer fires for both the legacy
- * `SensorApiController::store()` path and the async raw pipeline — there is still only one
- * reading->alert evaluation path, not two.
+ * `checkForAlert()` remains delegated to `App\Services\Alerts\AlertService`, the sole
+ * rule-evaluation owner. This observer only hands the reading ID to the queue after commit, so both
+ * the legacy API and async raw-ingestion paths use the same durable evaluation path.
  */
 class SensorReadingObserver
 {
@@ -24,31 +21,9 @@ class SensorReadingObserver
             'value' => $sensorReading->value,
         ]);
 
-        try {
-            $triggeredRules = $sensorReading->checkForAlert();
-        } catch (Throwable $e) {
-            Log::error('SensorReadingObserver: checkForAlert failed, reading preserved', [
-                'sensor_reading_id' => $sensorReading->id,
-                'sensor_id' => $sensorReading->sensor_id,
-                'exception' => $e->getMessage(),
-            ]);
+        EvaluateSensorReadingAlerts::dispatch($sensorReading->id)->afterCommit();
 
-            return;
-        }
-
-        if ($triggeredRules->isEmpty()) {
-            Log::debug('SensorReadingObserver: No se activaron reglas de alerta para la lectura', [
-                'sensor_reading_id' => $sensorReading->id,
-            ]);
-            return;
-        }
-
-        Log::info('SensorReadingObserver: Se activaron ' . $triggeredRules->count() . ' regla(s) de alerta', [
-            'sensor_reading_id' => $sensorReading->id,
-            'rules_count' => $triggeredRules->count(),
-        ]);
-
-        Log::debug('SensorReadingObserver: Finalizó procesamiento de reglas para la lectura', [
+        Log::debug('SensorReadingObserver: Alert evaluation queued after commit', [
             'sensor_reading_id' => $sensorReading->id,
         ]);
     }
