@@ -51,21 +51,29 @@ class AuthApiHeadlessTest extends TestCase
         );
     }
 
-    public function test_unverified_user_token_cannot_access_private_iot_routes(): void
+    public function test_unverified_user_token_cannot_access_devices(): void
     {
-        $user = User::factory()->unverified()->create();
-        $token = $user->createToken('test-client', ['read'])->plainTextToken;
+        $this->assertUnverifiedUserCannotAccess('/api/devices');
+    }
 
-        foreach ([
-            '/api/devices',
-            '/api/sensors',
-            '/api/alerts',
-            '/api/dashboard/metrics',
-        ] as $route) {
-            $this->withToken($token)
-                ->getJson($route)
-                ->assertForbidden();
-        }
+    public function test_unverified_user_token_cannot_access_sensors(): void
+    {
+        $this->assertUnverifiedUserCannotAccess('/api/sensors');
+    }
+
+    public function test_unverified_user_token_cannot_access_alerts(): void
+    {
+        $this->assertUnverifiedUserCannotAccess('/api/alerts');
+    }
+
+    public function test_unverified_user_token_cannot_access_dashboard_metrics(): void
+    {
+        $this->assertUnverifiedUserCannotAccess('/api/dashboard/metrics');
+    }
+
+    public function test_unverified_user_token_cannot_access_auth_me(): void
+    {
+        $this->assertUnverifiedUserCannotAccess('/api/auth/me');
     }
 
     public function test_verified_user_token_can_access_permitted_private_iot_routes(): void
@@ -204,5 +212,15 @@ class AuthApiHeadlessTest extends TestCase
             ->assertJsonStructure(['message']);
 
         Notification::assertSentTo($user, VerifyEmailNotification::class);
+    }
+
+    private function assertUnverifiedUserCannotAccess(string $route): void
+    {
+        $user = User::factory()->unverified()->create();
+        $token = $user->createToken('test-client', ['read'])->plainTextToken;
+
+        $this->withToken($token)
+            ->getJson($route)
+            ->assertForbidden();
     }
 }

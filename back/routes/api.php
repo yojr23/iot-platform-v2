@@ -48,7 +48,7 @@ Route::prefix('auth')->group(function () {
         ->name('api.auth.verify-email');
 
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('/me', [AuthApiController::class, 'me'])->middleware('throttle:api-read');
+        Route::get('/me', [AuthApiController::class, 'me'])->middleware(['verified', 'throttle:api-read']);
         Route::post('/logout', [AuthApiController::class, 'logout'])->middleware('throttle:api-write');
         Route::post('/resend-verification', [AuthApiController::class, 'resendVerificationEmail'])
             ->middleware('throttle:api-write');
@@ -144,9 +144,14 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         // ordered before the `{alert}` wildcard route below).
         Route::get('/active', [ApiAlertController::class, 'active'])->middleware('throttle:api-read');
         Route::get('/unresolved', [ApiAlertController::class, 'unresolved'])->middleware('throttle:api-read');
-        Route::post('/resolve-all', [ApiAlertController::class, 'resolveAll'])->middleware('throttle:api-write');
+        // SEC-AUTH-002: token abilities become an enforced boundary, defense-in-depth in front of
+        // the admin-only AlertPolicy (SEC-ALERT-001), which stays authoritative. `ability` is
+        // Sanctum's any-of check; a `*` (admin) token satisfies it automatically.
+        Route::post('/resolve-all', [ApiAlertController::class, 'resolveAll'])
+            ->middleware(['throttle:api-write', 'ability:alerts:resolve,admin']);
         Route::get('/{alert}', [ApiAlertController::class, 'show'])->middleware('throttle:api-read');
-        Route::patch('/{alert}/resolve', [ApiAlertController::class, 'resolve'])->middleware('throttle:api-write');
+        Route::patch('/{alert}/resolve', [ApiAlertController::class, 'resolve'])
+            ->middleware(['throttle:api-write', 'ability:alerts:resolve,admin']);
     });
 
     Route::middleware('admin')->group(function () {
