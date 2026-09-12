@@ -265,4 +265,26 @@ class RawReadingNormalizerTest extends TestCase
 
         app(RawReadingNormalizer::class)->normalize($event);
     }
+
+    public function test_qc_invalid_payload_is_retained_but_creates_no_readings(): void
+    {
+        [$device, $sensor] = $this->deviceAndSensor('node-qc-invalid');
+
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'payload' => [
+                'qc' => ['valid' => false],
+                'sensors' => [
+                    'temperature' => ['value' => 21.5],
+                ],
+            ],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertSame(['created' => 0, 'skipped' => ['temperature']], $result);
+        $this->assertDatabaseHas('raw_sensor_events', ['id' => $event->id]);
+        $this->assertDatabaseCount('sensor_readings', 0);
+        $this->assertDatabaseMissing('sensor_readings', ['sensor_id' => $sensor->id]);
+    }
 }

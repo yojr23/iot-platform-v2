@@ -80,6 +80,12 @@ Este servicio Python no consume Redis ni transforma lecturas procesadas. Su resp
 5. Guardar los datos procesados y marcar `raw_sensor_events.status` como `processed` dentro de la misma transaccion; ese estado es el ledger de idempotencia del grupo.
 6. Tras errores reintentables, dejar la entrega pendiente para su reclamacion posterior; los fallos terminales se marcan como `failed` y se envian al stream dead-letter configurado.
 
+Cuando `payload.qc.valid` es estrictamente `false`, el recibo crudo se conserva para auditoria,
+pero no se crean lecturas normalizadas y no se evaluan reglas de alertas para esas mediciones.
+El consumidor marca ese recibo como procesado y lo confirma en Redis sin reintento ni dead-letter.
+Si `qc.valid` no esta presente, se mantiene el comportamiento normal de procesamiento, incluido
+el reintento de un payload no vacio que no produzca ninguna lectura.
+
 Los estados de `raw_sensor_events.status` son:
    - `received` al aceptar y almacenar el evento, pendiente de procesamiento.
    - `processed` con `processed_at` tras normalizar y guardar sus lecturas.

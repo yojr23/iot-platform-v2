@@ -225,7 +225,12 @@ class RawStreamConsumer
                 // (every value invalid / no sensor mapped). Do not mask it as success — throw so
                 // it retries and eventually DLQs. An empty payload legitimately creates nothing.
                 $sensorsPayload = (array) data_get($locked->payload, 'sensors', []);
-                if ($result['created'] === 0 && $sensorsPayload !== []) {
+                // A QC-invalid receipt is intentionally terminal: the normalizer retained the
+                // raw event and skipped every measurement, so retrying cannot make it valid.
+                if ($result['created'] === 0
+                    && $sensorsPayload !== []
+                    && data_get($locked->payload, 'qc.valid') !== false
+                ) {
                     throw new RuntimeException(
                         'normalization produced no readings; skipped keys: '.implode(',', $result['skipped'])
                     );

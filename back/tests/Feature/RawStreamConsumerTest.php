@@ -167,4 +167,28 @@ class RawStreamConsumerTest extends TestCase
         $this->assertSame(1, $stats['pending']);
         $this->assertNotSame('processed', $event->fresh()->status);
     }
+
+    public function test_qc_invalid_receipt_is_acknowledged_without_retry_or_dead_letter(): void
+    {
+        $sensor = $this->seedDeviceSensor('SN-QC-INVALID');
+        $event = $this->rawEvent('SN-QC-INVALID', 'temp', 30.0, 'src-qc-invalid');
+        $event->forceFill([
+            'payload' => [
+                'qc' => ['valid' => false],
+                'sensors' => ['temp' => ['value' => 30.0]],
+                'timestamp' => now()->toIso8601String(),
+            ],
+        ])->save();
+        $this->xadd($event->id);
+
+        $stats = $this->consumer()->runOnce('worker-A', 10, 100, 0);
+
+        $this->assertSame(1, $stats['acked']);
+        $this->assertSame(0, $stats['pending']);
+        $this->assertSame(0, $stats['dlq']);
+        $this->assertSame('processed', $event->fresh()->status);
+        $this->assertSame(0, $sensor->readings()->count());
+        $this->assertDatabaseCount('domain_event_outboxes', 0);
+        $this->assertSame(0, (int) $this->conn->client()->executeRaw(['XLEN', $this->dlq]));
+    }
 }

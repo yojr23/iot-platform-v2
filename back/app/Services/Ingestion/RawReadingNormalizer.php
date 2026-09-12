@@ -46,6 +46,18 @@ class RawReadingNormalizer
             'node_id' => $event->node_id,
         ]);
 
+        $qcValid = data_get($event->payload, 'qc.valid');
+        if ($qcValid === false) {
+            $sensorKeys = array_keys((array) data_get($event->payload, 'sensors', []));
+
+            Log::warning('RawReadingNormalizer: QC-invalid receipt skipped', [
+                'raw_sensor_event_id' => $event->id,
+                'sensor_keys' => $sensorKeys,
+            ]);
+
+            return ['created' => 0, 'skipped' => array_map('strval', $sensorKeys)];
+        }
+
         $startTime = microtime(true);
         $nodeId = $event->node_id;
         $device = $nodeId !== null && $nodeId !== ''
