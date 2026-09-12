@@ -21,6 +21,10 @@ use Throwable;
 
 class SensorApiController extends Controller
 {
+    /** SEC-EXPORT-001: hard bounds on reading exports. */
+    private const EXPORT_MAX_WINDOW_DAYS = 31;
+    private const EXPORT_MAX_ROWS = 50000;
+
     public function __construct(
         private SensorReadingService $readingService,
         private SensorReadingProjectionService $readingProjection,
@@ -255,14 +259,38 @@ class SensorApiController extends Controller
     {
         $this->authorize('view', $sensor);
 
+        // SEC-EXPORT-001: exports are bounded — mandatory date range, max 31-day window,
+        // hard 50k row cap — so a single export can't pull unbounded history. Validation
+        // runs outside the try so its 422 isn't swallowed into a generic 500.
+        $filters = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+
+        $from = Carbon::createFromFormat('Y-m-d', $filters['from'])->startOfDay();
+        $to = Carbon::createFromFormat('Y-m-d', $filters['to'])->endOfDay();
+
+        if ($from->diffInDays($to) > self::EXPORT_MAX_WINDOW_DAYS) {
+            throw ValidationException::withMessages([
+                'to' => 'El rango de exportación no puede exceder '.self::EXPORT_MAX_WINDOW_DAYS.' días.',
+            ]);
+        }
+
         $startTime = microtime(true);
 
         try {
-            $filters = $this->validatedReadingFilters($request);
             $sensor->load(['sensorType', 'device.lab']);
 
-            $readings = $this->filteredReadingsQuery($sensor, $filters)
-                ->where('reading_time', '<=', now())
+            $baseQuery = $this->filteredReadingsQuery($sensor, $filters)
+                ->where('reading_time', '<=', now());
+
+            if ((clone $baseQuery)->count() > self::EXPORT_MAX_ROWS) {
+                throw ValidationException::withMessages([
+                    'range' => 'La exportación excede el máximo de '.self::EXPORT_MAX_ROWS.' registros. Reduce el rango.',
+                ]);
+            }
+
+            $readings = $baseQuery
                 ->orderBy('reading_time', 'desc')
                 ->get()
                 ->map(fn ($reading): array => [
@@ -292,7 +320,7 @@ class SensorApiController extends Controller
                 'sensor_id' => $sensor->id,
                 'sql_state' => $e->errorInfo[0] ?? null,
                 'db_error_code' => $e->errorInfo[1] ?? null,
-                'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
                 'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
@@ -300,10 +328,12 @@ class SensorApiController extends Controller
                 'error' => 'Database error',
                 'message' => 'No fue posible exportar lecturas.',
             ], 500);
+        } catch (ValidationException $e) {
+            throw $e; // 422 row-cap rejection, not a 500.
         } catch (Throwable $e) {
             Log::error('Unexpected error exporting sensor readings', [
                 'sensor_id' => $sensor->id,
-                'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
                 'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
@@ -482,7 +512,11 @@ class SensorApiController extends Controller
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        return $this->index($request);
+        // Device-facing provisioning bootstrap: returns the full flat inventory (no
+        // browser pagination envelope) so edge devices get their whole sensor list.
+        $sensors = Sensor::with(['sensorType', 'device.lab', 'latestReading'])->get();
+
+        return response()->json(SensorResource::collection($sensors)->resolve($request));
     }
 
     public function index(Request $request)
@@ -490,25 +524,22 @@ class SensorApiController extends Controller
         $startTime = microtime(true);
 
         try {
-            // latestReading eager-loaded so SensorResource's `latest_reading` is populated on the
-            // global list too (matches /devices/{device}/sensor-list). Single extra query via the
-            // hasOneOfMany relation — no N+1 — so the list shows a value on first paint instead of
-            // "-" until the next realtime event.
-            $sensors = Sensor::with(['sensorType', 'device.lab', 'latestReading'])->get();
+            // SEC-INV-001: paginate with a hard max page size so the inventory can't be
+            // pulled as one unbounded result set. latestReading eager-loaded so
+            // SensorResource's `latest_reading` is populated on the global list too — single
+            // extra query via the hasOneOfMany relation, no N+1.
+            $perPage = min(max((int) $request->integer('per_page', 50), 1), 100);
+            $sensors = Sensor::with(['sensorType', 'device.lab', 'latestReading'])
+                ->paginate($perPage);
 
-            if ($sensors->isEmpty()) {
-                Log::warning('No sensors found in database', [
-                    'path' => $request->path(),
-                ]);
-            } else {
-                Log::info('Sensors listed successfully', [
-                    'count' => $sensors->count(),
-                    'path' => $request->path(),
-                    'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
-                ]);
-            }
+            Log::info('Sensors listed successfully', [
+                'count' => $sensors->count(),
+                'total' => $sensors->total(),
+                'path' => $request->path(),
+                'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
+            ]);
 
-            return response()->json(SensorResource::collection($sensors)->resolve($request));
+            return SensorResource::collection($sensors)->response();
         } catch (QueryException $e) {
             Log::error('Database error fetching sensors', [
                 'sql_state' => $e->errorInfo[0] ?? null,
