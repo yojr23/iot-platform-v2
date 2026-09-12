@@ -74,9 +74,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 'path' => $request?->path(),
                 'method' => $request?->method(),
                 'ip' => $request?->ip(),
-                'sql_state' => $e->errorInfo[0] ?? null,
+                'request_id' => $request?->header('X-Request-Id'),
+                'exception_class' => get_class($e),
+                'sql_state' => $e->errorInfo[0] ?? $e->getCode(),
                 'db_error_code' => $e->errorInfo[1] ?? null,
-                'exception' => $e->getMessage(),
             ]);
         });
 
@@ -86,7 +87,9 @@ return Application::configure(basePath: dirname(__DIR__))
                 'path' => $request?->path(),
                 'method' => $request?->method(),
                 'ip' => $request?->ip(),
-                'exception' => $e->getMessage(),
+                'request_id' => $request?->header('X-Request-Id'),
+                'exception_class' => get_class($e),
+                'sql_state' => $e->getCode(),
             ]);
         });
     })->create();

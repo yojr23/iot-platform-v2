@@ -102,11 +102,8 @@ class SensorApiController extends Controller
         $matchesGlobalApiKey = $configuredApiKey !== '' && hash_equals($configuredApiKey, $providedApiKey);
 
         if (! $matchesDeviceApiKey && ! $matchesGlobalApiKey) {
-            Log::warning('Sensor ingestion rejected: invalid API key', $context + [
-                'provided_api_key_length' => strlen($providedApiKey),
-                'configured_api_key_present' => $configuredApiKey !== '',
-                'device_api_key_present' => $deviceApiKey !== '',
-            ]);
+            // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
+            Log::warning('Sensor ingestion rejected: invalid API key', $context);
 
             return response()->json(['error' => 'Unauthorized'], 401);
         }
@@ -476,10 +473,10 @@ class SensorApiController extends Controller
             ?? $request->input('api_key', ''));
 
         if ($configuredApiKey === '' || $providedApiKey === '' || ! hash_equals($configuredApiKey, $providedApiKey)) {
+            // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
             Log::warning('IoT sensor listing rejected: invalid API key', [
                 'ip' => $request->ip(),
-                'provided_api_key_length' => strlen($providedApiKey),
-                'configured_api_key_present' => $configuredApiKey !== '',
+                'request_id' => $request->header('X-Request-Id'),
             ]);
 
             return response()->json(['error' => 'Unauthorized'], 401);
