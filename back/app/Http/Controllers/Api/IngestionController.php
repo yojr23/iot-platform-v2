@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreRawIngestionEventRequest;
 use App\Models\RawEventOutbox;
 use App\Models\RawSensorEvent;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -40,30 +41,64 @@ class IngestionController extends Controller
 
         $validated = $request->validated();
         $nodeId = data_get($validated, 'payload.device.node_id');
+        $source = $validated['source'] ?? 'ingestion_service';
+        $sourceEventId = $validated['source_event_id'] ?? null;
 
         Log::info('Ingestion store request received', $context + [
             'payload_keys' => array_keys($validated['payload'] ?? []),
         ]);
 
         try {
-            $event = DB::transaction(function () use ($validated, $nodeId): RawSensorEvent {
-                $event = RawSensorEvent::create([
+            [$event, $duplicate] = DB::transaction(function () use ($validated, $nodeId, $source, $sourceEventId): array {
+                $attributes = [
                     'topic' => $validated['topic'] ?? null,
-                    'source' => $validated['source'] ?? 'ingestion_service',
-                    'source_event_id' => $validated['source_event_id'] ?? null,
+                    'source' => $source,
+                    'source_event_id' => $sourceEventId,
                     'node_id' => is_string($nodeId) && $nodeId !== '' ? $nodeId : null,
                     'payload' => $validated['payload'],
                     'received_at' => $validated['received_at'] ?? null,
                     'status' => 'received',
-                ]);
+                ];
 
-                RawEventOutbox::create([
-                    'raw_sensor_event_id' => $event->id,
-                    'status' => 'pending',
-                ]);
+                if (is_string($sourceEventId) && $sourceEventId !== '') {
+                    $event = RawSensorEvent::query()->firstOrCreate([
+                        'source' => $source,
+                        'source_event_id' => $sourceEventId,
+                    ], $attributes);
+                } else {
+                    $event = RawSensorEvent::create($attributes);
+                }
 
-                return $event;
+                if ($event->wasRecentlyCreated) {
+                    RawEventOutbox::create([
+                        'raw_sensor_event_id' => $event->id,
+                        'status' => 'pending',
+                    ]);
+                }
+
+                return [$event, ! $event->wasRecentlyCreated];
             });
+        } catch (UniqueConstraintViolationException $e) {
+            $event = $this->isRawSensorEventIdentityConstraintViolation($e)
+                && is_string($sourceEventId) && $sourceEventId !== ''
+                ? RawSensorEvent::query()->where([
+                    'source' => $source,
+                    'source_event_id' => $sourceEventId,
+                ])->first()
+                : null;
+
+            if ($event !== null) {
+                $duplicate = true;
+            } else {
+                Log::error('Ingestion store transaction error', $context + [
+                    'exception' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'error' => 'Transaction error',
+                    'message' => 'No fue posible almacenar el evento de sensor.',
+                ], 500);
+            }
         } catch (Throwable $e) {
             Log::error('Ingestion store transaction error', $context + [
                 'exception' => $e->getMessage(),
@@ -83,6 +118,7 @@ class IngestionController extends Controller
         Log::info('Ingestion store success', $context + [
             'event_id' => $event->id,
             'success' => true,
+            'duplicate' => $duplicate,
             'duration_ms' => $durationMs,
         ]);
 
@@ -92,6 +128,15 @@ class IngestionController extends Controller
             // Honest receipt-vs-published status (PLAN.md Stage 3.1): this has only ever meant
             // "the receipt was durably persisted", never "published to Redis".
             'status' => $event->status,
-        ], 201);
+            'duplicate' => $duplicate,
+        ], $duplicate ? 200 : 201);
+    }
+
+    private function isRawSensorEventIdentityConstraintViolation(UniqueConstraintViolationException $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return str_contains($message, 'raw_sensor_events_source_source_event_id_unique')
+            || str_contains($message, 'UNIQUE constraint failed: raw_sensor_events.source, raw_sensor_events.source_event_id');
     }
 }

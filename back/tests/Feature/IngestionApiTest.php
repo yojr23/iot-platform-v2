@@ -3,8 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\RawSensorEvent;
+use App\Models\RawEventOutbox;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Mockery;
+use PDOException;
 use Tests\TestCase;
 
 class IngestionApiTest extends TestCase
@@ -125,6 +129,116 @@ class IngestionApiTest extends TestCase
         ]);
     }
 
+    public function test_store_raw_event_returns_existing_receipt_for_a_source_event_id_retry(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $payload = $this->validPayload();
+        $payload['source'] = 'mqtt-edge';
+        $payload['source_event_id'] = 'node-01-reading-147';
+
+        $firstResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $firstResponse->assertCreated()
+            ->assertJsonPath('duplicate', false);
+
+        $secondResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $secondResponse->assertOk()
+            ->assertJsonPath('duplicate', true)
+            ->assertJsonPath('event_id', $firstResponse->json('event_id'));
+
+        $this->assertDatabaseCount('raw_sensor_events', 1);
+        $this->assertDatabaseCount('raw_event_outboxes', 1);
+    }
+
+    public function test_store_raw_event_recovers_an_existing_receipt_after_a_unique_constraint_race(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $event = RawSensorEvent::create([
+            'topic' => 'iot/lab_postgrado_nodo_01/readings',
+            'source' => 'mqtt-edge',
+            'source_event_id' => 'node-01-reading-147',
+            'node_id' => 'lab_postgrado_nodo_01',
+            'payload' => $this->validPayload()['payload'],
+            'received_at' => '2026-05-14T17:30:00Z',
+            'status' => 'received',
+        ]);
+        RawEventOutbox::create([
+            'raw_sensor_event_id' => $event->id,
+            'status' => 'pending',
+        ]);
+
+        DB::shouldReceive('transaction')
+            ->once()
+            ->andThrow(new UniqueConstraintViolationException(
+                'sqlite',
+                'insert into raw_sensor_events',
+                [],
+                new PDOException('UNIQUE constraint failed: raw_sensor_events.source, raw_sensor_events.source_event_id', 19),
+            ));
+
+        $payload = $this->validPayload();
+        $payload['source'] = 'mqtt-edge';
+        $payload['source_event_id'] = 'node-01-reading-147';
+
+        $response = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('duplicate', true)
+            ->assertJsonPath('event_id', $event->id);
+
+        $this->assertSame(1, RawSensorEvent::query()->count());
+        $this->assertSame(1, RawEventOutbox::query()->count());
+    }
+
+    public function test_store_raw_event_does_not_report_an_unrelated_unique_constraint_as_a_duplicate(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        RawSensorEvent::create([
+            'topic' => 'iot/lab_postgrado_nodo_01/readings',
+            'source' => 'mqtt-edge',
+            'source_event_id' => 'node-01-reading-147',
+            'node_id' => 'lab_postgrado_nodo_01',
+            'payload' => $this->validPayload()['payload'],
+            'received_at' => '2026-05-14T17:30:00Z',
+            'status' => 'received',
+        ]);
+
+        DB::shouldReceive('transaction')
+            ->once()
+            ->andThrow(new UniqueConstraintViolationException(
+                'sqlite',
+                'insert into unrelated_table',
+                [],
+                new PDOException('UNIQUE constraint failed: unrelated_table.external_id', 19),
+            ));
+
+        $payload = $this->validPayload();
+        $payload['source'] = 'mqtt-edge';
+        $payload['source_event_id'] = 'node-01-reading-147';
+
+        $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload)
+            ->assertStatus(500)
+            ->assertJsonPath('error', 'Transaction error');
+    }
+
     public function test_store_raw_event_without_source_event_id_still_persists(): void
     {
         config([
@@ -139,6 +253,29 @@ class IngestionApiTest extends TestCase
 
         $event = RawSensorEvent::query()->findOrFail($response->json('event_id'));
         $this->assertNull($event->source_event_id);
+    }
+
+    public function test_store_raw_event_without_source_event_id_creates_a_new_receipt_for_each_request(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $firstResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $this->validPayload());
+
+        $secondResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $this->validPayload());
+
+        $firstResponse->assertCreated()
+            ->assertJsonPath('duplicate', false);
+        $secondResponse->assertCreated()
+            ->assertJsonPath('duplicate', false);
+        $this->assertNotSame($firstResponse->json('event_id'), $secondResponse->json('event_id'));
+        $this->assertDatabaseCount('raw_sensor_events', 2);
+        $this->assertDatabaseCount('raw_event_outboxes', 2);
     }
 
     /**
