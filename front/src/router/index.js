@@ -22,6 +22,12 @@ const router = createRouter({
       meta: { publicOnly: true }
     },
     {
+      path: '/verification-required',
+      name: 'verification-required',
+      component: () => import('@/views/auth/VerificationRequiredView.vue'),
+      meta: { publicOnly: true }
+    },
+    {
       path: '/forgot-password',
       name: 'forgot-password',
       component: () => import('@/views/auth/ForgotPasswordView.vue'),

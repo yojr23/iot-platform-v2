@@ -35,6 +35,7 @@
 
 <script setup>
 import { reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { register } from '@/api/auth';
 import { getApiErrorMessage } from '@/api/client';
@@ -46,6 +47,7 @@ import AuthLayout from '@/layouts/AuthLayout.vue';
 const loading = ref(false);
 const error = ref('');
 const success = ref('');
+const router = useRouter();
 
 const form = reactive({
   name: '',
@@ -60,8 +62,14 @@ async function submit() {
   success.value = '';
 
   try {
-    await register(form);
-    success.value = 'Usuario creado. Revisa tu correo para verificar la cuenta.';
+    const response = await register(form);
+
+    if (response.data.verification_required) {
+      await router.push({ name: 'verification-required', query: { email: form.email } });
+      return;
+    }
+
+    error.value = 'La cuenta fue creada, pero debes verificar tu correo antes de iniciar sesion.';
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudo crear el usuario.');
   } finally {
