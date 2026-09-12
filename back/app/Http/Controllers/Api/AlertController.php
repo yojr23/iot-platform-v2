@@ -191,6 +191,8 @@ class AlertController extends Controller
 
     public function resolve(Alert $alert)
     {
+        $this->authorize('resolve', $alert);
+
         $startTime = microtime(true);
 
         try {
@@ -231,6 +233,8 @@ class AlertController extends Controller
 
     public function resolveAll(): JsonResponse
     {
+        $this->authorize('resolveAll', Alert::class);
+
         $startTime = microtime(true);
 
         try {

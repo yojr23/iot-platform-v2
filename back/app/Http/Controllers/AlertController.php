@@ -44,6 +44,9 @@ class AlertController extends Controller
 
     public function resolve(Alert $alert)
     {
+        // SEC-ALERT-001: same AlertPolicy as the JSON API — admin-only (see app/Policies/AlertPolicy.php).
+        $this->authorize('resolve', $alert);
+
         $startTime = microtime(true);
 
         $this->alertLifecycleService->resolve($alert);
@@ -114,6 +117,9 @@ class AlertController extends Controller
 
     public function markAllAsResolved()
     {
+        // SEC-ALERT-001: same AlertPolicy as the JSON API — admin-only.
+        $this->authorize('resolveAll', Alert::class);
+
         $startTime = microtime(true);
 
         // PLAN.md Stage 4.2 (audit RC2): same transition owner as the API's resolveAll() — this

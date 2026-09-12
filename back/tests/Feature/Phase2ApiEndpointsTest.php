@@ -98,7 +98,10 @@ class Phase2ApiEndpointsTest extends TestCase
 
     public function test_alerts_index_unresolved_resolve_and_resolve_all_return_json(): void
     {
+        // SEC-ALERT-001: reads stay open to any verified user; resolve/resolve-all are admin-only
+        // (see AlertPolicy + tests/Feature/Api/AlertAuthorizationTest.php).
         $user = User::factory()->create();
+        $admin = User::factory()->create(['is_admin' => true]);
         $activeAlert = Alert::factory()->create(['resolved' => false]);
         Alert::factory()->create(['resolved' => false]);
         Alert::factory()->create(['resolved' => true, 'resolved_at' => now()]);
@@ -113,12 +116,12 @@ class Phase2ApiEndpointsTest extends TestCase
             ->assertOk()
             ->assertJsonCount(2, 'data');
 
-        $this->actingAs($user)->patchJson("/api/alerts/{$activeAlert->id}/resolve")
+        $this->actingAs($admin)->patchJson("/api/alerts/{$activeAlert->id}/resolve")
             ->assertOk()
             ->assertJsonPath('data.id', $activeAlert->id)
             ->assertJsonPath('data.resolved', true);
 
-        $this->actingAs($user)->postJson('/api/alerts/resolve-all')
+        $this->actingAs($admin)->postJson('/api/alerts/resolve-all')
             ->assertOk()
             ->assertJsonPath('resolved_count', 1);
     }

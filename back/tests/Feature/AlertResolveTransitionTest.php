@@ -66,7 +66,8 @@ class AlertResolveTransitionTest extends TestCase
 
     public function test_api_single_resolve_writes_one_outbox_row(): void
     {
-        $user = User::factory()->create();
+        // SEC-ALERT-001: resolve is admin-only (see AlertPolicy).
+        $user = User::factory()->create(['is_admin' => true]);
         $alert = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
 
         $this->actingAs($user)->patchJson("/api/alerts/{$alert->id}/resolve")->assertOk();
@@ -80,7 +81,8 @@ class AlertResolveTransitionTest extends TestCase
 
     public function test_api_resolve_all_emits_n_outbox_rows_for_n_active_alerts(): void
     {
-        $user = User::factory()->create();
+        // SEC-ALERT-001: resolve-all is admin-only (see AlertPolicy).
+        $user = User::factory()->create(['is_admin' => true]);
         Alert::factory()->count(4)->create(['resolved' => false, 'resolved_at' => null]);
 
         $this->actingAs($user)->postJson('/api/alerts/resolve-all')
@@ -93,12 +95,13 @@ class AlertResolveTransitionTest extends TestCase
 
     public function test_blade_resolve_and_mark_all_share_the_same_transition_owner(): void
     {
-        $user = User::factory()->create();
+        // SEC-ALERT-001: Blade resolve/mark-all-resolved are admin-only, same AlertPolicy as the API.
+        $admin = User::factory()->create(['is_admin' => true]);
         $single = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
         $bulk = Alert::factory()->count(2)->create(['resolved' => false, 'resolved_at' => null]);
 
-        $this->actingAs($user)->put(route('alerts.resolve', $single))->assertRedirect();
-        $this->actingAs($user)->post(route('alerts.mark-all-resolved'))->assertRedirect();
+        $this->actingAs($admin)->put(route('alerts.resolve', $single))->assertRedirect();
+        $this->actingAs($admin)->post(route('alerts.mark-all-resolved'))->assertRedirect();
 
         $this->assertTrue((bool) $single->fresh()->resolved);
         foreach ($bulk as $alert) {
@@ -107,5 +110,23 @@ class AlertResolveTransitionTest extends TestCase
 
         // 1 (single) + 2 (bulk) = 3 total, going through the same AlertLifecycleService as the API.
         $this->assertSame(3, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
+    }
+
+    public function test_blade_resolve_and_mark_all_are_forbidden_for_standard_verified_user(): void
+    {
+        // SEC-ALERT-001 fix round 1: the web/Blade path must not be a bypass for the admin-only rule.
+        $user = User::factory()->create(['is_admin' => false]);
+        $single = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
+        $bulk = Alert::factory()->count(2)->create(['resolved' => false, 'resolved_at' => null]);
+
+        $this->actingAs($user)->put(route('alerts.resolve', $single))->assertForbidden();
+        $this->actingAs($user)->post(route('alerts.mark-all-resolved'))->assertForbidden();
+
+        $this->assertFalse((bool) $single->fresh()->resolved);
+        foreach ($bulk as $alert) {
+            $this->assertFalse((bool) $alert->fresh()->resolved);
+        }
+
+        $this->assertSame(0, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
     }
 }
