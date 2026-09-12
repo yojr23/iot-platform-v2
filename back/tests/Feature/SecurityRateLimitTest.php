@@ -61,14 +61,16 @@ class SecurityRateLimitTest extends TestCase
     private function restoreDefaultApiWriteLimiter(): void
     {
         RateLimiter::for('api-write', function (Request $request) {
-            $identifier = $request->user()?->id ? 'user:'.$request->user()->id : 'ip:'.$request->ip();
+            $ip = $request->ip();
             $sensor = $request->route('sensor');
             $sensorId = is_object($sensor) && method_exists($sensor, 'getKey')
                 ? $sensor->getKey()
                 : (string) $sensor;
-            $apiKeyFingerprint = substr(hash('sha256', (string) ($request->header('X-Device-Key') ?? $request->input('api_key', ''))), 0, 16);
 
-            return Limit::perMinute(60)->by($identifier.'|sensor:'.$sensorId.'|key:'.$apiKeyFingerprint);
+            return [
+                Limit::perMinute(60)->by('iot-write:ip:'.$ip),
+                Limit::perMinute(30)->by('iot-write:ip:'.$ip.':sensor:'.$sensorId),
+            ];
         });
     }
 }

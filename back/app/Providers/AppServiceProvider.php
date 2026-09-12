@@ -42,14 +42,20 @@ class AppServiceProvider extends ServiceProvider
                 return Limit::none();
             }
 
-            $identifier = $request->user()?->id ? 'user:'.$request->user()->id : 'ip:'.$request->ip();
+            // Bucket keys must never be selectable by attacker-controlled input
+            // (e.g. a rotating API key fingerprint) — that lets an attacker get
+            // a fresh bucket per request. Key only on the IP and the sensor
+            // route param (resolved server-side from the URL, not the body).
+            $ip = $request->ip();
             $sensor = $request->route('sensor');
             $sensorId = is_object($sensor) && method_exists($sensor, 'getKey')
                 ? $sensor->getKey()
                 : (string) $sensor;
-            $apiKeyFingerprint = substr(hash('sha256', (string) ($request->header('X-Device-Key') ?? $request->input('api_key', ''))), 0, 16);
 
-            return Limit::perMinute(60)->by($identifier.'|sensor:'.$sensorId.'|key:'.$apiKeyFingerprint);
+            return [
+                Limit::perMinute(60)->by('iot-write:ip:'.$ip),
+                Limit::perMinute(30)->by('iot-write:ip:'.$ip.':sensor:'.$sensorId),
+            ];
         });
 
         // Login de API más estricto para reducir credential stuffing.
@@ -58,9 +64,14 @@ class AppServiceProvider extends ServiceProvider
                 return Limit::none();
             }
 
-            $email = strtolower((string) $request->input('email'));
+            $email = strtolower(trim((string) $request->input('email')));
+            $ip = $request->ip();
 
-            return Limit::perMinute(5)->by('email:'.$email.'|ip:'.$request->ip());
+            return [
+                // Global per-IP ceiling: rotating the email cannot bypass it.
+                Limit::perMinute(5)->by('login:ip:'.$ip),
+                Limit::perMinute(5)->by('login:email:'.$email.':ip:'.$ip),
+            ];
         });
     }
 }
