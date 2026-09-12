@@ -29,6 +29,20 @@ Route::get('/', function () {
 
 Auth::routes(['verify' => true]);
 
+// SEC-PASS-001 / SEC-ENUM-001: throttle account-recovery endpoints so weak
+// passwords/enumeration can't be brute-forced. `auth-login` already covers
+// the login route itself; these are the remaining unthrottled recovery paths.
+// Route::getRoutes()->getByName() reads a name-lookup cache that is only
+// rebuilt after all route files finish loading, so it can't see these routes
+// yet at this point in web.php. Route::getName() reads the route's own
+// fluently-assigned name directly and is safe to check here instead.
+$recoveryRouteNames = ['password.email', 'password.update', 'verification.resend'];
+foreach (Route::getRoutes()->get() as $route) {
+    if (in_array($route->getName(), $recoveryRouteNames, true)) {
+        $route->middleware('throttle:6,1');
+    }
+}
+
 Route::get('/dashboard', function () {
     return redirect()->away(rtrim(config('app.front_url'), '/').'/dashboard');
 })->name('dashboard');

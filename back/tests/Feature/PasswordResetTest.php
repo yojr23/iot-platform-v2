@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Notifications\ResetPasswordNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
@@ -13,6 +14,17 @@ use Tests\TestCase;
 class PasswordResetTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // SEC-PASS-001: Password::uncompromised() calls the HaveIBeenPwned range
+        // API. Fake it so these tests never depend on the network.
+        Http::fake([
+            'api.pwnedpasswords.com/*' => Http::response('', 200),
+        ]);
+    }
 
     public function test_password_reset_link_request_sends_spanish_notification(): void
     {

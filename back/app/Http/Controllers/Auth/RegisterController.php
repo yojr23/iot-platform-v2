@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\RegistersUsers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 
 class RegisterController extends Controller
 {
@@ -70,7 +71,9 @@ class RegisterController extends Controller
                     }
                 },
             ],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            // SEC-PASS-001: min 12, mixed case, letters, numbers, symbols,
+            // rejected if found in known breach corpora (HaveIBeenPwned range API).
+            'password' => ['required', 'confirmed', Password::min(12)->mixedCase()->letters()->numbers()->symbols()->uncompromised()],
         ]);
     }
 

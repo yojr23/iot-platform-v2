@@ -5,12 +5,24 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Notifications\VerifyEmailNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class RegistrationEmailVerificationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // SEC-PASS-001: Password::uncompromised() calls the HaveIBeenPwned range
+        // API. Fake it so these tests never depend on the network.
+        Http::fake([
+            'api.pwnedpasswords.com/*' => Http::response('', 200),
+        ]);
+    }
 
     public function test_register_sends_email_verification_notification(): void
     {
