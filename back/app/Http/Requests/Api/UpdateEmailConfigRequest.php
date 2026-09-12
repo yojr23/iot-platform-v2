@@ -21,7 +21,9 @@ class UpdateEmailConfigRequest extends FormRequest
         return [
             'mail_mailer' => ['required', 'string', 'in:smtp,mailgun,postmark,ses,sendmail,log'],
             'mail_host' => ['required', 'string'],
-            'mail_port' => ['required', 'integer', 'min:1', 'max:65535'],
+            // SEC-SMTP-001: allowlist standard submission/relay ports so an admin cannot
+            // point the relay at an arbitrary internal service port.
+            'mail_port' => ['required', 'integer', 'in:25,465,587,2525'],
             'mail_username' => ['required', 'email'],
             'mail_password' => ['nullable', 'string', 'min:8'],
             'mail_encryption' => ['required', 'string', 'in:tls,ssl'],
@@ -39,6 +41,37 @@ class UpdateEmailConfigRequest extends FormRequest
             if ($existingPassword === '' && ! $this->filled('mail_password')) {
                 $validator->errors()->add('mail_password', 'Debes configurar una contrasena SMTP.');
             }
+
+            // SEC-SMTP-001: block the relay from targeting loopback / link-local /
+            // metadata endpoints, which would turn admin mail config into an internal
+            // network pivot. Static string/IP check only — no live DNS resolution here
+            // (a hostname that resolves to a blocked IP at send time is not caught).
+            $host = strtolower(trim((string) $this->input('mail_host', '')));
+
+            if ($host !== '' && $this->isBlockedMailHost($host)) {
+                $validator->errors()->add('mail_host', 'El host SMTP no esta permitido.');
+            }
         });
+    }
+
+    private function isBlockedMailHost(string $host): bool
+    {
+        if (in_array($host, ['localhost', '0.0.0.0', '::1', '[::1]'], true)) {
+            return true;
+        }
+
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            // Loopback 127.0.0.0/8
+            if (str_starts_with($host, '127.')) {
+                return true;
+            }
+
+            // Link-local / cloud metadata 169.254.0.0/16 (incl. 169.254.169.254)
+            if (str_starts_with($host, '169.254.')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
