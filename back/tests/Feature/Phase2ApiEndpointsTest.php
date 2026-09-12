@@ -10,6 +10,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class Phase2ApiEndpointsTest extends TestCase
@@ -116,12 +117,20 @@ class Phase2ApiEndpointsTest extends TestCase
             ->assertOk()
             ->assertJsonCount(2, 'data');
 
-        $this->actingAs($admin)->patchJson("/api/alerts/{$activeAlert->id}/resolve")
+        // SEC-AUTH-002: resolve/resolve-all are now also gated by Sanctum token abilities
+        // (`ability:alerts:resolve,admin`), which inspect `$request->user()->currentAccessToken()`.
+        // Plain `actingAs()` never attaches a token (that's only true for real PAT/stateful-SPA
+        // requests, where Sanctum's guard attaches a real token or a TransientToken respectively),
+        // so these two calls use Sanctum's own `actingAs()` test helper to mint a matching mock
+        // token instead of Laravel's generic one.
+        Sanctum::actingAs($admin, ['*']);
+
+        $this->patchJson("/api/alerts/{$activeAlert->id}/resolve")
             ->assertOk()
             ->assertJsonPath('data.id', $activeAlert->id)
             ->assertJsonPath('data.resolved', true);
 
-        $this->actingAs($admin)->postJson('/api/alerts/resolve-all')
+        $this->postJson('/api/alerts/resolve-all')
             ->assertOk()
             ->assertJsonPath('resolved_count', 1);
     }

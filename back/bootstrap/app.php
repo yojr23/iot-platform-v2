@@ -32,6 +32,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
             'api.metrics' => \App\Http\Middleware\TrackApiPerformance::class,
             'ingestion.token' => \App\Http\Middleware\EnsureIngestionToken::class,
+            // SEC-AUTH-002: not registered by default in Laravel 12's minimal bootstrap/app.php
+            // skeleton (Sanctum ships the middleware classes but relies on the app to alias them,
+            // same pattern as the other aliases above). Confirmed missing before adding.
+            'abilities' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,
+            'ability' => \Laravel\Sanctum\Http\Middleware\CheckForAnyAbility::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
