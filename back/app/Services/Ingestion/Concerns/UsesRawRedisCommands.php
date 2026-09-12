@@ -32,4 +32,19 @@ trait UsesRawRedisCommands
 
         throw new RuntimeException('Unsupported Redis client: '.get_debug_type($client));
     }
+
+    /**
+     * @param  array<string,scalar>  $fields
+     */
+    private function rawXadd(Connection $connection, string $stream, int $maxLength, array $fields): mixed
+    {
+        $args = ['XADD', $stream, 'MAXLEN', '~', (string) $maxLength, '*'];
+
+        foreach ($fields as $key => $value) {
+            $args[] = $key;
+            $args[] = (string) $value;
+        }
+
+        return $this->raw($connection, $args);
+    }
 }

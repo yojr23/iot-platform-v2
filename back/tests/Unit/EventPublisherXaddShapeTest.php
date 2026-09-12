@@ -3,7 +3,9 @@
 namespace Tests\Unit;
 
 use App\Models\DomainEventOutbox;
+use App\Models\RawSensorEvent;
 use App\Services\Ingestion\DomainEventPublisher;
+use App\Services\Ingestion\RawSensorEventPublisher;
 use Illuminate\Support\Facades\Redis;
 use Mockery;
 use Tests\TestCase;
@@ -32,7 +34,7 @@ class EventPublisherXaddShapeTest extends TestCase
         }
     }
 
-    public function test_domain_event_publisher_uses_raw_unprefixed_xadd_not_the_prefixing_facade(): void
+    public function test_domain_event_publisher_uses_raw_unprefixed_approximate_maxlen_xadd_not_the_prefixing_facade(): void
     {
         $captured = null;
 
@@ -64,12 +66,57 @@ class EventPublisherXaddShapeTest extends TestCase
         $result = (new DomainEventPublisher())->publish($outbox);
 
         $this->assertTrue($result);
-        // Raw wire form: ['XADD', $stream, '*', 'k1','v1','k2','v2', ...] — flattened, unprefixed.
+        // Raw wire form: ['XADD', $stream, 'MAXLEN', '~', $limit, '*', 'k1','v1', ...].
         $this->assertSame('XADD', $captured[0]);
-        $this->assertSame('*', $captured[2]);
+        $this->assertSame('MAXLEN', $captured[2]);
+        $this->assertSame('~', $captured[3]);
+        $this->assertSame((string) config('app.domain_events_maxlen', 500000), $captured[4]);
+        $this->assertSame('*', $captured[5]);
         $this->assertContains('event_type', $captured, 'field keys must be flattened positional args');
         $this->assertContains('sensor.reading.created', $captured);
         // Stream name must be the configured value with NO Laravel key prefix.
         $this->assertSame((string) config('app.domain_events_stream', 'iot.domain-events'), $captured[1]);
+    }
+
+    public function test_raw_event_publisher_uses_raw_unprefixed_approximate_maxlen_xadd_not_the_prefixing_facade(): void
+    {
+        $captured = null;
+
+        $client = Mockery::mock(\Redis::class);
+        $client->shouldReceive('rawCommand')
+            ->once()
+            ->andReturnUsing(function (...$args) use (&$captured) {
+                $captured = $args;
+
+                return '1-0';
+            });
+
+        $connection = Mockery::mock(\Illuminate\Redis\Connections\Connection::class);
+        $connection->shouldReceive('client')->andReturn($client);
+
+        Redis::shouldReceive('connection')->with('default')->andReturn($connection);
+        Redis::shouldReceive('command')->with('xadd', Mockery::any())->never();
+
+        $event = new RawSensorEvent([
+            'topic' => 'sensors/test',
+            'source' => 'test',
+            'source_event_id' => 'raw-maxlen-test',
+            'node_id' => 'SN-RAW',
+            'received_at' => now(),
+            'status' => 'received',
+        ]);
+        $event->id = 7;
+
+        $result = (new RawSensorEventPublisher())->publish($event);
+
+        $this->assertTrue($result);
+        $this->assertSame('XADD', $captured[0]);
+        $this->assertSame((string) config('app.ingestion_raw_events_stream', 'iot.raw-events'), $captured[1]);
+        $this->assertSame('MAXLEN', $captured[2]);
+        $this->assertSame('~', $captured[3]);
+        $this->assertSame((string) config('app.ingestion_raw_events_maxlen', 500000), $captured[4]);
+        $this->assertSame('*', $captured[5]);
+        $this->assertContains('event_type', $captured, 'field keys must be flattened positional args');
+        $this->assertContains('raw.sensor.received', $captured);
     }
 }

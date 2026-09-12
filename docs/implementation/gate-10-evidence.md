@@ -105,6 +105,35 @@ the catalog and its history 404'd on the public route.
 Endpoint `GET /api/internal/metrics/event-pipeline` gated `auth:sanctum` + `admin` + `throttle:api-read`.
 Covered by the passing backend suite.
 
+## 10.1a Redis durability and bounded application streams (Task 6)
+
+The Compose Redis service runs Redis 7 with `appendonly yes` and `appendfsync everysec`, backed by
+the named `redis_data:/data` volume. This explicitly provides an approximate **one-second
+Redis-side RPO** for acknowledged writes at host/process failure boundaries. It is not a zero-loss
+guarantee and does not replace replica, snapshot, volume, or restore testing.
+
+Application-owned XADD writers use raw, unprefixed commands so producer and consumer keys continue
+to agree, with approximate retention in the wire form `XADD <stream> MAXLEN ~ <limit> * ...`:
+
+- `INGESTION_RAW_EVENTS_MAXLEN=500000` for `iot.raw-events`.
+- `DOMAIN_EVENTS_MAXLEN=500000` for `iot.domain-events`.
+- `DLQ_MAXLEN=1000000` for `iot.dead-letter-events` writes from the raw, domain, and CDC consumers.
+
+`CDC_STREAM_MAXLEN=500000` is deliberately an operational threshold, not an automatic `XTRIM`.
+Debezium is the only CDC-stream publisher; the application must not add a second CDC publisher or
+trim a CDC stream while `XPENDING` shows unprocessed consumer-group entries. Before a CDC trim,
+operators must confirm all relevant groups have acknowledged the candidate range and preserve an
+adequate replay window. This avoids converting a retention job into CDC data loss.
+
+The listed values are starting production values, not one-size-fits-all caps. Size them from real
+ingress rate, worst-case consumer outage, required replay horizon, message size, available Redis
+memory/disk, and recovery drills; do not silently substitute a tiny limit. `MAXLEN ~` is purposely
+approximate, so Redis may retain a bounded amount above the target at a macro-node boundary.
+
+`EventPublisherXaddShapeTest` freezes the raw unprefixed `MAXLEN ~` publisher command. The real
+Redis `PublisherStreamPrefixTest` additionally publishes above a small configured limit, verifies
+approximate bounded retention, and confirms a consumer group can still read the retained stream.
+
 ## 10.2 Legacy retirement
 Static gate `front/scripts/verify-no-polling.mjs` PASS (see above). `architecture` CI job confirms
 all six relay files and both compose relay services are absent and CDC config present.

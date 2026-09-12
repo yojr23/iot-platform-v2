@@ -84,6 +84,49 @@ class PublisherStreamPrefixTest extends TestCase
         $this->rawDel($conn, $stream);
     }
 
+    public function test_raw_publisher_approximately_trims_its_configured_stream_while_a_consumer_group_can_read_it(): void
+    {
+        $stream = 'test.retention.raw-events.'.uniqid();
+        $group = 'retention-readers';
+        config([
+            'app.ingestion_raw_events_stream' => $stream,
+            // Redis approximate trimming works in macro-node sized batches, so the assertion
+            // below deliberately tests a bounded retained stream rather than exact length 10.
+            'app.ingestion_raw_events_maxlen' => 10,
+        ]);
+
+        $conn = Redis::connection('default');
+        $this->rawDel($conn, $stream);
+
+        try {
+            $publisher = app(RawSensorEventPublisher::class);
+            for ($id = 1; $id <= 250; $id++) {
+                $event = new RawSensorEvent([
+                    'topic' => 'retention/test',
+                    'source' => 'test',
+                    'source_event_id' => 'retention-'.$id,
+                    'node_id' => 'SN-RETENTION',
+                    'received_at' => now(),
+                    'status' => 'received',
+                ]);
+                $event->id = $id;
+
+                $this->assertTrue($publisher->publish($event));
+            }
+
+            $length = (int) $this->rawXlen($conn, $stream);
+            $this->assertGreaterThanOrEqual(10, $length);
+            $this->assertLessThanOrEqual(110, $length, 'MAXLEN ~ must bound stream growth, even though trimming is approximate.');
+
+            $this->raw($conn, ['XGROUP', 'CREATE', $stream, $group, '0']);
+            $entries = $this->raw($conn, ['XREADGROUP', 'GROUP', $group, 'consumer-1', 'COUNT', 1, 'STREAMS', $stream, '>']);
+
+            $this->assertNotEmpty($entries, 'A group created after trimming must still be able to read retained entries.');
+        } finally {
+            $this->rawDel($conn, $stream);
+        }
+    }
+
     private function rawXlen($conn, string $stream): mixed
     {
         $client = $conn->client();
@@ -95,9 +138,15 @@ class PublisherStreamPrefixTest extends TestCase
 
     private function rawDel($conn, string $stream): void
     {
+        $this->raw($conn, ['DEL', $stream]);
+    }
+
+    private function raw($conn, array $args): mixed
+    {
         $client = $conn->client();
-        $client instanceof \Redis
-            ? $client->rawCommand('DEL', $stream)
-            : $client->executeRaw(['DEL', $stream]);
+
+        return $client instanceof \Redis
+            ? $client->rawCommand(...$args)
+            : $client->executeRaw($args);
     }
 }

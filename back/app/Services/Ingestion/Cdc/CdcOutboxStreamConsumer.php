@@ -388,12 +388,11 @@ class CdcOutboxStreamConsumer
 
     private function deadLetter(string $stream, string $id, string $reason, int $attempts): void
     {
-        $this->raw($this->connection, [
-            'XADD', $this->deadLetterStream, '*',
-            'orig_stream', $stream,
-            'orig_id', $id,
-            'reason', $reason,
-            'attempts', (string) $attempts,
+        $this->rawXadd($this->connection, $this->deadLetterStream, (int) config('app.dlq_maxlen', 1000000), [
+            'orig_stream' => $stream,
+            'orig_id' => $id,
+            'reason' => $reason,
+            'attempts' => (string) $attempts,
         ]);
     }
 

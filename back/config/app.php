@@ -128,17 +128,22 @@ return [
 
     'ingestion_raw_events_stream' => env('INGESTION_RAW_EVENTS_STREAM', 'iot.raw-events'),
 
+    'ingestion_raw_events_maxlen' => (int) env('INGESTION_RAW_EVENTS_MAXLEN', 500000),
+
     // Stage 3 (PLAN.md) / docs/implementation/adr-g1.md ADR-3: consumer group name for the raw
     // stream and the dedicated dead-letter stream for terminal (poison) delivery failures.
     'ingestion_raw_consumer_group' => env('INGESTION_RAW_CONSUMER_GROUP', 'raw-process-v1'),
 
     'ingestion_dead_letter_stream' => env('INGESTION_DEAD_LETTER_STREAM', 'iot.dead-letter-events'),
 
+    'dlq_maxlen' => (int) env('DLQ_MAXLEN', 1000000),
+
     // PLAN.md Stage 4.1 / docs/implementation/adr-g1.md ADR-1 & ADR-4: durable domain-event stream
     // (alert.resolved, device.status.changed, ...) and its sole consumer group for this stage,
     // `browser-delivery-v1` (direct stream consumer -> Pusher-compatible broadcaster, ADR-4). The
     // dead-letter stream is reused (ADR-3 does not require a separate DLQ per source stream).
     'domain_events_stream' => env('DOMAIN_EVENTS_STREAM', 'iot.domain-events'),
+    'domain_events_maxlen' => (int) env('DOMAIN_EVENTS_MAXLEN', 500000),
     'domain_events_consumer_group' => env('DOMAIN_EVENTS_CONSUMER_GROUP', 'browser-delivery-v1'),
 
     // Gate 10 (PLAN.md Stage 10 / ADR-G1): Debezium Server captures the two outbox tables from the
@@ -148,6 +153,9 @@ return [
     'cdc_raw_outbox_stream' => env('CDC_RAW_OUTBOX_STREAM', 'iot-cdc.iot_platform.raw_event_outboxes'),
     'cdc_domain_outbox_stream' => env('CDC_DOMAIN_OUTBOX_STREAM', 'iot-cdc.iot_platform.domain_event_outboxes'),
     'cdc_outbox_consumer_group' => env('CDC_OUTBOX_CONSUMER_GROUP', 'outbox-publish-v1'),
+    // Debezium owns CDC XADD. Keep this as an operator threshold, never as an application XTRIM:
+    // trimming a stream with PEL entries can make an unprocessed CDC change unrecoverable.
+    'cdc_stream_maxlen' => (int) env('CDC_STREAM_MAXLEN', 500000),
 
     'front_url' => env('FRONT_URL', 'http://localhost:5173'),
 

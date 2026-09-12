@@ -25,6 +25,7 @@ class RawSensorEventPublisher
 
         $startTime = microtime(true);
         $streamName = (string) config('app.ingestion_raw_events_stream', 'iot.raw-events');
+        $maxLength = (int) config('app.ingestion_raw_events_maxlen', 500000);
         $receivedAt = $event->received_at?->toIso8601String();
 
         $fields = [
@@ -46,12 +47,7 @@ class RawSensorEventPublisher
             // facade would prepend Laravel's key prefix (iot_platform_v2_back_database_), writing to
             // a different key than the consumers read from — a silent delivery break. XADD fields
             // are flattened key/value positional args in the RESP wire form.
-            $xaddArgs = ['XADD', $streamName, '*'];
-            foreach ($fields as $k => $v) {
-                $xaddArgs[] = $k;
-                $xaddArgs[] = $v;
-            }
-            $this->raw(Redis::connection('default'), $xaddArgs);
+            $this->rawXadd(Redis::connection('default'), $streamName, $maxLength, $fields);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
             Log::info('RawSensorEventPublisher:publish completed', [
