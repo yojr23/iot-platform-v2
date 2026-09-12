@@ -497,10 +497,10 @@ class SensorApiController extends Controller
     {
         $startTime = microtime(true);
 
+        // SEC-IOT-002: header-only credential. A query-string key leaks into access logs,
+        // proxies and browser history; a body key is likewise disallowed here.
         $configuredApiKey = (string) config('app.api_key');
-        $providedApiKey = (string) ($request->header('X-Device-Key')
-            ?? $request->query('api_key')
-            ?? $request->input('api_key', ''));
+        $providedApiKey = (string) $request->header('X-Device-Key', '');
 
         if ($configuredApiKey === '' || $providedApiKey === '' || ! hash_equals($configuredApiKey, $providedApiKey)) {
             // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
