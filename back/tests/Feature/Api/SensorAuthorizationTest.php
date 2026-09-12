@@ -120,8 +120,9 @@ class SensorAuthorizationTest extends TestCase
         $user = User::factory()->create();
         $sensor = Sensor::factory()->create();
 
+        // Export now requires a bounded date range (SEC-EXPORT-001).
         $this->actingAs($user)
-            ->getJson("/api/sensors/{$sensor->id}/readings/export")
+            ->getJson("/api/sensors/{$sensor->id}/readings/export?from=2026-01-01&to=2026-01-31")
             ->assertOk();
     }
 
