@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\Sensor;
+use App\Models\User;
+use App\Services\Security\ResourceAccessService;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -19,18 +22,12 @@ use Illuminate\Support\Facades\Broadcast;
 | Gate 8: `device-status` (App\Events\DeviceStatusUpdated) is NOT public —
 | moved from a plain `Channel` to a `PrivateChannel` below, alongside
 | `alerts`. Device status, like alerts, is not guest data (PLAN.md /
-| audit.md §12a). Any authenticated user may subscribe (no per-device ACL
-| model exists in this app, same shape as `alerts` immediately below).
+| audit.md §12a).
 |
 | Stage 7 (PLAN.md Stage 7, audit.md §12a): `alerts` (App\Events\
 | NewAlertTriggered, App\Events\AlertResolved) is NOT public data — PLAN.md
 | is explicit that "alerts, events, device status, preferences ... are not
 | guest data". It moved from a plain `Channel` to a `PrivateChannel` below.
-| There is no per-alert ACL model in this app (see `AuthApiController` token
-| abilities: `*` for admin, `read` for everyone else — same shape as the
-| `sensor.{sensorId}` authorization below), so any authenticated user may
-| subscribe; the authorization boundary is "authenticated at all", not a
-| per-alert scope.
 |
 | The default per-user private channel below is standard Laravel scaffolding,
 | kept for any future authenticated-only broadcast (e.g. Stage 8 webhook
@@ -40,12 +37,16 @@ use Illuminate\Support\Facades\Broadcast;
 | suppress the PUBLIC `sensor.{id}` channel for non-public sensors via
 | `PublicGraphVisibility` (PLAN.md 6.0), so authenticated views need a
 | private delivery path that already exists before that flip happens. This
-| entry authorizes it. Matching the rest of the app (no per-sensor ACL /
-| ownership model exists — see `AuthApiController` token abilities: `*` for
-| admin, `read` for everyone else), any authenticated user (auth:sanctum,
-| enforced by `bootstrap/app.php`'s broadcasting middleware) may subscribe
-| to any *existing* sensor's private channel. Do not invent a finer
-| per-sensor ACL here.
+| entry authorizes it.
+|
+| SEC-RT-001: the three closures below (`sensor.{sensorId}`, `alerts`,
+| `device-status`) previously hardcoded `true`/a bare `exists()` check with no
+| per-user rule at all. They now delegate to `ResourceAccessService` — the
+| SAME authority `SensorPolicy`/`DevicePolicy` (SEC-BOLA-001/002) use for the
+| REST reads of the same resources — so the WebSocket and REST authorization
+| surfaces cannot diverge. Do not reintroduce a hardcoded `true`/`exists()`
+| check here; to change the rule (e.g. add lab scoping later), change
+| `ResourceAccessService` only.
 |
 */
 
@@ -53,22 +54,20 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
-Broadcast::channel('sensor.{sensorId}', function ($user, $sensorId) {
-    return \App\Models\Sensor::query()->whereKey($sensorId)->exists();
+Broadcast::channel('sensor.{sensorId}', function (User $user, $sensorId) {
+    $sensor = Sensor::query()->find($sensorId);
+
+    if (! $sensor) {
+        return false;
+    }
+
+    return app(ResourceAccessService::class)->canViewSensor($user, $sensor);
 });
 
-// Stage 7: fixed-name private channel, no per-alert ACL — any authenticated user (the closure
-// only runs once a request already passed the `/broadcasting/auth` route's auth:sanctum
-// middleware, so `$user` is never null here) is authorized, matching every other alert-list
-// endpoint (`GET /api/alerts`, `/api/alerts/active`) which is auth:sanctum-only with no
-// per-record ownership check.
-Broadcast::channel('alerts', function ($user) {
-    return true;
+Broadcast::channel('alerts', function (User $user) {
+    return app(ResourceAccessService::class)->canReceiveAlerts($user);
 });
 
-// Gate 8: device-status facts are immutable, sequence-ordered, and not public/guest data (see
-// header comment above). Fixed-name private channel, no per-device ACL — same authorization shape
-// as `alerts` above.
-Broadcast::channel('device-status', function ($user) {
-    return true;
+Broadcast::channel('device-status', function (User $user) {
+    return app(ResourceAccessService::class)->canReceiveDeviceStatus($user);
 });

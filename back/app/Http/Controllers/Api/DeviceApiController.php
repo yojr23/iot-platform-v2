@@ -24,6 +24,8 @@ class DeviceApiController extends Controller
     }
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Device::class);
+
         $startTime = microtime(true);
 
         $context = [
@@ -94,6 +96,8 @@ class DeviceApiController extends Controller
 
     public function statusSnapshot(Request $request)
     {
+        $this->authorize('viewAny', Device::class);
+
         $startTime = microtime(true);
 
         $perPage = max(1, min((int) $request->query('per_page', 100), 100));
@@ -138,6 +142,8 @@ class DeviceApiController extends Controller
 
     public function show(Request $request, Device $device)
     {
+        $this->authorize('view', $device);
+
         $startTime = microtime(true);
 
         $context = [
@@ -498,6 +504,8 @@ class DeviceApiController extends Controller
 
     public function sensors(Request $request, Device $device)
     {
+        $this->authorize('view', $device);
+
         $startTime = microtime(true);
 
         try {

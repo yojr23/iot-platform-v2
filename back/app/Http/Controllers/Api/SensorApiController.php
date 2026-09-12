@@ -174,6 +174,8 @@ class SensorApiController extends Controller
      */
     public function series(Request $request, Sensor $sensor, PublicGraphSeriesService $service)
     {
+        $this->authorize('view', $sensor);
+
         $startTime = microtime(true);
 
         $validated = $request->validate([
@@ -203,6 +205,8 @@ class SensorApiController extends Controller
 
     public function readings(Request $request, Sensor $sensor)
     {
+        $this->authorize('view', $sensor);
+
         $startTime = microtime(true);
 
         try {
@@ -252,6 +256,8 @@ class SensorApiController extends Controller
 
     public function exportReadings(Request $request, Sensor $sensor)
     {
+        $this->authorize('view', $sensor);
+
         $startTime = microtime(true);
 
         try {
@@ -313,6 +319,8 @@ class SensorApiController extends Controller
 
     public function latestReadings(Request $request, Sensor $sensor)
     {
+        $this->authorize('view', $sensor);
+
         $startTime = microtime(true);
 
         try {
@@ -675,6 +683,8 @@ class SensorApiController extends Controller
      */
     public function graphZones(Sensor $sensor, RuleToGraphZones $zones)
     {
+        $this->authorize('view', $sensor);
+
         // JSON_PRESERVE_ZERO_FRACTION: an integer-valued threshold like 30.0 must not silently
         // decode as the int 30 on the client (same reasoning as PublicGraphController::series()).
         return response()->json($zones->zonesFor($sensor), 200, [], JSON_PRESERVE_ZERO_FRACTION);
@@ -682,6 +692,8 @@ class SensorApiController extends Controller
 
     public function show(Request $request, Sensor $sensor)
     {
+        $this->authorize('view', $sensor);
+
         $startTime = microtime(true);
 
         try {
