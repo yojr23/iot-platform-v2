@@ -95,8 +95,10 @@ class EventPipelineMetricsService
 
         $result = [
             'streams' => [
-                'raw_events' => array_merge($rawHealth, ['dlq_length' => $dlqHealth['xlen']]),
-                'domain_events' => array_merge($domainHealth, ['dlq_length' => $dlqHealth['xlen']]),
+                // A stream record is an aggregate health result. Do not mix a false `available`
+                // flag with any numeric value, including this associated DLQ length.
+                'raw_events' => array_merge($rawHealth, ['dlq_length' => $rawHealth['available'] ? $dlqHealth['xlen'] : null]),
+                'domain_events' => array_merge($domainHealth, ['dlq_length' => $domainHealth['available'] ? $dlqHealth['xlen'] : null]),
                 'dead_letter' => $dlqHealth,
             ],
             'consumers' => [
@@ -152,9 +154,26 @@ class EventPipelineMetricsService
         $pendingAndLag = $this->groupPendingAndLag($stream, $group);
         $oldestAge = $this->oldestPendingAgeMs($stream, $group);
 
+        $available = $xlen['available'] && $pendingAndLag['available'] && $oldestAge['available'];
+
+        // This record is deliberately aggregate-level rather than per-field availability. A
+        // caller that sees `available: false` must never mistake a successful sibling read for a
+        // complete health measurement.
+        if (! $available) {
+            return [
+                'available' => false,
+                'error' => $this->firstError($xlen, $pendingAndLag, $oldestAge),
+                'xlen' => null,
+                'consumer_group' => $group,
+                'pending_count' => null,
+                'lag' => null,
+                'oldest_pending_age_ms' => null,
+            ];
+        }
+
         return [
-            'available' => $xlen['available'] && $pendingAndLag['available'] && $oldestAge['available'],
-            'error' => $this->firstError($xlen, $pendingAndLag, $oldestAge),
+            'available' => true,
+            'error' => null,
             'xlen' => $xlen['value'],
             'consumer_group' => $group,
             'pending_count' => $pendingAndLag['value']['pending_count'] ?? null,
@@ -168,29 +187,62 @@ class EventPipelineMetricsService
      * captures) — sum pending/lag across both, oldest age is whichever stream is furthest behind.
      *
      * @param  list<string>  $streams
-     * @return array{available:bool,error:?string,xlen:?int,pending_count:?int,lag:?int,oldest_pending_age_ms:?int}
+     * `stream_errors` identifies the source stream(s) that made this aggregate unknown. It is
+     * empty when both CDC source streams were read successfully.
+     *
+     * @return array{available:bool,error:?string,xlen:?int,pending_count:?int,lag:?int,oldest_pending_age_ms:?int,stream_errors:array<string,string>}
      */
     private function mergedStreamHealth(array $streams, string $group): array
     {
-        $health = [];
+        $streams = array_values(array_filter($streams, static fn (string $stream): bool => $stream !== ''));
 
-        foreach (array_filter($streams) as $stream) {
-            $health[] = $this->streamHealth($stream, $group);
+        if ($streams === []) {
+            return [
+                'available' => false,
+                'error' => 'cdc_streams_unconfigured',
+                'xlen' => null,
+                'pending_count' => null,
+                'lag' => null,
+                'oldest_pending_age_ms' => null,
+                'stream_errors' => [],
+            ];
         }
 
-        if ($health === []) {
-            return ['available' => true, 'error' => null, 'xlen' => 0, 'pending_count' => 0, 'lag' => 0, 'oldest_pending_age_ms' => 0];
+        $health = [];
+
+        foreach ($streams as $stream) {
+            $health[$stream] = $this->streamHealth($stream, $group);
         }
 
         $available = ! in_array(false, array_column($health, 'available'), true);
+        $streamErrors = [];
+
+        foreach ($health as $stream => $streamHealth) {
+            if (! $streamHealth['available']) {
+                $streamErrors[$stream] = $streamHealth['error'] ?? 'redis_unavailable';
+            }
+        }
+
+        if (! $available) {
+            return [
+                'available' => false,
+                'error' => $this->firstError(...$health),
+                'xlen' => null,
+                'pending_count' => null,
+                'lag' => null,
+                'oldest_pending_age_ms' => null,
+                'stream_errors' => $streamErrors,
+            ];
+        }
 
         return [
-            'available' => $available,
-            'error' => $available ? null : $this->firstError(...$health),
-            'xlen' => $available ? array_sum(array_column($health, 'xlen')) : null,
-            'pending_count' => $available ? array_sum(array_column($health, 'pending_count')) : null,
-            'lag' => $available ? array_sum(array_column($health, 'lag')) : null,
-            'oldest_pending_age_ms' => $available ? max(array_column($health, 'oldest_pending_age_ms')) : null,
+            'available' => true,
+            'error' => null,
+            'xlen' => array_sum(array_column($health, 'xlen')),
+            'pending_count' => array_sum(array_column($health, 'pending_count')),
+            'lag' => array_sum(array_column($health, 'lag')),
+            'oldest_pending_age_ms' => max(array_column($health, 'oldest_pending_age_ms')),
+            'stream_errors' => $streamErrors,
         ];
     }
 
@@ -275,7 +327,7 @@ class EventPipelineMetricsService
     /** @return array{available:bool,error:?string,xlen:?int,pending_count:?int,lag:?int,oldest_pending_age_ms:?int} */
     private function healthMetrics(array $health): array
     {
-        return array_intersect_key($health, array_flip(['available', 'error', 'xlen', 'pending_count', 'lag', 'oldest_pending_age_ms']));
+        return array_intersect_key($health, array_flip(['available', 'error', 'xlen', 'pending_count', 'lag', 'oldest_pending_age_ms', 'stream_errors']));
     }
 
     /** @return array{available:bool,value:?int|?array,error:?string} */
