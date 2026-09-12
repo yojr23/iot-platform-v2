@@ -58,9 +58,10 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                // \PDO::MYSQL_ATTR_SSL_CA is portable across PHP 8.0–8.4; \Pdo\Mysql (namespaced,
-                // 8.4+ only) fatals under the 8.2/8.3 CI runner when pdo_mysql is loaded.
-                \PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // \PDO::MYSQL_ATTR_SSL_CA is deprecated on PHP 8.5; \Pdo\Mysql::ATTR_SSL_CA
+                // (namespaced, 8.4+) is the non-deprecated form. Prefer it when present,
+                // fall back to the legacy constant on 8.2/8.3 CI runners.
+                (defined('\\Pdo\\Mysql::ATTR_SSL_CA') ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 
@@ -80,9 +81,10 @@ return [
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
-                // \PDO::MYSQL_ATTR_SSL_CA is portable across PHP 8.0–8.4; \Pdo\Mysql (namespaced,
-                // 8.4+ only) fatals under the 8.2/8.3 CI runner when pdo_mysql is loaded.
-                \PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // \PDO::MYSQL_ATTR_SSL_CA is deprecated on PHP 8.5; \Pdo\Mysql::ATTR_SSL_CA
+                // (namespaced, 8.4+) is the non-deprecated form. Prefer it when present,
+                // fall back to the legacy constant on 8.2/8.3 CI runners.
+                (defined('\\Pdo\\Mysql::ATTR_SSL_CA') ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
 

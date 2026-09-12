@@ -4,6 +4,7 @@
          bootstrap="vendor/autoload.php"
          colors="true"
 >
+
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
@@ -18,6 +19,7 @@
         </include>
     </source>
     <php>
+        <ini name="error_reporting" value="E_ALL &amp; ~E_DEPRECATED"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_CONFIG_CACHE" value="/tmp/laravel-config.php"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
