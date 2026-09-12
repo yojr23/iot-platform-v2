@@ -88,43 +88,34 @@ class EventPipelineMetricsService
         $cdcDomainStream = (string) config('app.cdc_domain_outbox_stream', '');
         $cdcGroup = (string) config('app.cdc_outbox_consumer_group', 'outbox-publish-v1');
 
-        $dlqLen = $this->xlen($dlqStream);
+        $dlqHealth = $this->singleStreamHealth($this->xlen($dlqStream));
         $rawHealth = $this->streamHealth($rawStream, $rawGroup);
         $domainHealth = $this->streamHealth($domainStream, $domainGroup);
         $cdcHealth = $this->mergedStreamHealth([$cdcRawStream, $cdcDomainStream], $cdcGroup);
 
         $result = [
             'streams' => [
-                'raw_events' => array_merge($rawHealth, ['dlq_length' => $dlqLen]),
-                'domain_events' => array_merge($domainHealth, ['dlq_length' => $dlqLen]),
-                'dead_letter' => ['xlen' => $dlqLen],
+                'raw_events' => array_merge($rawHealth, ['dlq_length' => $dlqHealth['xlen']]),
+                'domain_events' => array_merge($domainHealth, ['dlq_length' => $dlqHealth['xlen']]),
+                'dead_letter' => $dlqHealth,
             ],
             'consumers' => [
-                'raw_process' => [
+                'raw_process' => array_merge($this->healthMetrics($rawHealth), [
                     'consumer_group' => $rawGroup,
-                    'pending_count' => $rawHealth['pending_count'],
-                    'lag' => $rawHealth['lag'],
-                    'oldest_pending_age_ms' => $rawHealth['oldest_pending_age_ms'],
                     'raw_processed' => $this->counter('raw_processed'),
                     'raw_failed' => $this->counter('raw_failed'),
-                ],
-                'browser_delivery' => [
+                ]),
+                'browser_delivery' => array_merge($this->healthMetrics($domainHealth), [
                     'consumer_group' => $domainGroup,
-                    'pending_count' => $domainHealth['pending_count'],
-                    'lag' => $domainHealth['lag'],
-                    'oldest_pending_age_ms' => $domainHealth['oldest_pending_age_ms'],
                     'domain_broadcast_success' => $this->counter('domain_broadcast_success'),
                     'domain_broadcast_failure' => $this->counter('domain_broadcast_failure'),
-                ],
-                'outbox_cdc' => [
+                ]),
+                'outbox_cdc' => array_merge($this->healthMetrics($cdcHealth), [
                     'consumer_group' => $cdcGroup,
-                    'pending_count' => $cdcHealth['pending_count'],
-                    'lag' => $cdcHealth['lag'],
-                    'oldest_pending_age_ms' => $cdcHealth['oldest_pending_age_ms'],
                     'cdc_publish_success' => $this->counter('cdc_publish_success'),
                     'cdc_publish_failure' => $this->counter('cdc_publish_failure'),
                     'cdc_dlq' => $this->counter('cdc_dlq'),
-                ],
+                ]),
             ],
             'outbox' => [
                 'raw' => $this->outboxSnapshot(RawEventOutbox::class, null),
@@ -153,20 +144,22 @@ class EventPipelineMetricsService
     }
 
     /**
-     * @return array{xlen:int,consumer_group:string,pending_count:int,lag:int,oldest_pending_age_ms:int}
+     * @return array{available:bool,error:?string,xlen:?int,consumer_group:string,pending_count:?int,lag:?int,oldest_pending_age_ms:?int}
      */
     private function streamHealth(string $stream, string $group): array
     {
         $xlen = $this->xlen($stream);
-        [$pending, $lag] = $this->groupPendingAndLag($stream, $group);
+        $pendingAndLag = $this->groupPendingAndLag($stream, $group);
         $oldestAge = $this->oldestPendingAgeMs($stream, $group);
 
         return [
-            'xlen' => $xlen,
+            'available' => $xlen['available'] && $pendingAndLag['available'] && $oldestAge['available'],
+            'error' => $this->firstError($xlen, $pendingAndLag, $oldestAge),
+            'xlen' => $xlen['value'],
             'consumer_group' => $group,
-            'pending_count' => $pending,
-            'lag' => $lag,
-            'oldest_pending_age_ms' => $oldestAge,
+            'pending_count' => $pendingAndLag['value']['pending_count'] ?? null,
+            'lag' => $pendingAndLag['value']['lag'] ?? null,
+            'oldest_pending_age_ms' => $oldestAge['value'],
         ];
     }
 
@@ -175,39 +168,48 @@ class EventPipelineMetricsService
      * captures) — sum pending/lag across both, oldest age is whichever stream is furthest behind.
      *
      * @param  list<string>  $streams
-     * @return array{pending_count:int,lag:int,oldest_pending_age_ms:int}
+     * @return array{available:bool,error:?string,xlen:?int,pending_count:?int,lag:?int,oldest_pending_age_ms:?int}
      */
     private function mergedStreamHealth(array $streams, string $group): array
     {
-        $pending = 0;
-        $lag = 0;
-        $oldestAge = 0;
+        $health = [];
 
         foreach (array_filter($streams) as $stream) {
-            [$streamPending, $streamLag] = $this->groupPendingAndLag($stream, $group);
-            $pending += $streamPending;
-            $lag += $streamLag;
-            $oldestAge = max($oldestAge, $this->oldestPendingAgeMs($stream, $group));
+            $health[] = $this->streamHealth($stream, $group);
         }
 
-        return ['pending_count' => $pending, 'lag' => $lag, 'oldest_pending_age_ms' => $oldestAge];
+        if ($health === []) {
+            return ['available' => true, 'error' => null, 'xlen' => 0, 'pending_count' => 0, 'lag' => 0, 'oldest_pending_age_ms' => 0];
+        }
+
+        $available = ! in_array(false, array_column($health, 'available'), true);
+
+        return [
+            'available' => $available,
+            'error' => $available ? null : $this->firstError(...$health),
+            'xlen' => $available ? array_sum(array_column($health, 'xlen')) : null,
+            'pending_count' => $available ? array_sum(array_column($health, 'pending_count')) : null,
+            'lag' => $available ? array_sum(array_column($health, 'lag')) : null,
+            'oldest_pending_age_ms' => $available ? max(array_column($health, 'oldest_pending_age_ms')) : null,
+        ];
     }
 
-    private function xlen(string $stream): int
+    /** @return array{available:bool,value:?int,error:?string} */
+    private function xlen(string $stream): array
     {
         try {
             $reply = $this->raw($this->connection(), ['XLEN', $stream]);
 
-            return (int) $reply;
+            return $this->measurement((int) $reply);
         } catch (Throwable $e) {
             Log::warning('EventPipelineMetricsService: XLEN failed', ['stream' => $stream, 'exception' => $e->getMessage()]);
 
-            return 0;
+            return $this->unavailableMeasurement();
         }
     }
 
     /**
-     * @return array{0:int,1:int} [pending_count, lag]
+     * @return array{available:bool,value:?array{pending_count:int,lag:int},error:?string}
      */
     private function groupPendingAndLag(string $stream, string $group): array
     {
@@ -216,7 +218,7 @@ class EventPipelineMetricsService
         } catch (Throwable $e) {
             Log::warning('EventPipelineMetricsService: XINFO GROUPS failed', ['stream' => $stream, 'exception' => $e->getMessage()]);
 
-            return [0, 0];
+            return $this->unavailableMeasurement();
         }
 
         foreach ((array) $reply as $groupEntry) {
@@ -230,30 +232,73 @@ class EventPipelineMetricsService
                 // needed once the deployed Redis version is confirmed >= 7 everywhere.
                 $lag = isset($info['lag']) && $info['lag'] !== null ? (int) $info['lag'] : $pending;
 
-                return [$pending, $lag];
+                return $this->measurement(['pending_count' => $pending, 'lag' => $lag]);
             }
         }
 
-        return [0, 0];
+        return $this->measurement(['pending_count' => 0, 'lag' => 0]);
     }
 
-    private function oldestPendingAgeMs(string $stream, string $group): int
+    /** @return array{available:bool,value:?int,error:?string} */
+    private function oldestPendingAgeMs(string $stream, string $group): array
     {
         try {
             $reply = $this->raw($this->connection(), ['XPENDING', $stream, $group, '-', '+', '1']);
         } catch (Throwable $e) {
             Log::warning('EventPipelineMetricsService: XPENDING failed', ['stream' => $stream, 'group' => $group, 'exception' => $e->getMessage()]);
 
-            return 0;
+            return $this->unavailableMeasurement();
         }
 
         if (! is_array($reply) || ! isset($reply[0]) || ! is_array($reply[0])) {
-            return 0;
+            return $this->measurement(0);
         }
 
         // Extended XPENDING entry: [id, consumer, idle-time-ms, delivery-count]. Range "- +" is
         // ascending by ID, so the first (and only, COUNT 1) entry is the oldest pending message.
-        return (int) ($reply[0][2] ?? 0);
+        return $this->measurement((int) ($reply[0][2] ?? 0));
+    }
+
+    /** @return array{available:bool,error:?string,xlen:?int,pending_count:?int,lag:?int,oldest_pending_age_ms:?int} */
+    private function singleStreamHealth(array $xlen): array
+    {
+        return [
+            'available' => $xlen['available'],
+            'error' => $xlen['error'],
+            'xlen' => $xlen['value'],
+            'pending_count' => null,
+            'lag' => null,
+            'oldest_pending_age_ms' => null,
+        ];
+    }
+
+    /** @return array{available:bool,error:?string,xlen:?int,pending_count:?int,lag:?int,oldest_pending_age_ms:?int} */
+    private function healthMetrics(array $health): array
+    {
+        return array_intersect_key($health, array_flip(['available', 'error', 'xlen', 'pending_count', 'lag', 'oldest_pending_age_ms']));
+    }
+
+    /** @return array{available:bool,value:?int|?array,error:?string} */
+    private function measurement(int|array $value): array
+    {
+        return ['available' => true, 'value' => $value, 'error' => null];
+    }
+
+    /** @return array{available:false,value:null,error:'redis_unavailable'} */
+    private function unavailableMeasurement(): array
+    {
+        return ['available' => false, 'value' => null, 'error' => 'redis_unavailable'];
+    }
+
+    private function firstError(array ...$measurements): ?string
+    {
+        foreach ($measurements as $measurement) {
+            if ($measurement['error'] !== null) {
+                return $measurement['error'];
+            }
+        }
+
+        return null;
     }
 
     /**
