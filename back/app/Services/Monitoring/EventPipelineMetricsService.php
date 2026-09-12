@@ -194,9 +194,9 @@ class EventPipelineMetricsService
      */
     private function mergedStreamHealth(array $streams, string $group): array
     {
-        $streams = array_values(array_filter($streams, static fn (string $stream): bool => $stream !== ''));
-
-        if ($streams === []) {
+        // Both CDC streams are required for a complete aggregate. Do not silently drop a blank
+        // configuration and report health for the one stream that remains configured.
+        if (count($streams) !== 2 || in_array('', $streams, true)) {
             return [
                 'available' => false,
                 'error' => 'cdc_streams_unconfigured',

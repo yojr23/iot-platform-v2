@@ -289,6 +289,52 @@ class EventPipelineMetricsServiceTest extends TestCase
         }
     }
 
+    public function test_cdc_health_with_one_unconfigured_stream_is_unknown(): void
+    {
+        $domainStream = 'metrics-test:cdc-domain';
+        $group = 'metrics-test:cdc-group';
+        $original = [
+            'app.cdc_raw_outbox_stream' => config('app.cdc_raw_outbox_stream'),
+            'app.cdc_domain_outbox_stream' => config('app.cdc_domain_outbox_stream'),
+            'app.cdc_outbox_consumer_group' => config('app.cdc_outbox_consumer_group'),
+        ];
+
+        config([
+            'app.cdc_raw_outbox_stream' => '',
+            'app.cdc_domain_outbox_stream' => $domainStream,
+            'app.cdc_outbox_consumer_group' => $group,
+        ]);
+
+        try {
+            $client = Mockery::mock(\Redis::class);
+            $client->shouldReceive('rawCommand')->andReturnUsing(function (...$command) use ($domainStream, $group) {
+                $stream = $command[0] === 'XINFO' ? ($command[2] ?? null) : ($command[1] ?? null);
+
+                return match ($command[0]) {
+                    'XLEN' => $stream === $domainStream ? 5 : 0,
+                    'XINFO' => [['name', $group, 'pending', 4, 'lag', 8]],
+                    'XPENDING' => [['1-0', 'worker-1', 30, 1]],
+                };
+            });
+
+            $connection = Mockery::mock(Connection::class);
+            $connection->shouldReceive('client')->andReturn($client);
+            Redis::shouldReceive('connection')->with('default')->andReturn($connection);
+
+            $health = (new EventPipelineMetricsService())->snapshot()['consumers']['outbox_cdc'];
+
+            $this->assertFalse($health['available']);
+            $this->assertSame('cdc_streams_unconfigured', $health['error']);
+            $this->assertSame([], $health['stream_errors']);
+            $this->assertNull($health['xlen']);
+            $this->assertNull($health['pending_count']);
+            $this->assertNull($health['lag']);
+            $this->assertNull($health['oldest_pending_age_ms']);
+        } finally {
+            config($original);
+        }
+    }
+
     public function test_real_redis_stream_measurements_are_available_and_numeric_when_redis_is_configured(): void
     {
         try {
