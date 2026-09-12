@@ -106,3 +106,37 @@ Backend: cd back && php artisan test (focused --filter per task).
 Frontend: cd front && npx vitest run && npm run build.
 Browser: Playwright register/verify/login/logout/private-read/forbidden-write/admin-write/stale-after-reset, desktop+mobile.
 Source: rg localStorage front/src; rg 'api_key|access_token|token_prefix' back; rg 'getMessage' back; rg 'DB::raw|whereRaw' back; rg 'v-html|innerHTML' front/src.
+
+---
+
+## Closure status (updated 2026-09-11 — evidence-based, not optimistic)
+
+Session 1 delivered the P0 authentication/authorization controls. Backend suite: 358 tests, 0 failed, 0 skipped (1270 assertions). Each control below has a regression test and a commit.
+
+| Control | Risk ID | Status | Evidence |
+|---|---|---|---|
+| Pre-verification private access blocked | SEC-AUTH-001 | PASS | register issues no token; `verified` route group; AuthApiHeadlessTest; commit c72c411 |
+| Alert mutation RBAC (API + Blade) | SEC-ALERT-001 | PASS | AlertPolicy admin-only; AlertAuthorizationTest + AlertResolveTransitionTest; commit 076c350 |
+| Token abilities enforced on writes | SEC-AUTH-002 | PASS | ability:alerts:resolve,admin middleware; AuthorizationMatrixTest; commit e582f71 |
+| Tokens revoked on reset + role change | SEC-TOKEN-001 | PASS | tokens()->delete() in reset + both UserRoleControllers; AuthSecurityTest; commit 968c000 |
+| Sensor/Device BOLA policy | SEC-BOLA-001/002 | PASS | ResourceAccessService + SensorPolicy/DevicePolicy; Sensor/DeviceAuthorizationTest; commit 68ed5a3 |
+| Private broadcast authorization | SEC-RT-001 | PASS | channels.php delegates to ResourceAccessService; BroadcastAuthorizationTest; commit 68ed5a3 |
+| Private topology payload minimization | SEC-BOLA-002/CONFIG-001 | NOT STARTED | Task 5 |
+| Browser bearer token → HttpOnly session | SEC-TOKEN-002/003 | NOT STARTED | Task 7 |
+| Per-device IoT creds (header-only, hashed) | SEC-IOT-001/002, MODEL-001 | NOT STARTED | Task 8 |
+| Rate-limit key hardening | SEC-RATE-001, ENUM-001 | NOT STARTED | Task 9 |
+| SMTP secret encrypted at rest | SEC-SECRET-001 | NOT STARTED | Task 10 |
+| Log secret/exception redaction | SEC-LOG-001/002 | NOT STARTED | Task 11 |
+| Bounded exports/inventory | SEC-EXPORT-001, INV-001 | NOT STARTED | Task 12 |
+| Password policy + enumeration | SEC-PASS-001, ENUM-001 | NOT STARTED | Task 13 |
+| Registration policy decision | — | NOT STARTED | Task 14 |
+| SMTP destination hardening | SEC-SMTP-001 | NOT STARTED | Task 15 |
+| Public graph effective-window semantics | SEC-PUBLIC-001 | NOT STARTED | Task 16 |
+| CI security gates | SEC-BRANCH-001 | OPERATOR EVIDENCE REQUIRED | Task 17 |
+| Branch protection | SEC-BRANCH-001 | OPERATOR EVIDENCE REQUIRED | Task 17 |
+| Full-history secret rotation/scrub | — | OPERATOR EVIDENCE REQUIRED | Task 18 |
+| Global authz regression matrix | — | PARTIAL | AuthorizationMatrixTest covers alerts; full route×role matrix pending (Task 19) |
+| Realtime regression suite | — | PARTIAL | BroadcastAuthorizationTest covers the 3 private channels (Task 20 broader cases pending) |
+| Data-leakage sentinel suite | — | NOT STARTED | Task 21 |
+
+**Note:** an implementation pattern was discovered — this codebase has parallel Blade (web) and Api controllers sharing the same domain services (AlertController, UserRoleController, likely Sensor/Device). Every backend authorization task MUST check `routes/web.php` for a twin controller and apply the same guard. Tasks 3 and 6 both required a fix-round for exactly this. Future tasks (5, 8, 12) should audit both surfaces from the start.
