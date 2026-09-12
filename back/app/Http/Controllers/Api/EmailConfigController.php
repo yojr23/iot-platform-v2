@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpdateEmailConfigRequest;
 use App\Models\SystemSetting;
+use App\Services\Security\SecretSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -13,6 +14,10 @@ use Throwable;
 
 class EmailConfigController extends Controller
 {
+    public function __construct(private readonly SecretSettingService $secrets)
+    {
+    }
+
     public function show(): JsonResponse
     {
         $startTime = microtime(true);
@@ -48,12 +53,12 @@ class EmailConfigController extends Controller
             'mail_to' => ['value' => $validated['mail_to'], 'type' => 'string'],
         ];
 
-        if (! empty($validated['mail_password'])) {
-            $settings['mail_password'] = ['value' => $validated['mail_password'], 'type' => 'string'];
-        }
-
         foreach ($settings as $key => $definition) {
             SystemSetting::set($key, $definition['value'], $definition['type'], 'mail');
+        }
+
+        if (! empty($validated['mail_password'])) {
+            $this->secrets->put('mail_password', $validated['mail_password'], 'mail');
         }
 
         SystemSetting::clearCache();
@@ -110,14 +115,18 @@ class EmailConfigController extends Controller
         } catch (Throwable $e) {
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
+            // SEC-SMTP-001: never log the exception message here — SMTP transport exceptions
+            // can echo back the failed command/response, which may include credentials. Log
+            // only the exception class plus the (non-secret) destination host/port.
             Log::error('API email test failed', [
                 'ip' => $request->ip(),
                 'method' => $request->method(),
                 'path' => $request->path(),
                 'request_id' => $request->header('X-Request-Id', uniqid()),
                 'user_id' => auth()->id(),
-                'exception' => $e->getMessage(),
                 'exception_class' => $e::class,
+                'mail_host' => SystemSetting::get('mail_host'),
+                'mail_port' => SystemSetting::get('mail_port'),
                 'duration_ms' => $durationMs,
             ]);
 
@@ -162,7 +171,7 @@ class EmailConfigController extends Controller
                 'host' => SystemSetting::get('mail_host', $smtpBase['host'] ?? config('mail.mailers.smtp.host')),
                 'port' => SystemSetting::get('mail_port', $smtpBase['port'] ?? config('mail.mailers.smtp.port')),
                 'username' => SystemSetting::get('mail_username', $smtpBase['username'] ?? config('mail.mailers.smtp.username')),
-                'password' => SystemSetting::get('mail_password', $smtpBase['password'] ?? ''),
+                'password' => $this->secrets->get('mail_password', $smtpBase['password'] ?? ''),
                 'encryption' => SystemSetting::get('mail_encryption', $smtpBase['encryption'] ?? config('mail.mailers.smtp.encryption')),
             ]),
         ]);
