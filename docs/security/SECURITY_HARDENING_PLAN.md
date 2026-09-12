@@ -109,9 +109,12 @@ Source: rg localStorage front/src; rg 'api_key|access_token|token_prefix' back; 
 
 ---
 
-## Closure status (updated 2026-09-11 — evidence-based, not optimistic)
+## Closure status (updated 2026-09-12 — evidence-based, not optimistic)
 
-Session 1 delivered the P0 authentication/authorization controls. Backend suite: 358 tests, 0 failed, 0 skipped (1270 assertions). Each control below has a regression test and a commit.
+Session 1 delivered the P0 authentication/authorization controls. Session 2 delivered the
+remaining backend hardening (data minimization, secrets, logging, rate limits, exports, IoT
+header-only creds, public-window semantics) plus the security regression suites. Backend suite:
+419 tests, 0 failed (1484 assertions). Each PASS control below has a regression test and a commit.
 
 | Control | Risk ID | Status | Evidence |
 |---|---|---|---|
@@ -121,22 +124,36 @@ Session 1 delivered the P0 authentication/authorization controls. Backend suite:
 | Tokens revoked on reset + role change | SEC-TOKEN-001 | PASS | tokens()->delete() in reset + both UserRoleControllers; AuthSecurityTest; commit 968c000 |
 | Sensor/Device BOLA policy | SEC-BOLA-001/002 | PASS | ResourceAccessService + SensorPolicy/DevicePolicy; Sensor/DeviceAuthorizationTest; commit 68ed5a3 |
 | Private broadcast authorization | SEC-RT-001 | PASS | channels.php delegates to ResourceAccessService; BroadcastAuthorizationTest; commit 68ed5a3 |
-| Private topology payload minimization | SEC-BOLA-002/CONFIG-001 | NOT STARTED | Task 5 |
-| Browser bearer token → HttpOnly session | SEC-TOKEN-002/003 | NOT STARTED | Task 7 |
-| Per-device IoT creds (header-only, hashed) | SEC-IOT-001/002, MODEL-001 | NOT STARTED | Task 8 |
-| Rate-limit key hardening | SEC-RATE-001, ENUM-001 | NOT STARTED | Task 9 |
-| SMTP secret encrypted at rest | SEC-SECRET-001 | NOT STARTED | Task 10 |
-| Log secret/exception redaction | SEC-LOG-001/002 | NOT STARTED | Task 11 |
-| Bounded exports/inventory | SEC-EXPORT-001, INV-001 | NOT STARTED | Task 12 |
-| Password policy + enumeration | SEC-PASS-001, ENUM-001 | NOT STARTED | Task 13 |
-| Registration policy decision | — | NOT STARTED | Task 14 |
-| SMTP destination hardening | SEC-SMTP-001 | NOT STARTED | Task 15 |
-| Public graph effective-window semantics | SEC-PUBLIC-001 | NOT STARTED | Task 16 |
+| Private topology payload minimization | SEC-BOLA-002/CONFIG-001 | PASS | Device `$hidden` + admin-gated ip/mac/serial + minimal nested projections; ResourcePayloadTest; commit e8e2ff4 |
+| Browser bearer token → HttpOnly session | SEC-TOKEN-002/003 | DEFERRED (operator decision) | Task 7 deferred to a focused session with Playwright — risk to realtime/Echo auth. localStorage bearer remains as documented residual risk |
+| Per-device IoT creds — header-only | SEC-IOT-002 | PASS | /iot/sensors header-only (query+body transport removed); IoTCredentialSecurityTest; commit 9064d2f |
+| Per-device IoT creds — hashed + global-key removal | SEC-IOT-001, MODEL-001 | DEFERRED (operator release) | Breaking: removing global config('app.api_key') + hashing needs device re-provisioning + migration. Scheduled as operator-coordinated rollout |
+| Rate-limit key hardening | SEC-RATE-001, ENUM-001 | PASS | api-write keyed on IP + IP·sensor (no attacker key); login per-IP ceiling; RateLimitSecurityTest; commit a9ff274 |
+| SMTP secret encrypted at rest | SEC-SECRET-001 | PASS | SecretSettingService (Crypt) + idempotent migration; EmailSecretStorageTest; commit b28638c |
+| Log secret/exception redaction | SEC-LOG-001/002 | PASS | token_prefix dropped, getMessage() → class/sql_state, key-fingerprint logs removed; LoggingRedactionTest; commits 6b28ef6, de1c50a |
+| Bounded exports/inventory | SEC-EXPORT-001, INV-001 | PASS | export range required (31d/50k cap, 422); index paginated (max 100); SensorExportSecurityTest; commit de1c50a |
+| Password policy + enumeration | SEC-PASS-001, ENUM-001 | PASS | Password::min(12) uncompromised on laravel/ui web controllers; generic forgot-password; AuthSecurityTest; commit d63a1b5 |
+| Registration policy decision | — | DEFERRED (operator decision) | Task 14 — left as-is (open self-register + Task 1 pre-verify block); policy choice pending |
+| SMTP destination hardening | SEC-SMTP-001 | PASS | port allowlist (25/465/587/2525) + loopback/link-local host block; EmailSecretStorageTest; commit c46a744 |
+| Public graph effective-window semantics | SEC-PUBLIC-001 | PASS | requested/effective window + truncation_reason; PublicGraphControllerTest; commit 9075353 |
 | CI security gates | SEC-BRANCH-001 | OPERATOR EVIDENCE REQUIRED | Task 17 |
 | Branch protection | SEC-BRANCH-001 | OPERATOR EVIDENCE REQUIRED | Task 17 |
 | Full-history secret rotation/scrub | — | OPERATOR EVIDENCE REQUIRED | Task 18 |
-| Global authz regression matrix | — | PARTIAL | AuthorizationMatrixTest covers alerts; full route×role matrix pending (Task 19) |
-| Realtime regression suite | — | PARTIAL | BroadcastAuthorizationTest covers the 3 private channels (Task 20 broader cases pending) |
-| Data-leakage sentinel suite | — | NOT STARTED | Task 21 |
+| Global authz regression matrix | — | PASS | full route×{guest/unverified/standard/admin} table; AuthorizationMatrixFullTest; commit d37302b |
+| Realtime regression suite | — | PASS | BroadcastAuthorizationTest (3 channels) + admin/revocation cases; RealtimeAuthorizationRegressionTest; commit 3c8a485 |
+| Data-leakage sentinel suite | — | PASS | api_key/topology/SMTP sentinels across responses+models; DataLeakageSentinelTest; commit 5ef24d4 |
 
-**Note:** an implementation pattern was discovered — this codebase has parallel Blade (web) and Api controllers sharing the same domain services (AlertController, UserRoleController, likely Sensor/Device). Every backend authorization task MUST check `routes/web.php` for a twin controller and apply the same guard. Tasks 3 and 6 both required a fix-round for exactly this. Future tasks (5, 8, 12) should audit both surfaces from the start.
+### Session 2 (2026-09-12) — evidence
+
+Backend full suite: **419 tests, 0 failed, 1484 assertions** (the "deprecated" tag on runs is
+PHP 8.5 vendor-emitted `PDO::MYSQL_ATTR_SSL_CA` noise, not failures — silenced in app config,
+commit 24f06b8). Tasks 5, 8 (partial), 9, 10, 11, 12, 13, 15, 16, 19, 20, 21 landed this session,
+each with a regression test and a commit above.
+
+**Deferred (need an operator/product decision, not code):**
+- **Task 7** (SPA HttpOnly cookie migration) — defer to a focused session; touches Echo private-channel auth, needs Playwright. Residual risk: SPA bearer still in localStorage.
+- **Task 8 hashing half** (SEC-IOT-001, MODEL-001) — removing the global legacy key + hashing device keys breaks live ingestion until every device re-provisions; operator-coordinated release with a migration. Header-only transport (SEC-IOT-002) is already closed.
+- **Task 14** (registration policy) — closed-invite vs public self-register is a product/deployment call.
+- **Tasks 17/18** (CI gates, branch protection, historical-secret rotation/scrub) — operator actions by plan design.
+
+**Note:** this codebase has parallel Blade (web) and Api controllers sharing domain services. Task 13's owners turned out to be the laravel/ui **web** auth controllers (RegisterController/ForgotPasswordController/ResetPasswordController), not the API token controller — every auth task must check `routes/web.php` for the real owner.
