@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Events\NewAlertTriggered;
+use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Models\Alert;
 use App\Models\AlertRule;
@@ -67,7 +68,8 @@ class AlertTriggerTransitionTest extends TestCase
         Queue::fake();
 
         $sensor = $this->makeThresholdRuleSensor();
-        SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 80]);
+        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 80]);
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
 
         // The durable-outbox path replaces the old in-request ShouldBroadcastNow call: no
         // NewAlertTriggered dispatch happens on the create() path anymore.

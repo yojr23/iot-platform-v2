@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Mail\DangerAlertMail;
 use App\Models\AlertRule;
@@ -58,7 +59,7 @@ class DangerAlertEmailTest extends TestCase
             'value' => 80,
         ]);
 
-        $reading->checkForAlert();
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
 
         // PLAN.md Stage 8.2: the alert-creation observer no longer calls Mail synchronously —
         // it only queues SendDangerAlertEmailJob. Processing that job is what still sends.
@@ -103,15 +104,18 @@ class DangerAlertEmailTest extends TestCase
             'name' => 'Danger Rule',
         ]);
 
-        SensorReading::factory()->create([
+        $firstReading = SensorReading::factory()->create([
             'sensor_id' => $sensor->id,
             'value' => 81,
         ]);
 
-        SensorReading::factory()->create([
+        $secondReading = SensorReading::factory()->create([
             'sensor_id' => $sensor->id,
             'value' => 82,
         ]);
+
+        (new EvaluateSensorReadingAlerts($firstReading->id))->handle();
+        (new EvaluateSensorReadingAlerts($secondReading->id))->handle();
 
         // Two triggering readings -> two queued jobs. Processing both (in dispatch order) must
         // still only send once: the rate limit is enforced when the job runs, not at dispatch time.

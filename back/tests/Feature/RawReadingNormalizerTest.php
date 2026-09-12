@@ -10,6 +10,7 @@ use App\Services\Ingestion\RawReadingNormalizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -206,6 +207,8 @@ class RawReadingNormalizerTest extends TestCase
 
     public function test_sensor_resolution_query_count_does_not_scale_with_payload_size(): void
     {
+        Queue::fake();
+
         $device = Device::factory()->create([
             'serial_number' => 'node-query-count',
             'status' => true,

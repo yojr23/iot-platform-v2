@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Models\Alert;
 use App\Models\AlertRule;
 use App\Models\Device;
@@ -59,16 +60,14 @@ class NotificationServiceRateLimitTest extends TestCase
             'name' => 'Danger Rule',
         ]);
 
-        // `SensorReading::factory()->create()` fires `SensorReadingObserver`, which delegates to
-        // `AlertService::createAlertsForReading()` and already creates an `Alert` for this
-        // reading/rule pair (value 80 exceeds the rule's max_value 50). Stage 2's
-        // `alerts.sensor_reading_id`+`alert_rule_id` unique constraint means a second, manual
-        // `Alert::create()` for the same pair would collide with that auto-created row — so fetch
-        // the one the real ingestion path already produced instead of duplicating it.
+        // The observer queues evaluation; execute that queued unit explicitly so this test can
+        // exercise the real alert-creation path without relying on a synchronous queue driver.
         $reading = SensorReading::factory()->create([
             'sensor_id' => $sensor->id,
             'value' => 80,
         ]);
+
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
 
         return Alert::where('sensor_reading_id', $reading->id)
             ->where('alert_rule_id', $rule->id)

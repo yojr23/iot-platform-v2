@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Mail\DangerAlertMail;
 use App\Models\AlertRule;
@@ -68,6 +69,9 @@ class AlertEmailAsyncDeliveryTest extends TestCase
 
         $response->assertCreated();
 
+        $reading = SensorReading::query()->sole();
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
+
         // The reading and the resulting alert persisted, and the response returned, without the
         // request ever touching the mail transport (an unavailable/slow SMTP destination cannot
         // delay this response because Mail::send is only ever reached from inside the queued job).
@@ -86,7 +90,8 @@ class AlertEmailAsyncDeliveryTest extends TestCase
 
         $sensor = $this->makeDangerRuleSensor();
 
-        SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 80]);
+        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 80]);
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
 
         // Exactly one job per created alert: no duplicate dispatch from observer + any other path
         // (there is no competing alert.triggered domain-outbox/email consumer today — see the job's
@@ -102,7 +107,8 @@ class AlertEmailAsyncDeliveryTest extends TestCase
         SystemSetting::set('mail_to', 'alerts@example.test');
 
         $sensor = $this->makeDangerRuleSensor();
-        SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 80]);
+        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 80]);
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
 
         $dispatched = null;
         Queue::assertPushed(SendDangerAlertEmailJob::class, function (SendDangerAlertEmailJob $job) use (&$dispatched) {

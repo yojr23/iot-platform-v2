@@ -6,6 +6,7 @@ use Tests\TestCase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Models\SensorReading;
 use App\Models\Alert;
@@ -75,10 +76,11 @@ class AlertEmailTest extends TestCase
             'name' => 'Danger Rule',
         ]);
 
-        SensorReading::factory()->create([
+        $reading = SensorReading::factory()->create([
             'sensor_id' => $sensor->id,
             'value' => 80,
         ]);
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
 
         // Off the sync path: nothing sent inline while the request/observer chain ran.
         Mail::assertNothingSent();
@@ -113,10 +115,11 @@ class AlertEmailTest extends TestCase
             'name' => 'Warning Rule',
         ]);
 
-        SensorReading::factory()->create([
+        $reading = SensorReading::factory()->create([
             'sensor_id' => $sensor->id,
             'value' => 80,
         ]);
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
 
         // The observer still queues the job unconditionally (severity gate lives in
         // NotificationService, not in the dispatch decision) — processing it must not send.
