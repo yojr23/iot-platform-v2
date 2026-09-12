@@ -43,9 +43,12 @@ final class PublicGraphSeriesService
     /**
      * @return array{
      *     window: array{from:string,to:string},
+     *     requested_window: array{from:string,to:string},
+     *     effective_window: array{from:string,to:string},
      *     points: list<array{timestamp:string,value:float,reading_id:int}>,
      *     stats: array{min:?float,max:?float,mean:?float,count:int,partial:bool},
      *     truncated: bool,
+     *     truncation_reason: ?string,
      *     returned_count: int,
      * }
      */
@@ -70,7 +73,9 @@ final class PublicGraphSeriesService
             'window_hours' => $windowHours,
         ]);
 
-        if ($windowHours > self::MAX_WINDOW_HOURS) {
+        $windowClamped = $windowHours > self::MAX_WINDOW_HOURS;
+
+        if ($windowClamped) {
             Log::warning('PublicGraphSeriesService:series window clamped', [
                 'sensor_id' => $sensor->id,
                 'original_window_hours' => $windowHours,
@@ -92,14 +97,26 @@ final class PublicGraphSeriesService
             ->limit($sampleLimit + 1)
             ->get(['id', 'value', 'reading_time']);
 
-        $truncated = $fetched->count() > $sampleLimit;
-        $readings = $truncated ? $fetched->take($sampleLimit) : $fetched;
+        $sampleTruncated = $fetched->count() > $sampleLimit;
+        $readings = $sampleTruncated ? $fetched->take($sampleLimit) : $fetched;
+
+        // Overall truncation covers BOTH ways the served window can differ from what was asked
+        // for: the max-window clamp (time range shortened) and the sample-limit cap (time range
+        // kept, row count capped). `truncation_reason` disambiguates which one a client hit;
+        // `max_window` takes priority since it also implies fewer rows were even queried.
+        $truncated = $windowClamped || $sampleTruncated;
+        $truncationReason = match (true) {
+            $windowClamped => 'max_window',
+            $sampleTruncated => 'sample_limit',
+            default => null,
+        };
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         Log::info('PublicGraphSeriesService:series completed', [
             'sensor_id' => $sensor->id,
             'fetched_count' => $fetched->count(),
             'truncated' => $truncated,
+            'truncation_reason' => $truncationReason,
             'duration_ms' => $durationMs,
         ]);
 
@@ -116,9 +133,18 @@ final class PublicGraphSeriesService
                 'from' => $this->toWireFormat($fromUtc),
                 'to' => $this->toWireFormat($toUtc),
             ],
+            'requested_window' => [
+                'from' => $this->toWireFormat($fromUtc),
+                'to' => $this->toWireFormat($toUtc),
+            ],
+            'effective_window' => [
+                'from' => $this->toWireFormat($fromLocal),
+                'to' => $this->toWireFormat($toLocal),
+            ],
             'points' => $this->points($readings),
-            'stats' => $this->stats($readings, $truncated),
+            'stats' => $this->stats($readings, $sampleTruncated),
             'truncated' => $truncated,
+            'truncation_reason' => $truncationReason,
             'returned_count' => $readings->count(),
         ];
     }

@@ -339,6 +339,97 @@ class PublicGraphControllerTest extends TestCase
         $this->assertCount(1, $sensorIds);
     }
 
+    /**
+     * SEC-PUBLIC-001: a window longer than PublicGraphSeriesService::MAX_WINDOW_HOURS (24h) is
+     * clamped server-side. The response must say so instead of silently serving a shorter window
+     * than asked for.
+     */
+    public function test_series_reports_max_window_truncation_when_requested_window_exceeds_the_cap(): void
+    {
+        $sensor = $this->publicSensor();
+
+        $response = $this->getJson(
+            "/api/public/graph/sensors/{$sensor->id}/series?from=2026-09-01T00:00:00Z&to=2026-09-04T00:00:00Z"
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('truncated', true)
+            ->assertJsonPath('truncation_reason', 'max_window')
+            ->assertJsonPath('requested_window.from', '2026-09-01T00:00:00Z')
+            ->assertJsonPath('requested_window.to', '2026-09-04T00:00:00Z')
+            ->assertJsonPath('effective_window.from', '2026-09-01T00:00:00Z');
+
+        $effectiveTo = CarbonImmutable::parse($response->json('effective_window.to'));
+        $requestedTo = CarbonImmutable::parse($response->json('requested_window.to'));
+        $this->assertTrue($effectiveTo->lessThan($requestedTo));
+    }
+
+    /**
+     * SEC-PUBLIC-001: within the max-window cap but with more rows than the sample ceiling, the
+     * time range itself is NOT clamped — only the row count is — so the reason must disambiguate
+     * from `max_window`.
+     */
+    public function test_series_reports_sample_limit_truncation_when_only_the_row_cap_is_hit(): void
+    {
+        $sensor = $this->publicSensor();
+        $readingTime = CarbonImmutable::parse('2026-09-09T00:00:30Z')
+            ->setTimezone(config('app.timezone'))
+            ->format('Y-m-d H:i:s');
+        $now = now();
+
+        $rows = [];
+        for ($i = 0; $i < 5001; $i++) {
+            $rows[] = [
+                'sensor_id' => $sensor->id,
+                'value' => $i,
+                'reading_time' => $readingTime,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        foreach (array_chunk($rows, 150) as $chunk) {
+            SensorReading::insert($chunk);
+        }
+
+        $response = $this->getJson(
+            "/api/public/graph/sensors/{$sensor->id}/series?from=2026-09-09T00:00:00Z&to=2026-09-09T00:05:00Z"
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('truncated', true)
+            ->assertJsonPath('truncation_reason', 'sample_limit')
+            ->assertJsonPath('requested_window.from', '2026-09-09T00:00:00Z')
+            ->assertJsonPath('requested_window.to', '2026-09-09T00:05:00Z')
+            ->assertJsonPath('effective_window.from', '2026-09-09T00:00:00Z')
+            ->assertJsonPath('effective_window.to', '2026-09-09T00:05:00Z');
+    }
+
+    /**
+     * SEC-PUBLIC-001: a small in-bounds window/sample-count is not truncated at all — the
+     * effective window must equal the requested one and the reason must be null.
+     */
+    public function test_series_reports_no_truncation_for_a_small_in_bounds_window(): void
+    {
+        $sensor = $this->publicSensor();
+        app(SensorReadingService::class)->createReading(
+            $sensor,
+            10.0,
+            CarbonImmutable::parse('2026-09-09T00:00:30Z')
+        );
+
+        $response = $this->getJson(
+            "/api/public/graph/sensors/{$sensor->id}/series?from=2026-09-09T00:00:00Z&to=2026-09-09T00:05:00Z"
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('truncated', false)
+            ->assertJsonPath('truncation_reason', null)
+            ->assertJsonPath('requested_window.from', '2026-09-09T00:00:00Z')
+            ->assertJsonPath('requested_window.to', '2026-09-09T00:05:00Z')
+            ->assertJsonPath('effective_window.from', '2026-09-09T00:00:00Z')
+            ->assertJsonPath('effective_window.to', '2026-09-09T00:05:00Z');
+    }
+
     public function test_public_graph_visibility_service_never_infers_from_operational_status(): void
     {
         $publicOffline = $this->publicSensor(['status' => false]);
