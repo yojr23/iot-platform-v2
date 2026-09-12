@@ -34,6 +34,10 @@ class Settings:
     log_level: str
     ingestion_mode: str
     request_timeout_seconds: int
+    spool_path: str
+    retry_base_seconds: int
+    retry_max_seconds: int
+    delivery_batch_size: int
 
 
 def get_settings() -> Settings:
@@ -50,4 +54,8 @@ def get_settings() -> Settings:
         log_level=getenv("LOG_LEVEL", "INFO").upper(),
         ingestion_mode=getenv("INGESTION_MODE", "simulate").lower(),
         request_timeout_seconds=_env_int("BACKEND_TIMEOUT_SECONDS", 10),
+        spool_path=getenv("INGESTION_SPOOL_PATH", "/data/ingestion-spool.sqlite3"),
+        retry_base_seconds=_env_int("INGESTION_RETRY_BASE_SECONDS", 1),
+        retry_max_seconds=_env_int("INGESTION_RETRY_MAX_SECONDS", 60),
+        delivery_batch_size=_env_int("INGESTION_DELIVERY_BATCH_SIZE", 50),
     )

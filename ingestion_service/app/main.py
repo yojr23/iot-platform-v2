@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import argparse
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
 from app.backend_client import BackendClient, BackendClientError
+from app.delivery_worker import DeliveryWorker
 from app.logging_config import configure_logging
 from app.mqtt_client import MQTTIngestionClient
 from app.normalizer import build_raw_event
 from app.settings import get_settings
+from app.spool import DurableEventSpool
 from app.validators import PayloadValidationError, validate_payload
 
 logger = logging.getLogger(__name__)
@@ -83,8 +86,28 @@ def run_mqtt() -> int:
         settings.backend_ingestion_token,
         timeout_seconds=settings.request_timeout_seconds,
     )
-    mqtt_client = MQTTIngestionClient(settings, backend_client)
-    mqtt_client.run_forever()
+    spool = DurableEventSpool(settings.spool_path)
+    worker = DeliveryWorker(
+        spool,
+        backend_client,
+        retry_base_seconds=settings.retry_base_seconds,
+        retry_max_seconds=settings.retry_max_seconds,
+        batch_size=settings.delivery_batch_size,
+    )
+    worker_thread = threading.Thread(
+        target=worker.run_forever,
+        name="backend-delivery-worker",
+        daemon=True,
+    )
+    mqtt_client = MQTTIngestionClient(settings, spool)
+
+    worker_thread.start()
+    try:
+        mqtt_client.run_forever()
+    finally:
+        worker.stop()
+        worker_thread.join()
+        spool.close()
     return 0
 
 

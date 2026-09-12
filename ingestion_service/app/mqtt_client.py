@@ -6,18 +6,18 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
-from app.backend_client import BackendClient, BackendClientError
 from app.normalizer import build_raw_event, derive_source_event_id
 from app.settings import Settings
+from app.spool import DurableEventSpool
 from app.validators import PayloadValidationError, validate_payload
 
 logger = logging.getLogger(__name__)
 
 
 class MQTTIngestionClient:
-    def __init__(self, settings: Settings, backend_client: BackendClient) -> None:
+    def __init__(self, settings: Settings, spool: DurableEventSpool) -> None:
         self._settings = settings
-        self._backend_client = backend_client
+        self._spool = spool
         self._mqtt = mqtt.Client(client_id=settings.mqtt_client_id)
 
         if settings.mqtt_username:
@@ -63,16 +63,13 @@ class MQTTIngestionClient:
                 topic=topic,
                 source_event_id=source_event_id,
             )
-            response = self._backend_client.send_raw_event(raw_event)
+            self._spool.enqueue(raw_event)
             logger.info(
-                "Raw event sent to backend successfully topic=%s event_id=%s status=%s",
+                "Raw event durably queued for backend delivery topic=%s source_event_id=%s",
                 topic,
-                response.get("event_id"),
-                response.get("status"),
+                source_event_id,
             )
         except json.JSONDecodeError as exc:
             logger.error("Invalid JSON received on topic=%s error=%s", topic, exc)
         except PayloadValidationError as exc:
             logger.error("Invalid MQTT payload on topic=%s error=%s", topic, exc)
-        except BackendClientError as exc:
-            logger.error("Backend ingestion failed for topic=%s error=%s", topic, exc)

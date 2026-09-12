@@ -7,7 +7,7 @@ Servicio Python de ingesta inicial para eventos IoT crudos.
 - Recibir payload MQTT (o simularlo).
 - Validar estructura minima.
 - Normalizar al contrato de backend crudo.
-- Enviar a `POST /api/ingestion/events` en Laravel.
+- Encolar durablemente cada evento para enviarlo a `POST /api/ingestion/events` en Laravel.
 - Mantener la separacion: este servicio recibe MQTT y publica eventos crudos; el procesamiento lo realiza el consumidor backend.
 
 ## Modos
@@ -27,7 +27,8 @@ Envia un payload ejemplo al backend.
 - suscripcion al topic;
 - parseo JSON;
 - validacion;
-- envio al backend.
+- encolado SQLite local; el callback no hace llamadas HTTP;
+- entrega independiente al backend, con reintento exponencial ante fallos transitorios.
 
 Si Mosquitto no esta listo en el entorno, el modo puede fallar al conectar.
 
@@ -45,6 +46,15 @@ Si Mosquitto no esta listo en el entorno, el modo puede fallar al conectar.
 - `LOG_LEVEL`
 - `INGESTION_MODE` (`simulate` o `mqtt`)
 - `BACKEND_TIMEOUT_SECONDS`
+- `INGESTION_SPOOL_PATH` (por defecto `/data/ingestion-spool.sqlite3`)
+- `INGESTION_RETRY_BASE_SECONDS` (por defecto `1`)
+- `INGESTION_RETRY_MAX_SECONDS` (por defecto `60`)
+- `INGESTION_DELIVERY_BATCH_SIZE` (por defecto `50`)
+
+El spool SQLite usa WAL y conserva los eventos pendientes entre reinicios. En esta
+configuracion `docker-compose.yml` no contiene un servicio de ingestion, por lo que no
+se agrega un volumen Compose; quien lo ejecute en contenedor debe montar persistentemente
+el directorio que contiene `INGESTION_SPOOL_PATH` (normalmente `/data`).
 
 ## Contrato enviado a Laravel
 
