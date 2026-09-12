@@ -74,6 +74,13 @@ class UserRoleController extends Controller
                     DB::statement('SET @allow_admin_role_change = 0');
                 }
             }
+
+            // SEC-TOKEN-001: a previously issued token for this user was minted with the
+            // abilities of the *old* role (e.g. a `['*']` admin PAT). Revoke every existing
+            // token on any role change so a stale token can't keep exercising privileges
+            // the user's current role no longer has. A promoted user simply re-logs in to
+            // get a token reflecting the new role.
+            $user->tokens()->delete();
         });
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);

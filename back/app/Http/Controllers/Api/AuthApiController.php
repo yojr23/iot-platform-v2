@@ -214,6 +214,11 @@ class AuthApiController extends Controller
                     'remember_token' => Str::random(60),
                 ])->save();
 
+                // SEC-TOKEN-001: a password reset must invalidate every previously issued
+                // Sanctum PAT — a stolen/older token must stop working once the password
+                // changes, otherwise the reset gives no real security benefit.
+                $user->tokens()->delete();
+
                 event(new PasswordReset($user));
             }
         );

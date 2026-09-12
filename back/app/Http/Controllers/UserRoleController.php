@@ -63,6 +63,10 @@ class UserRoleController extends Controller
                     DB::statement('SET @allow_admin_role_change = 0');
                 }
             }
+
+            // SEC-TOKEN-001: revoke stale tokens minted under the old role (mirrors
+            // Api\UserRoleController::update()).
+            $user->tokens()->delete();
         });
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
