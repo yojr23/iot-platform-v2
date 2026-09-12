@@ -122,14 +122,25 @@ function mergeRealtimeAlert(alert) {
 // DOCX / PLAN.md Stage 7: AlertResolved from another client must update the local list
 // without requiring a manual refresh. markAlertResolved() removes the alert from
 // activeAlerts and sets latestResolvedId, but AlertsView owns its own local `alerts` ref.
-// Watch latestResolvedId to remove only the specific resolved alert — never bulk-filter
-// against activeAlerts, which would destroy resolved history.
 watch(() => alertsStore.latestResolvedId, (resolvedId) => {
-  if (resolvedId != null) {
-    alerts.value = alerts.value.filter(
-      (item) => Number(item.id) !== resolvedId,
-    );
+  if (resolvedId == null) {
+    return;
   }
+
+  const id = Number(resolvedId);
+
+  if (filter.value === 'all') {
+    alerts.value = alerts.value.map((item) => (
+      Number(item.id) === id
+        ? { ...item, resolved: true }
+        : item
+    ));
+    return;
+  }
+
+  alerts.value = alerts.value.filter(
+    (item) => Number(item.id) !== id,
+  );
 });
 watch(() => alertsStore.latestAlert, mergeRealtimeAlert);
 

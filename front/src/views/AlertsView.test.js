@@ -12,12 +12,14 @@ const alert = {
 };
 
 const getAlerts = vi.fn(() => Promise.resolve({ data: { data: [alert] } }));
+const getActiveAlerts = vi.fn(() => Promise.resolve({ data: { alerts: [alert] } }));
+const getUnresolvedAlerts = vi.fn(() => Promise.resolve({ data: { data: [alert] } }));
 const resolveAlert = vi.fn(() => Promise.resolve({ data: { data: { ...alert, resolved: true } } }));
 
 vi.mock('@/api/alerts', () => ({
   getAlerts: (...args) => getAlerts(...args),
-  getActiveAlerts: vi.fn(() => Promise.resolve({ data: { alerts: [alert] } })),
-  getUnresolvedAlerts: vi.fn(() => Promise.resolve({ data: { data: [alert] } })),
+  getActiveAlerts: (...args) => getActiveAlerts(...args),
+  getUnresolvedAlerts: (...args) => getUnresolvedAlerts(...args),
   resolveAlert: (...args) => resolveAlert(...args),
   resolveAllAlerts: vi.fn(() => Promise.resolve({ data: { message: 'ok' } }))
 }));
@@ -62,7 +64,7 @@ describe('AlertsView syncResolvedFromStore regression', () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => mountedApps.splice(0).forEach((app) => app.unmount()));
 
-  it('preserves resolved history when a WebSocket AlertResolved arrives for a different alert', async () => {
+  it('preserves both the resolved target and historical rows in the all filter', async () => {
     const resolvedHistory = {
       id: 99,
       resolved: true,
@@ -96,14 +98,57 @@ describe('AlertsView syncResolvedFromStore regression', () => {
     store.activeAlerts = [{ ...activeAlert }];
     store.unresolvedCount = 1;
 
-    // Trigger the resolve — this fires markAlertResolved which removes #20 from activeAlerts
-    // and sets latestAlert, then syncResolvedFromStore should only remove #20 from local list
+    // Trigger the resolve — this removes #20 from activeAlerts and publishes latestResolvedId.
     store.markAlertResolved(20);
     await nextTick();
     await flush();
 
-    // Resolved history (#99) must survive — only the just-resolved alert (#20) is removed
+    // In the "all" filter, both the resolved target and unrelated history must survive.
     expect(host.textContent).toContain('Humedad baja');
+    expect(host.textContent).toContain('Temperatura alta');
+    const resolvedTargetRow = [...host.querySelectorAll('tbody tr')]
+      .find((row) => row.textContent.includes('Temperatura alta'));
+    expect(resolvedTargetRow.textContent).toContain('Resuelta');
+  });
+
+  it.each([
+    ['Activas', getActiveAlerts],
+    ['No resueltas', getUnresolvedAlerts]
+  ])('removes only the resolved target from the %s filter', async (filterLabel, requestMock) => {
+    const resolvedHistory = {
+      id: 99,
+      resolved: true,
+      alert_rule: { name: 'Humedad baja', severity: 'info' },
+      sensor: { name: 'Humedad', unit: '%' },
+      device: { name: 'Reactor 2' }
+    };
+    const activeAlert = {
+      id: 20,
+      resolved: false,
+      alert_rule: { name: 'Temperatura alta', severity: 'warning' },
+      sensor: { name: 'Temperatura', unit: '°C' },
+      device: { name: 'Reactor 1' }
+    };
+    requestMock.mockResolvedValue(requestMock === getUnresolvedAlerts
+      ? { data: { data: [activeAlert, resolvedHistory] } }
+      : { data: { alerts: [activeAlert, resolvedHistory] } });
+
+    const { host } = await mountAlertsView();
+    host.querySelectorAll('button').forEach((button) => {
+      if (button.textContent.trim() === filterLabel) {
+        button.dispatchEvent(new Event('click', { bubbles: true }));
+      }
+    });
+    await flush();
+    await nextTick();
+
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const store = useAlertsStore();
+    store.markAlertResolved(20);
+    await nextTick();
+    await flush();
+
     expect(host.textContent).not.toContain('Temperatura alta');
+    expect(host.textContent).toContain('Humedad baja');
   });
 });
