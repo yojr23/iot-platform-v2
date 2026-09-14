@@ -46,11 +46,9 @@ describe('SensorReadingsChart (sensor detail adapter)', () => {
     expect(wrapper).toBeTruthy();
     expect(wrapper.getAttribute('aria-label')).toMatch(/grafica.*muestras/i);
     expect(JSON.parse(chart.getAttribute('data-chart-series'))).toEqual([10, 30]);
-    // The display hour follows the operator's browser time zone; the source-minute order does
-    // not. Keep the adapter contract portable across the UTC CI runner and local browsers.
     expect(JSON.parse(chart.getAttribute('data-chart-labels'))).toEqual([
-      expect.stringMatching(/:00/),
-      expect.stringMatching(/:02/)
+      expect.stringMatching(/10:00:00 UTC$/),
+      expect.stringMatching(/10:02:00 UTC$/)
     ]);
     expect(chart.getAttribute('data-chart-unit')).toContain('C');
     expect(el.textContent).toContain('10');

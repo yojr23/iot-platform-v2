@@ -1,3 +1,5 @@
+export const TELEMETRY_TIME_ZONE = 'UTC';
+
 export function formatDate(value) {
   if (!value) {
     return '-';
@@ -13,6 +15,26 @@ export function formatDate(value) {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(date);
+}
+
+export function formatTelemetryDate(value) {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  const formatter = new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+    timeZone: TELEMETRY_TIME_ZONE,
+    hour12: false
+  });
+  const formatted = formatter.formatToParts(date)
+    .map((part) => part.type === 'hour' ? { ...part, value: part.value.padStart(2, '0') } : part)
+    .map((part) => part.value)
+    .join('');
+
+  return `${formatted} UTC`;
 }
 
 export function formatNumber(value, options = {}) {

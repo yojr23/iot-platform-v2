@@ -1,4 +1,4 @@
-import { formatDate } from '@/utils/formatters';
+import { formatTelemetryDate } from '@/utils/formatters';
 
 /**
  * Normalizes a raw (newest-first) sensor readings array into the chart
@@ -14,7 +14,7 @@ import { formatDate } from '@/utils/formatters';
  */
 export function buildSensorChartViewModel(readings = [], { unit = '' } = {}) {
   const chronological = [...readings].reverse();
-  const labels = chronological.map((reading) => formatDate(reading.reading_time || reading.created_at));
+  const labels = chronological.map((reading) => formatTelemetryDate(reading.reading_time || reading.created_at));
   const series = chronological.map((reading) => reading.value == null ? null : Number(reading.value));
 
   const values = series.filter(Number.isFinite);

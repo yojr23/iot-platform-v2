@@ -10,6 +10,7 @@ import {
 } from "@/components/charts/graphSeriesProjection";
 import { buildZonesViewModel } from "@/components/charts/graphZonesProjection";
 import { buildSensorChartViewModel } from "@/components/charts/sensorChartViewModel";
+import { formatTelemetryDate } from "@/utils/formatters";
 import {
     getDashboardPreferences,
     updateDashboardPreferences,
@@ -170,7 +171,7 @@ export function useLabWorkspace(devices) {
             ...buildSensorChartViewModel([...data.points].reverse(), {
                 unit: sensor(w)?.unit || "",
             }),
-            labels: data.points.map(p => new Intl.DateTimeFormat("es-CO", {dateStyle: "medium", timeStyle: "medium", timeZone: "UTC", hour12: false}).format(new Date(p.reading_time)) + " UTC"),
+            labels: data.points.map((p) => formatTelemetryDate(p.reading_time)),
             stats: data.stats,
             partial: data.partial,
             zones: buildZonesViewModel({
