@@ -47,6 +47,8 @@ class Alert extends Model
 
     public static function sendDangerAlertEmail($alertDetails)
     {
+        $alertId = $alertDetails['alert_id'] ?? null;
+
         try {
             $emailData = [
                 'alert_id' => (string) ($alertDetails['alert_id'] ?? 'N/D'),
@@ -77,7 +79,7 @@ class Alert extends Model
 
             if (! $recipient) {
                 Log::warning('AlertService: no recipient configured for danger alert emails, skipping send', [
-                    'alert_id' => $this->id,
+                    'alert_id' => $alertId,
                 ]);
                 return false;
             }
@@ -113,7 +115,7 @@ class Alert extends Model
             ]);
 
             Log::debug('AlertService: sending danger alert email', [
-                'alert_id' => $this->id,
+                'alert_id' => $alertId,
                 'recipient' => $recipient,
             ]);
             $mailable = new DangerAlertMail($emailData);
@@ -122,13 +124,13 @@ class Alert extends Model
             Mail::send($mailable);
 
             Log::info('AlertService: danger alert email sent', [
-                'alert_id' => $this->id,
+                'alert_id' => $alertId,
                 'recipient' => $recipient,
             ]);
             return true;
         } catch (Throwable $e) {
             Log::error('AlertService: danger alert email failed', [
-                'alert_id' => $this->id,
+                'alert_id' => $alertId,
                 'recipient' => $recipient ?? null,
                 'exception' => $e->getMessage(),
                 'exception_class' => $e::class,

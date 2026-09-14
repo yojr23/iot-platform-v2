@@ -15,6 +15,7 @@ use App\Models\Sensor;
 use App\Models\AlertRule;
 use App\Models\SystemSetting;
 use App\Services\Notifications\NotificationService;
+use RuntimeException;
 
 class AlertEmailTest extends TestCase
 {
@@ -181,5 +182,23 @@ class AlertEmailTest extends TestCase
                 && ! str_contains($html, '<script>alert("xss-device")</script>')
                 && ! str_contains($html, '<img src=x onerror=alert("xss-sensor")>');
         });
+    }
+
+    public function testDangerAlertEmailReturnsFalseWhenTransportFails(): void
+    {
+        Mail::shouldReceive('send')
+            ->once()
+            ->andThrow(new RuntimeException('smtp unavailable'));
+
+        $sent = Alert::sendDangerAlertEmail([
+            'alert_id' => 42,
+            'device' => 'Device A',
+            'location' => 'Lab A',
+            'sensor' => 'Sensor A',
+            'alert_message' => 'Dangerous reading',
+            'value' => 99,
+        ]);
+
+        $this->assertFalse($sent);
     }
 }

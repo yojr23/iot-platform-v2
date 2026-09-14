@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Redis;
+use Mockery;
 use Tests\TestCase;
 
 class DeadLetterCommandsTest extends TestCase
@@ -16,14 +18,15 @@ class DeadLetterCommandsTest extends TestCase
 
     public function test_inspect_can_render_json(): void
     {
-        Redis::shouldReceive('connection')->once()->andReturnSelf();
-        Redis::shouldReceive('client')->once()->andReturn(new class
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('client')->once()->andReturn(new class
         {
             public function executeRaw(array $args): array
             {
                 return [];
             }
         });
+        Redis::shouldReceive('connection')->with('default')->once()->andReturn($connection);
 
         $this->artisan('dlq:inspect', ['--json' => true])
             ->expectsOutput('[]')
