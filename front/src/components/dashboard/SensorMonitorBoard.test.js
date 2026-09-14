@@ -2,6 +2,7 @@ import { createApp, nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@/assets/styles/lab-blue.css';
+import { alert as fixtureAlert } from '../../../.audit-e2e/fixtures.mjs';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -310,6 +311,26 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     expect(table).toBeTruthy();
     expect(table.querySelector('.lab-severity.info')).toBeTruthy();
     expect(table.textContent).toContain('Info');
+    unmount();
+  });
+
+  it('renders device and severity from the normal API-shaped alert fixture', async () => {
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const authStore = useAuthStore();
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, is_admin: false };
+    const alertsStore = useAlertsStore();
+    alertsStore.activeAlerts = [fixtureAlert(1, 'normal')];
+
+    const { el, unmount } = await mountBoard(pinia);
+
+    const compactCard = el.querySelector('.lab-alert-compact-card');
+    expect(compactCard).toBeTruthy();
+    expect(compactCard.textContent).toContain('Device 1');
+    expect(compactCard.querySelector('.lab-severity.info')).toBeTruthy();
     unmount();
   });
 });

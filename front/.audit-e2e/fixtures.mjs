@@ -45,16 +45,41 @@ function device(i, mode, sensorsPerDevice = sensorsPerDeviceFor(mode)) {
   };
 }
 
-function alert(i, mode) {
+export function alert(i, mode) {
+  const severity = i % 3 === 0 ? 'danger' : i % 2 === 0 ? 'warning' : 'info';
+  const message = mode === 'long'
+    ? `Alerta critica prolongada: ${LONG} reporto un valor fuera de rango sostenido durante mas de treinta minutos consecutivos en el sensor asociado.`
+    : `Alert message ${i}`;
+
   return {
     id: i,
-    severity: i % 3 === 0 ? 'danger' : i % 2 === 0 ? 'warning' : 'info',
-    message: mode === 'long'
-      ? `Alerta critica prolongada: ${LONG} reporto un valor fuera de rango sostenido durante mas de treinta minutos consecutivos en el sensor asociado.`
-      : `Alert message ${i}`,
+    resolved: false,
     resolved_at: null,
     created_at: new Date(Date.now() - i * 60000).toISOString(),
-    sensor: { id: i, name: `Sensor ${i}` }
+    updated_at: new Date().toISOString(),
+    sensor_reading: {
+      id: i,
+      value: 20 + i,
+      reading_time: new Date(Date.now() - i * 60000).toISOString()
+    },
+    alert_rule: {
+      id: i,
+      name: `Rule ${i}`,
+      severity,
+      message,
+      min_value: null,
+      max_value: 30
+    },
+    sensor: {
+      id: i,
+      name: `Sensor ${i}`,
+      sensor_type: { id: i, name: 'Temperature', unit: '°C' }
+    },
+    device: {
+      id: i,
+      name: `Device ${i}`,
+      lab: { id: 1, name: 'Lab A' }
+    }
   };
 }
 
