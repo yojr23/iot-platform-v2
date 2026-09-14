@@ -408,6 +408,52 @@ class DeviceApiController extends Controller
         }
     }
 
+    /**
+     * Rotate device API key. Returns new plaintext key shown once.
+     */
+    public function rotateKey(Device $device)
+    {
+        $startTime = microtime(true);
+
+        $context = [
+            'ip' => request()->ip(),
+            'path' => request()->path(),
+            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'user_id' => auth()->id(),
+            'device_id' => $device->id,
+        ];
+
+        try {
+            $newKey = $device->rotateApiKey();
+
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('Device key rotated', $context + [
+                'success' => true,
+                'duration_ms' => $durationMs,
+            ]);
+
+            return response()->json([
+                'message' => 'Clave del dispositivo rotada correctamente. Mostrar una sola vez.',
+                'api_key' => $newKey,
+                'api_key_prefix' => $device->api_key_prefix,
+                'api_key_last_rotated_at' => $device->api_key_last_rotated_at?->toIso8601String(),
+            ]);
+        } catch (Throwable $e) {
+            $durationMs = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('Device key rotation failed', $context + [
+                'exception' => $e->getMessage(),
+                'duration_ms' => $durationMs,
+            ]);
+
+            return response()->json([
+                'error' => 'Error rotating key',
+                'message' => 'Se produjo un error inesperado rotando la clave.',
+            ], 500);
+        }
+    }
+
     public function updateStatus(Request $request, Device $device)
     {
         $startTime = microtime(true);

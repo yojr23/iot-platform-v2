@@ -118,19 +118,18 @@ class AlertService
         $alertsCreated = 0;
 
         foreach ($triggeredRules as $alertRule) {
-            $alreadyExists = Alert::where('sensor_reading_id', $reading->id)
-                ->where('alert_rule_id', $alertRule->id)
-                ->exists();
-
-            if ($alreadyExists) {
-                Log::info('AlertService:createAlertsForReading duplicate skipped', [
-                    'reading_id' => $reading->id,
-                    'alert_rule_id' => $alertRule->id,
-                ]);
-                continue;
-            }
-
             DB::transaction(function () use ($reading, $alertRule, $sensor, &$alertsCreated): void {
+                // Check inside the transaction to prevent race condition with concurrent readings.
+                // The unique constraint on (sensor_reading_id, alert_rule_id) is the DB backstop.
+                $alreadyExists = Alert::where('sensor_reading_id', $reading->id)
+                    ->where('alert_rule_id', $alertRule->id)
+                    ->lockForUpdate()
+                    ->exists();
+
+                if ($alreadyExists) {
+                    return;
+                }
+
                 $alert = Alert::create([
                     'sensor_reading_id' => $reading->id,
                     'alert_rule_id' => $alertRule->id,

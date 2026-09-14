@@ -8,6 +8,7 @@
 
 **Tech Stack:** Laravel 12 / Sanctum / PHPUnit feature tests, Vue 3 / Pinia / Vue Router / Vitest.
 
+
 **Spec:** `docs/superpowers/specs/2026-09-11-role-access-control-design.md`
 
 ## Completion and evidence ledger — 2026-09-14

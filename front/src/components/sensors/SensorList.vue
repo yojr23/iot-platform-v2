@@ -38,7 +38,12 @@
             <td class="text-end">
               <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de sensor">
                 <RouterLink class="btn btn-outline-primary lab-action" :to="`/sensors/${sensor.id}`"><I name="eye" />Ver</RouterLink>
-                <button class="btn btn-outline-info lab-action" type="button" @click="$emit('export', sensor)"><I name="download" />Exportar</button>
+                <button
+                  v-if="authStore.can('sensor_reading.export')"
+                  class="btn btn-outline-info lab-action"
+                  type="button"
+                  @click="$emit('export', sensor)"
+                ><I name="download" />Exportar</button>
                 <button
                   v-if="authStore.can('sensor.update')"
                   class="btn btn-outline-warning lab-action"

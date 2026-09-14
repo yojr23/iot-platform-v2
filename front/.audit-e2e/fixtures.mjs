@@ -4,8 +4,32 @@
 const AUTH_TOKEN_KEY = 'iot-platform-v2.auth_token';
 
 const USERS = {
-  user: { id: 2, name: 'Astra User', email: 'user@astra.test', is_admin: false },
-  admin: { id: 1, name: 'Astra Admin', email: 'admin@astra.test', is_admin: true }
+  user: {
+    id: 2,
+    name: 'Astra User',
+    email: 'user@astra.test',
+    role: { code: 'user', name: 'User', level: 1 },
+    permissions: [
+      'dashboard.view', 'device.view', 'sensor.view', 'sensor_reading.view',
+      'alert.view', 'alert.resolve', 'alert_rule.view'
+    ]
+  },
+  admin: {
+    id: 1,
+    name: 'Astra Admin',
+    email: 'admin@astra.test',
+    role: { code: 'admin', name: 'Administrator', level: 2 },
+    permissions: [
+      'dashboard.view', 'device.view', 'device.create', 'device.update', 'device.delete', 'device.api_key.rotate',
+      'sensor.view', 'sensor.create', 'sensor.update', 'sensor.delete',
+      'sensor_reading.view', 'sensor_reading.export',
+      'alert.view', 'alert.resolve',
+      'alert_rule.view', 'alert_rule.create', 'alert_rule.update', 'alert_rule.delete',
+      'user.view', 'user.role.assign', 'role.view',
+      'system_setting.view', 'system_setting.update',
+      'public_monitoring.manage', 'audit.view'
+    ]
+  }
 };
 
 const LONG = 'Laboratorio de Instrumentación y Control Ambiental de Procesos Industriales Distribuidos';

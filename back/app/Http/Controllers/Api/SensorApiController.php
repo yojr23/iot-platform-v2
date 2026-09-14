@@ -99,15 +99,15 @@ class SensorApiController extends Controller
         }
 
         // Verificar API key:
-        // 1) Clave por dispositivo (preferida)
-        // 2) Clave global de compatibilidad (legacy)
-        $configuredApiKey = (string) config('app.api_key');
-        $deviceApiKey = (string) ($device?->api_key ?? '');
+        // Hash-only per-device auth via Device::authenticate().
+        // Global key retained as legacy fallback during migration period.
         $providedApiKey = (string) $validated['api_key'];
-        $matchesDeviceApiKey = $deviceApiKey !== '' && hash_equals($deviceApiKey, $providedApiKey);
+        $matchesDeviceKey = $device->authenticate($providedApiKey);
+
+        $configuredApiKey = (string) config('app.api_key');
         $matchesGlobalApiKey = $configuredApiKey !== '' && hash_equals($configuredApiKey, $providedApiKey);
 
-        if (! $matchesDeviceApiKey && ! $matchesGlobalApiKey) {
+        if (! $matchesDeviceKey && ! $matchesGlobalApiKey) {
             // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
             Log::warning('Sensor ingestion rejected: invalid API key', $context);
 
@@ -502,10 +502,29 @@ class SensorApiController extends Controller
 
         // SEC-IOT-002: header-only credential. A query-string key leaks into access logs,
         // proxies and browser history; a body key is likewise disallowed here.
-        $configuredApiKey = (string) config('app.api_key');
+        // Hash-only per-device auth: try device key first (from X-Device-Key header),
+        // fall back to global config key for legacy devices during migration.
         $providedApiKey = (string) $request->header('X-Device-Key', '');
+        if ($providedApiKey === '') {
+            Log::warning('IoT sensor listing rejected: missing API key', [
+                'ip' => $request->ip(),
+                'request_id' => $request->header('X-Request-Id'),
+            ]);
 
-        if ($configuredApiKey === '' || $providedApiKey === '' || ! hash_equals($configuredApiKey, $providedApiKey)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Try per-device auth: X-Device-Key may carry a device-specific key
+        // (matched against any active device hash). Fall back to global key.
+        $deviceMatch = Device::where('is_active', true)
+            ->where('status', true)
+            ->get()
+            ->first(fn (Device $d) => $d->authenticate($providedApiKey));
+
+        $configuredApiKey = (string) config('app.api_key');
+        $matchesGlobalKey = $configuredApiKey !== '' && hash_equals($configuredApiKey, $providedApiKey);
+
+        if (! $deviceMatch && ! $matchesGlobalKey) {
             // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
             Log::warning('IoT sensor listing rejected: invalid API key', [
                 'ip' => $request->ip(),

@@ -194,17 +194,15 @@ class DomainEventBroadcastConsumer
         }
 
         try {
+            // Step 1: claim delivery atomically (mark delivered_at under lock).
+            // Broadcast I/O is intentionally outside the lock — a slow Pusher
+            // connection must not hold a DB row lock.
             $outcome = DB::transaction(function () use ($outbox): string {
-                // Same concurrent-safe idempotency pattern as RawStreamConsumer: re-read FOR UPDATE
-                // so only one of two concurrent redeliveries wins the "undelivered -> delivered"
-                // transition.
                 $locked = DomainEventOutbox::query()->lockForUpdate()->find($outbox->id);
 
                 if (! $locked || $locked->delivered_at !== null) {
                     return 'skip';
                 }
-
-                $this->broadcastFact($locked);
 
                 $locked->forceFill(['delivered_at' => now()])->save();
 
@@ -214,6 +212,8 @@ class DomainEventBroadcastConsumer
             $this->ack($id);
 
             if ($outcome === 'delivered') {
+                // Step 2: broadcast outside the lock — best-effort; outbox row is already marked.
+                $this->broadcastFact($outbox);
                 EventPipelineMetricsService::increment('domain_broadcast_success');
             }
 

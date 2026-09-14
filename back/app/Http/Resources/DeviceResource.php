@@ -20,15 +20,10 @@ class DeviceResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'serial_number' => $this->when($isAdmin, $this->serial_number),
-            // D6: api_key is the device ingestion credential. Admin-only AND single-device-detail
-            // only — routes that bind a {device} param (show/update). Bulk list routes (/devices
-            // index) never carry the param, so the collection response omits the key entirely,
-            // keeping every device's credential out of the list-page network payload (smaller
-            // secret blast radius). The reveal/copy control lives on the detail page.
-            'api_key' => $this->when(
-                $isAdmin && $request->route('device') !== null,
-                $this->api_key
-            ),
+            // D6: device ingestion credential is hash-only. Plaintext is never stored;
+            // use POST /devices/{device}/rotate-key to obtain a new key (shown once).
+            'api_key_prefix' => $this->when($isAdmin && $request->route('device') !== null, $this->api_key_prefix),
+            'api_key_last_rotated_at' => $this->when($isAdmin && $request->route('device') !== null, $this->api_key_last_rotated_at?->toIso8601String()),
             'device_type_id' => $this->device_type_id,
             'lab_id' => $this->lab_id,
             'status' => (bool) $this->status,

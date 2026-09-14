@@ -332,7 +332,16 @@ async function runAuthTransition() {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        data: { id: 2, name: 'Astra User', email: 'user@astra.test', is_admin: false }
+        data: {
+          id: 2,
+          name: 'Astra User',
+          email: 'user@astra.test',
+          role: { code: 'user', name: 'User', level: 1 },
+          permissions: [
+            'dashboard.view', 'device.view', 'sensor.view', 'sensor_reading.view',
+            'alert.view', 'alert.resolve', 'alert_rule.view'
+          ]
+        }
       })
     });
   });

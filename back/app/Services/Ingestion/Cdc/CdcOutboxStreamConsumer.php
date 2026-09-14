@@ -75,6 +75,7 @@ class CdcOutboxStreamConsumer
         private string $domainCdcStream,
         private string $group,
         private string $deadLetterStream,
+        private ?callable $faultInjectionHook = null,
     ) {
     }
 
@@ -365,14 +366,8 @@ class CdcOutboxStreamConsumer
 
         // Ordering matters: XADD already succeeded. Commit the outbox status, then ack. A crash
         // between these two is the accepted at-least-once duplicate window (see class docblock).
-        $faultPauseMs = self::faultInjectionPauseAfterPublishMs();
-        if ($faultPauseMs > 0) {
-            Log::warning('CdcOutboxStreamConsumer: Gate 10 fault checkpoint reached after publish before ack', [
-                'stream' => $stream,
-                'stream_id' => $id,
-                'pause_ms' => $faultPauseMs,
-            ]);
-            usleep($faultPauseMs * 1000);
+        if ($this->faultInjectionHook !== null) {
+            ($this->faultInjectionHook)($stream, $id);
         }
 
         $markPublished();

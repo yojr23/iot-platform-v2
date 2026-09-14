@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\ReadingProjection;
 use App\Models\SensorReading;
-use Illuminate\Support\Facades\DB;
 
 class ReadingProvenanceService
 {
@@ -59,27 +58,4 @@ class ReadingProvenanceService
             ->get();
     }
 
-    /**
-     * Create reading with provenance in a single transaction.
-     */
-    public function createReadingWithProvenance(
-        \App\Models\Sensor $sensor,
-        float $value,
-        \Illuminate\Support\Carbon $readingTime,
-        ?int $rawSensorEventId = null,
-        string $sourceKey = 'unknown',
-        string $normalizerVersion = 'v1'
-    ): SensorReading {
-        return DB::transaction(function () use ($sensor, $value, $readingTime, $rawSensorEventId, $sourceKey, $normalizerVersion) {
-            $reading = SensorReading::create([
-                'sensor_id' => $sensor->id,
-                'value' => $value,
-                'reading_time' => $readingTime,
-            ]);
-
-            $this->createProjection($reading, $rawSensorEventId, $sourceKey, $normalizerVersion);
-
-            return $reading;
-        });
-    }
 }

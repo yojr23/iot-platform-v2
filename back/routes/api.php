@@ -74,13 +74,13 @@ Route::post('/ingestion/events', [IngestionController::class, 'store'])
 Route::get('/internal/metrics/api-performance', [InternalMetricsController::class, 'apiPerformance'])
     ->middleware('api.metrics')
     ->middleware('auth:sanctum')
-    ->middleware('can:audit.view')
+    ->middleware('permission:audit.view')
     ->middleware('throttle:api-read');
 
 Route::get('/internal/metrics/event-pipeline', [InternalMetricsController::class, 'eventPipeline'])
     ->middleware('api.metrics')
     ->middleware('auth:sanctum')
-    ->middleware('can:audit.view')
+    ->middleware('permission:audit.view')
     ->middleware('throttle:api-read');
 
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {
@@ -104,7 +104,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     Route::get('/profile', [ApiProfileController::class, 'show'])->middleware('throttle:api-read');
     Route::get('/config/runtime', [ApiConfigController::class, 'runtime'])
-        ->middleware('can:system_setting.view')
+        ->middleware('permission:system_setting.view')
         ->middleware('throttle:api-read');
     Route::get('/metrics', [ApiMetricsController::class, 'index'])->middleware('throttle:api-read');
 
@@ -113,83 +113,86 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/graph-catalog', [DashboardGraphCatalogController::class, 'index'])->middleware('throttle:api-read');
         Route::get('/preferences', [ApiDashboardPreferenceController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/preferences', [ApiDashboardPreferenceController::class, 'store'])
-            ->middleware('can:system_setting.update')
+            ->middleware('permission:system_setting.update')
             ->middleware('throttle:api-write');
     });
 
     // API para dispositivos
     Route::prefix('devices')->group(function () {
         Route::get('/status-snapshot', [DeviceApiController::class, 'statusSnapshot'])
-            ->middleware('can:device.view')
+            ->middleware('permission:device.view')
             ->middleware('throttle:api-read');
         Route::get('/', [DeviceApiController::class, 'index'])
-            ->middleware('can:device.view')
+            ->middleware('permission:device.view')
             ->middleware('throttle:api-read');
         Route::post('/', [DeviceApiController::class, 'store'])
-            ->middleware('can:device.create')
+            ->middleware('permission:device.create')
             ->middleware('throttle:api-write');
         Route::get('/{device}', [DeviceApiController::class, 'show'])
-            ->middleware('can:device.view')
+            ->middleware('permission:device.view')
             ->middleware('throttle:api-read');
         Route::put('/{device}', [DeviceApiController::class, 'update'])
-            ->middleware('can:device.update')
+            ->middleware('permission:device.update')
             ->middleware('throttle:api-write');
         Route::delete('/{device}', [DeviceApiController::class, 'destroy'])
-            ->middleware('can:device.delete')
+            ->middleware('permission:device.delete')
             ->middleware('throttle:api-write');
         Route::post('/{device}/status', [DeviceApiController::class, 'updateStatus'])
-            ->middleware('can:device.update')
+            ->middleware('permission:device.update')
+            ->middleware('throttle:api-write');
+        Route::post('/{device}/rotate-key', [DeviceApiController::class, 'rotateKey'])
+            ->middleware('permission:device.update')
             ->middleware('throttle:api-write');
     });
 
     // API para sensores
     Route::prefix('sensors')->group(function () {
         Route::get('/all/readings', [SensorApiController::class, 'allReadings'])
-            ->middleware('can:sensor.view')
+            ->middleware('permission:sensor.view')
             ->middleware('throttle:api-read');
         Route::post('/', [SensorApiController::class, 'createSensor'])
-            ->middleware('can:sensor.create')
+            ->middleware('permission:sensor.create')
             ->middleware('throttle:api-write');
         Route::get('/{sensor}/readings/export', [SensorApiController::class, 'exportReadings'])
-            ->middleware('can:sensor_reading.export')
+            ->middleware('permission:sensor_reading.export')
             ->middleware('throttle:api-read');
         Route::get('/{sensor}/readings', [SensorApiController::class, 'readings'])
-            ->middleware('can:sensor_reading.view')
+            ->middleware('permission:sensor_reading.view')
             ->middleware('throttle:api-read');
         // Authenticated bounded graph series for restricted (private) sensors — the private
         // counterpart of /api/public/graph/sensors/{sensor}/series (which 404s for restricted
         // sensors). Auth is the boundary here; no PublicGraphVisibility gate.
         Route::get('/{sensor}/series', [SensorApiController::class, 'series'])
-            ->middleware('can:sensor_reading.view')
+            ->middleware('permission:sensor_reading.view')
             ->middleware('throttle:api-read');
         // Gate 6: moved out of the anonymous surface — realtime latest-readings is an authorized
         // read now, same controller action, throttle + api.metrics preserved.
         Route::get('/{sensor}/latest-readings', [SensorApiController::class, 'latestReadings'])
-            ->middleware('can:sensor_reading.view')
+            ->middleware('permission:sensor_reading.view')
             ->middleware('api.metrics')
             ->middleware('throttle:api-read');
         // docs/implementation/graph-semantic-zones-plan.md (GRAPH-001/008): authenticated
         // projection of RuleToGraphZones, same normalizer the public bootstrap consumes.
         Route::get('/{sensor}/graph-zones', [SensorApiController::class, 'graphZones'])
-            ->middleware('can:sensor.view')
+            ->middleware('permission:sensor.view')
             ->middleware('throttle:api-read');
         Route::get('/{sensor}', [SensorApiController::class, 'show'])
-            ->middleware('can:sensor.view')
+            ->middleware('permission:sensor.view')
             ->middleware('throttle:api-read');
         Route::put('/{sensor}', [SensorApiController::class, 'updateSensor'])
-            ->middleware('can:sensor.update')
+            ->middleware('permission:sensor.update')
             ->middleware('throttle:api-write');
         Route::delete('/{sensor}', [SensorApiController::class, 'destroySensor'])
-            ->middleware('can:sensor.delete')
+            ->middleware('permission:sensor.delete')
             ->middleware('throttle:api-write');
         Route::get('/', [SensorApiController::class, 'index'])
-            ->middleware('can:sensor.view')
+            ->middleware('permission:sensor.view')
             ->middleware('throttle:api-read');
     });
 
     Route::prefix('alerts')->group(function () {
         Route::get('/', [ApiAlertController::class, 'index'])
-            ->middleware('can:alert.view')
+            ->middleware('permission:alert.view')
             ->middleware('throttle:api-read');
         // PLAN.md Stage 7 / audit.md §12a: alerts are an authorized capability, not public/guest
         // data. Moved from the top-level anonymous route into this auth:sanctum group — same
@@ -197,34 +200,34 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         // the audience changed. Kept alongside `/unresolved` (both literal segments must stay
         // ordered before the `{alert}` wildcard route below).
         Route::get('/active', [ApiAlertController::class, 'active'])
-            ->middleware('can:alert.view')
+            ->middleware('permission:alert.view')
             ->middleware('throttle:api-read');
         Route::get('/unresolved', [ApiAlertController::class, 'unresolved'])
-            ->middleware('can:alert.view')
+            ->middleware('permission:alert.view')
             ->middleware('throttle:api-read');
         // SEC-AUTH-002: token abilities become an enforced boundary, defense-in-depth in front of
         // the admin-only AlertPolicy (SEC-ALERT-001), which stays authoritative. `ability` is
         // Sanctum's any-of check; a `*` (admin) token satisfies it automatically.
         Route::post('/resolve-all', [ApiAlertController::class, 'resolveAll'])
-            ->middleware('can:alert.resolve')
+            ->middleware('permission:alert.resolve')
             ->middleware('throttle:api-write');
         Route::get('/{alert}', [ApiAlertController::class, 'show'])
-            ->middleware('can:alert.view')
+            ->middleware('permission:alert.view')
             ->middleware('throttle:api-read');
         Route::patch('/{alert}/resolve', [ApiAlertController::class, 'resolve'])
-            ->middleware('can:alert.resolve')
+            ->middleware('permission:alert.resolve')
             ->middleware('throttle:api-write');
     });
 
-    Route::middleware('can:user.view')->group(function () {
+    Route::middleware('permission:user.view')->group(function () {
         Route::get('/users', [ApiUserRoleController::class, 'index'])
             ->middleware('throttle:api-read');
         Route::patch('/users/{user}/role', [ApiUserRoleController::class, 'update'])
-            ->middleware('can:user.role.assign')
+            ->middleware('permission:user.role.assign')
             ->middleware('throttle:api-write');
     });
 
-    Route::middleware('can:role.view')->group(function () {
+    Route::middleware('permission:role.view')->group(function () {
         Route::get('/roles', [ApiRoleController::class, 'index'])
             ->middleware('throttle:api-read');
         Route::get('/roles/{role}', [ApiRoleController::class, 'show'])
@@ -234,71 +237,71 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     // Catalog reads: device.view; writes: system_setting.update
     Route::apiResource('labs', ApiLabController::class)
         ->only(['index', 'show'])
-        ->middleware('can:device.view');
+        ->middleware('permission:device.view');
     Route::apiResource('labs', ApiLabController::class)
         ->only(['store', 'update', 'destroy'])
-        ->middleware('can:system_setting.update');
+        ->middleware('permission:system_setting.update');
     Route::apiResource('sensor-types', ApiSensorTypeController::class)
         ->only(['index', 'show'])
         ->parameters(['sensor-types' => 'sensorType'])
-        ->middleware('can:device.view');
+        ->middleware('permission:device.view');
     Route::apiResource('sensor-types', ApiSensorTypeController::class)
         ->only(['store', 'update', 'destroy'])
         ->parameters(['sensor-types' => 'sensorType'])
-        ->middleware('can:system_setting.update');
+        ->middleware('permission:system_setting.update');
     Route::apiResource('device-types', ApiDeviceTypeController::class)
         ->only(['index', 'show'])
         ->parameters(['device-types' => 'deviceType'])
-        ->middleware('can:device.view');
+        ->middleware('permission:device.view');
     Route::apiResource('device-types', ApiDeviceTypeController::class)
         ->only(['store', 'update', 'destroy'])
         ->parameters(['device-types' => 'deviceType'])
-        ->middleware('can:system_setting.update');
+        ->middleware('permission:system_setting.update');
 
-    Route::prefix('config')->middleware('can:system_setting.view')->group(function () {
+    Route::prefix('config')->middleware('permission:system_setting.view')->group(function () {
         // C4 (front_rebuild_plan/MAIN_PARITY_GAPS_PLAN.md): read-only runtime introspection for
         // the admin config screen, alongside the existing /alerts, /general, /email config routes
         // in this same admin-gated group. No writes, no new middleware.
         Route::get('/system-info', [ApiConfigController::class, 'systemInfo'])->middleware('throttle:api-read');
         Route::get('/alerts', [ApiConfigController::class, 'alerts'])->middleware('throttle:api-read');
         Route::put('/alerts', [ApiConfigController::class, 'updateAlerts'])
-            ->middleware('can:system_setting.update')
+            ->middleware('permission:system_setting.update')
             ->middleware('throttle:api-write');
         Route::get('/general', [ApiConfigController::class, 'general'])->middleware('throttle:api-read');
         Route::put('/general', [ApiConfigController::class, 'updateGeneral'])
-            ->middleware('can:system_setting.update')
+            ->middleware('permission:system_setting.update')
             ->middleware('throttle:api-write');
         Route::get('/email', [ApiEmailConfigController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/email', [ApiEmailConfigController::class, 'update'])
-            ->middleware('can:system_setting.update')
+            ->middleware('permission:system_setting.update')
             ->middleware('throttle:api-write');
         Route::post('/email/test', [ApiEmailConfigController::class, 'test'])
-            ->middleware('can:system_setting.update')
+            ->middleware('permission:system_setting.update')
             ->middleware('throttle:api-write');
     });
 
     // Ruta para reglas de alerta
-    Route::prefix('alert-rules')->middleware('can:alert_rule.view')->group(function () {
+    Route::prefix('alert-rules')->middleware('permission:alert_rule.view')->group(function () {
         Route::get('/create', [ApiAlertRuleController::class, 'create'])->middleware('throttle:api-read');
         Route::get('/', [ApiAlertRuleController::class, 'index'])->middleware('throttle:api-read');
         Route::post('/', [ApiAlertRuleController::class, 'store'])
-            ->middleware('can:alert_rule.create')
+            ->middleware('permission:alert_rule.create')
             ->middleware('throttle:api-write');
         Route::post('/store', [ApiAlertRuleController::class, 'store'])
-            ->middleware('can:alert_rule.create')
+            ->middleware('permission:alert_rule.create')
             ->middleware('throttle:api-write')
             ->name('api.alert-rules.store');
         Route::get('/{alertRule}', [ApiAlertRuleController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/{alertRule}', [ApiAlertRuleController::class, 'update'])
-            ->middleware('can:alert_rule.update')
+            ->middleware('permission:alert_rule.update')
             ->middleware('throttle:api-write');
         Route::delete('/{alertRule}', [ApiAlertRuleController::class, 'destroy'])
-            ->middleware('can:alert_rule.delete')
+            ->middleware('permission:alert_rule.delete')
             ->middleware('throttle:api-write');
     });
 
     // Ruta corregida: queda como /api/devices/{device}/sensor-list (sin doble prefijo /api/api)
     Route::get('/devices/{device}/sensor-list', [DeviceApiController::class, 'sensors'])
-        ->middleware('can:device.view')
+        ->middleware('permission:device.view')
         ->middleware('throttle:api-read');
 });

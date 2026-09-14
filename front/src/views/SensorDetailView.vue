@@ -59,7 +59,13 @@
               <div class="lab-resource-actions">
                 <BaseButton type="submit" variant="outline-primary" :loading="filtering">Filtrar</BaseButton>
                 <button class="btn btn-outline-secondary" type="button" @click="resetFilter">Limpiar</button>
-                <button class="btn btn-outline-info" type="button" :disabled="exporting" @click="exportReadings">Exportar</button>
+                <button
+                  v-if="authStore.can('sensor_reading.export')"
+                  class="btn btn-outline-info"
+                  type="button"
+                  :disabled="exporting"
+                  @click="exportReadings"
+                >Exportar</button>
               </div>
             </div>
           </form>
@@ -83,7 +89,10 @@ import SensorReadingsChart from '@/components/sensors/SensorReadingsChart.vue';
 import SensorReadingsTable from '@/components/sensors/SensorReadingsTable.vue';
 import { useSensorRealtime } from '@/realtime/useSensorRealtime';
 import { useSensorReadingsStore } from '@/stores/sensorReadings';
+import { useAuthStore } from '@/stores/auth';
 import { paginatedItems } from '@/utils/formatters';
+
+const authStore = useAuthStore();
 
 const props = defineProps({
   id: {

@@ -43,20 +43,22 @@
                                 <td>{{ $user->name }}</td>
                                 <td>{{ $user->email }}</td>
                                 <td class="text-center">
-                                    <span class="badge {{ $user->is_admin ? 'bg-danger' : 'bg-secondary' }}">
-                                        {{ $user->is_admin ? 'Administrador' : 'Usuario' }}
+                                    <span class="badge {{ $user->role?->code === 'superadmin' ? 'bg-danger' : ($user->role?->code === 'admin' ? 'bg-warning' : 'bg-secondary') }}">
+                                        {{ $user->role?->name ?? 'Sin rol' }}
                                     </span>
                                 </td>
                                 <td class="text-end">
+                                    @if($user->role?->code !== 'superadmin')
                                     <form action="{{ route('config.user-roles.update', $user) }}" method="POST" class="d-inline-flex align-items-center gap-2">
                                         @csrf
                                         @method('PATCH')
-                                        <input type="hidden" name="is_admin" value="{{ $user->is_admin ? 0 : 1 }}">
-                                        <button type="submit" class="btn btn-sm {{ $user->is_admin ? 'btn-outline-secondary' : 'btn-outline-danger' }}">
-                                            <i class="fas {{ $user->is_admin ? 'fa-user-minus' : 'fa-user-shield' }} me-1"></i>
-                                            {{ $user->is_admin ? 'Revocar admin' : 'Hacer admin' }}
+                                        <input type="hidden" name="is_admin" value="{{ $user->role?->code === 'admin' ? 0 : 1 }}">
+                                        <button type="submit" class="btn btn-sm {{ $user->role?->code === 'admin' ? 'btn-outline-secondary' : 'btn-outline-danger' }}">
+                                            <i class="fas {{ $user->role?->code === 'admin' ? 'fa-user-minus' : 'fa-user-shield' }} me-1"></i>
+                                            {{ $user->role?->code === 'admin' ? 'Revocar admin' : 'Hacer admin' }}
                                         </button>
                                     </form>
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach
