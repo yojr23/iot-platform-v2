@@ -349,12 +349,24 @@ async function runAuthTransition() {
     !document.querySelector('.lab-account')
   );
 
-  await page.goto(`${BASE_URL}/login?redirect=%2Fdashboard`, { waitUntil: 'networkidle', timeout: 20000 });
+  // Follow the rendered guest control rather than forcing a document navigation. This preserves
+  // the same context in which logout cleared the token and exercises the actual user journey.
+  await page.locator('.lab-header a.lab-button[href="/login"]').click();
+  await page.waitForURL((url) => url.pathname === '/login', { timeout: 5000 });
   await page.locator('input[name="email"]').fill('user@astra.test');
   await page.locator('input[name="password"]').fill('mocked-password');
   await page.getByRole('button', { name: 'Entrar' }).click();
   await page.waitForURL((url) => url.pathname === '/dashboard', { timeout: 5000 });
   await page.waitForFunction(() => Boolean(document.querySelector('.lab-account')), { timeout: 5000 });
+  // Route navigation completes before the dashboard's graph query. Wait for the rendered
+  // monitoring surface instead of sampling an in-between loading state.
+  await page.waitForFunction(() => {
+    const monitor = document.querySelector('.lab-main-chart');
+    const chart = document.querySelector('.lab-main-chart .sensor-chart[role="img"]');
+    const ranges = document.querySelectorAll('.lab-main-chart .lab-ranges button');
+    const readings = document.querySelectorAll('.lab-main-chart .lab-readings-table tbody tr');
+    return Boolean(monitor && chart && ranges.length > 0 && readings.length > 0);
+  }, { timeout: 5000 });
 
   const afterLogin = await page.evaluate(() => {
     const account = document.querySelector('.lab-account');

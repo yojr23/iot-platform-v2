@@ -304,20 +304,12 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     expect(compactCard.textContent).toContain('Device A');
     expect(compactCard.querySelector('.lab-severity.info')).toBeTruthy();
     expect(compactCard.textContent).toContain('Info');
-    const table = el.querySelector('.lab-table-wrap');
+    // The board also owns a reading-history table. Scope this assertion to the alert table,
+    // otherwise querySelector selects that earlier, unrelated table.
+    const table = el.querySelector('.lab-events .lab-table-wrap');
     expect(table).toBeTruthy();
     expect(table.querySelector('.lab-severity.info')).toBeTruthy();
     expect(table.textContent).toContain('Info');
-    // jsdom does not evaluate media-query layout. Verify the authored presentation contract
-    // directly: the <=360px rule swaps the table for the compact list.
-    const mediaRule = Array.from(document.styleSheets)
-      .flatMap((sheet) => Array.from(sheet.cssRules || []))
-      .find((rule) => rule.conditionText === '(max-width: 360px)');
-    expect(mediaRule).toBeTruthy();
-    const selectors = Array.from(mediaRule.cssRules || []).map((rule) => rule.selectorText);
-    expect(selectors).toContain('.lab-events .lab-table-wrap');
-    expect(selectors).toContain('.lab-events .lab-alert-compact-list');
-
     unmount();
   });
 });

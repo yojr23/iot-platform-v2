@@ -84,7 +84,14 @@ function json(route, body, status = 200) {
 export async function installAuth(page, role) {
   await page.addInitScript(
     ({ key, token }) => {
-      if (token) window.localStorage.setItem(key, token);
+      // Seed the requested role once per Playwright context. An init script runs on every
+      // document navigation, so unconditional seeding would silently restore the original
+      // admin token after the auth-transition interaction logs out.
+      const seededKey = `${key}.audit-seeded`;
+      if (token && !window.sessionStorage.getItem(seededKey)) {
+        window.localStorage.setItem(key, token);
+        window.sessionStorage.setItem(seededKey, 'true');
+      }
     },
     { key: AUTH_TOKEN_KEY, token: role === 'guest' ? null : `astra-${role}-token` }
   );
@@ -111,7 +118,9 @@ export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
       return json(route, { data: USERS[role] });
     }
     if (p === '/auth/login' && method === 'POST') {
-      return json(route, { data: { token: 'astra-user-token', user: USERS.user } });
+      // AuthApiController::tokenResponse() returns this payload at the response root. The
+      // auth store reads response.data.access_token before it fetches /auth/me.
+      return json(route, { access_token: 'astra-user-token', user: USERS.user });
     }
     // Shape mirrors back/app/Http/Controllers/Api/DashboardController.php::dashboardPayload()
     // (flat total_devices/active_devices/total_sensors/active_alerts/unresolved_alerts, not
