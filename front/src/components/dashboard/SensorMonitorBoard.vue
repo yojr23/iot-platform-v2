@@ -310,18 +310,43 @@
                                                 'lab-severity',
                                                 a.alert_rule?.severity,
                                             ]"
-                                            >{{
-                                                a.alert_rule?.severity ===
-                                                "danger"
-                                                    ? "Crítica"
-                                                    : "Advertencia"
-                                            }}</span
+                                            >{{ severityLabel(a.alert_rule?.severity) }}</span
                                         >
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
+                    <ul
+                        v-if="alerts.activeAlerts.length"
+                        class="lab-alert-compact-list"
+                        aria-label="Alertas recientes"
+                    >
+                        <li
+                            v-for="a in alerts.activeAlerts.slice(0, 4)"
+                            :key="`compact-${a.id}`"
+                            class="lab-alert-compact-card"
+                        >
+                            <span class="lab-alert-compact-field">
+                                <span class="lab-alert-compact-label">Fecha y hora</span>
+                                <time :datetime="a.created_at">{{ time(a.created_at) }}</time>
+                            </span>
+                            <span class="lab-alert-compact-field">
+                                <span class="lab-alert-compact-label">Evento</span>
+                                <RouterLink :to="`/alerts/${a.id}`">
+                                    {{ a.alert_rule?.message || a.message }}
+                                </RouterLink>
+                            </span>
+                            <span class="lab-alert-compact-field">
+                                <span class="lab-alert-compact-label">Dispositivo</span>
+                                <span>{{ a.device?.name }}</span>
+                            </span>
+                            <span class="lab-alert-compact-field">
+                                <span class="lab-alert-compact-label">Severidad</span>
+                                <span :class="['lab-severity', a.alert_rule?.severity]">{{ severityLabel(a.alert_rule?.severity) }}</span>
+                            </span>
+                        </li>
+                    </ul>
                 </section>
             </div>
             <aside class="lab-inspector">

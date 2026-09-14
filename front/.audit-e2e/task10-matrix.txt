@@ -21,6 +21,10 @@
 /dashboard|user|768x1024|normal|responsive-layout|t10-dashboard-user-768
 /dashboard|admin|1440x900|normal|responsive-layout|t10-dashboard-admin-1440
 
+# Auth boundary: administrator logout followed by mocked standard-user login, at mobile and desktop widths.
+/dashboard|admin|390x844|normal|auth-transition|t10-dashboard-auth-transition-390
+/dashboard|admin|1440x900|normal|auth-transition|t10-dashboard-auth-transition-1440
+
 # Resources: empty, normal, dense/long. Tables must remain contained inside their own scrollers.
 /devices|admin|320x700|empty|responsive-layout|t10-devices-empty-320
 /devices|admin|320x700|dense|responsive-layout|t10-devices-dense-320

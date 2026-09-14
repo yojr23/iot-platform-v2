@@ -1,5 +1,10 @@
 import { createApp, nextTick } from 'vue';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('vue-chartjs', async () => {
+  const { LineChartStub } = await import('@/test/chartStub');
+  return { Line: LineChartStub };
+});
 
 async function renderChart(props) {
   const { default: SensorChart } = await import('./SensorChart.vue');
@@ -35,7 +40,16 @@ describe('SensorChart (dashboard adapter)', () => {
 
     const { el, unmount } = await renderChart({ readings });
 
-    expect(el.querySelector('[role="img"]')).toBeTruthy();
+    const chart = el.querySelector('[data-chart-stub="line"]');
+    expect(chart).toBeTruthy();
+    const wrapper = el.querySelector('.sensor-chart[role="img"]');
+    expect(wrapper).toBeTruthy();
+    expect(wrapper.getAttribute('aria-label')).toMatch(/grafica.*muestras/i);
+    expect(JSON.parse(chart.getAttribute('data-chart-series'))).toEqual([10, 30]);
+    expect(JSON.parse(chart.getAttribute('data-chart-labels'))).toEqual([
+      '1/01/2026, 5:00 a. m.',
+      '1/01/2026, 5:02 a. m.'
+    ]);
     expect(el.textContent).toContain('10');
     expect(el.textContent).toContain('30');
 

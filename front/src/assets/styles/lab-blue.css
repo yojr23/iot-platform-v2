@@ -767,6 +767,9 @@
 .lab-severity.danger:before {
     background: #dc2626;
 }
+.lab-severity.info:before {
+    background: #2563eb;
+}
 .lab-active-alerts {
     padding: 18px;
 }
@@ -1473,4 +1476,43 @@
   .lab-reading { font-size: 36px; }
   .lab-main-chart .sensor-chart { height: 220px; min-height: 200px; }
   .lab-list-select { min-height: 44px; padding-top: 7px; padding-bottom: 7px; }
+}
+.lab-events .lab-alert-compact-list { display: none; }
+@media (max-width: 360px) {
+  .lab-events .lab-table-wrap { display: none; }
+  .lab-events .lab-alert-compact-list {
+    display: grid;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .lab-events .lab-alert-compact-card {
+    display: grid;
+    gap: 7px;
+    padding: 11px;
+    border: 1px solid #dbe4f0;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+  .lab-events .lab-alert-compact-field {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    font-size: 11px;
+  }
+  .lab-events .lab-alert-compact-field > :last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+  .lab-events .lab-alert-compact-label {
+    flex: 0 0 auto;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
 }

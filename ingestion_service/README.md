@@ -51,10 +51,26 @@ Si Mosquitto no esta listo en el entorno, el modo puede fallar al conectar.
 - `INGESTION_RETRY_MAX_SECONDS` (por defecto `60`)
 - `INGESTION_DELIVERY_BATCH_SIZE` (por defecto `50`)
 
-El spool SQLite usa WAL y conserva los eventos pendientes entre reinicios. En esta
-configuracion `docker-compose.yml` no contiene un servicio de ingestion, por lo que no
-se agrega un volumen Compose; quien lo ejecute en contenedor debe montar persistentemente
-el directorio que contiene `INGESTION_SPOOL_PATH` (normalmente `/data`).
+El spool SQLite usa WAL y conserva los eventos pendientes entre reinicios. El
+`docker-compose.yml` del repositorio sí define el servicio `ingestion` y monta el volumen
+nombrado `ingestion_spool` en `/app/spool`; la ruta efectiva de Compose es
+`/app/spool/ingestion-spool.sqlite3`. Las ejecuciones fuera de Compose deben proporcionar
+su propio almacenamiento persistente para el directorio que contiene
+`INGESTION_SPOOL_PATH`.
+
+## Trabajo operativo abierto
+
+La implementación no establece todavía una política operativa completa. Siguen abiertos:
+
+- definir y operar límites de capacidad y antigüedad del spool, con alertas y procedimiento
+  de recuperación;
+- definir la configuración de TLS y la gestión/rotación de certificados de cliente para
+  MQTT y las entregas al backend;
+- instrumentar telemetría y alertas para recepción, reintentos, edad del spool y entregas;
+- documentar el runbook de DLQ, incluyendo retención, inspección, replay y eliminación.
+
+Estos puntos son trabajo operativo pendiente; este README no afirma límites, certificados,
+alertas ni retención que aún no estén definidos.
 
 ## Contrato enviado a Laravel
 

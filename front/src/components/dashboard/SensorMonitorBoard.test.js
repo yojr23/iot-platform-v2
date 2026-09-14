@@ -1,6 +1,7 @@
 import { createApp, nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import '@/assets/styles/lab-blue.css';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -47,11 +48,11 @@ const devices = [
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const mountedApps = [];
 
-async function mountBoard() {
+async function mountBoard(pinia = createPinia()) {
   const { default: SensorMonitorBoard } = await import('./SensorMonitorBoard.vue');
   const el = document.createElement('div');
   const app = createApp(SensorMonitorBoard, { devices });
-  app.use(createPinia());
+  app.use(pinia);
   // The board is mounted standalone (outside router-view); treat navigation links as
   // inert stubs while useRouter/onBeforeRouteLeave are mocked above.
   const RouterLinkStub = { template: '<a><slot /></a>' };
@@ -275,5 +276,48 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
 
     app.unmount();
     mountedApps.splice(mountedApps.indexOf(app), 1);
+  });
+
+  it('provides compact recent-alert fields while retaining the larger-screen table', async () => {
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const authStore = useAuthStore();
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, is_admin: false };
+    const alertsStore = useAlertsStore();
+    alertsStore.activeAlerts = [{
+      id: 101,
+      created_at: '2026-09-14T12:34:00.000Z',
+      message: 'Temperatura fuera de rango',
+      device: { name: 'Device A' },
+      alert_rule: { message: 'Temperatura fuera de rango', severity: 'info' }
+    }];
+
+    const { el, unmount } = await mountBoard(pinia);
+
+    const compactCard = el.querySelector('.lab-alert-compact-card');
+    expect(compactCard).toBeTruthy();
+    expect(compactCard.textContent).toContain('12:34');
+    expect(compactCard.textContent).toContain('Temperatura fuera de rango');
+    expect(compactCard.textContent).toContain('Device A');
+    expect(compactCard.querySelector('.lab-severity.info')).toBeTruthy();
+    expect(compactCard.textContent).toContain('Info');
+    const table = el.querySelector('.lab-table-wrap');
+    expect(table).toBeTruthy();
+    expect(table.querySelector('.lab-severity.info')).toBeTruthy();
+    expect(table.textContent).toContain('Info');
+    // jsdom does not evaluate media-query layout. Verify the authored presentation contract
+    // directly: the <=360px rule swaps the table for the compact list.
+    const mediaRule = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules || []))
+      .find((rule) => rule.conditionText === '(max-width: 360px)');
+    expect(mediaRule).toBeTruthy();
+    const selectors = Array.from(mediaRule.cssRules || []).map((rule) => rule.selectorText);
+    expect(selectors).toContain('.lab-events .lab-table-wrap');
+    expect(selectors).toContain('.lab-events .lab-alert-compact-list');
+
+    unmount();
   });
 });

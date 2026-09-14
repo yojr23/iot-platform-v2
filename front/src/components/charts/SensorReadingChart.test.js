@@ -1,5 +1,10 @@
 import { createApp, nextTick } from 'vue';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('vue-chartjs', async () => {
+  const { LineChartStub } = await import('@/test/chartStub');
+  return { Line: LineChartStub };
+});
 
 async function renderChart(props) {
   const { default: SensorReadingChart } = await import('./SensorReadingChart.vue');
@@ -23,7 +28,7 @@ describe('SensorReadingChart', () => {
     const { el, unmount } = await renderChart({ ...sampleViewModel, loading: true });
 
     expect(el.textContent).toContain('Cargando');
-    expect(el.querySelector('canvas')).toBeFalsy();
+    expect(el.querySelector('[data-chart-stub="line"]')).toBeFalsy();
 
     unmount();
   });
@@ -33,7 +38,7 @@ describe('SensorReadingChart', () => {
 
     expect(el.querySelector('[role="alert"]')).toBeTruthy();
     expect(el.textContent).toContain('No se pudo cargar la grafica.');
-    expect(el.querySelector('canvas')).toBeFalsy();
+    expect(el.querySelector('[data-chart-stub="line"]')).toBeFalsy();
 
     unmount();
   });
@@ -42,15 +47,19 @@ describe('SensorReadingChart', () => {
     const { el, unmount } = await renderChart({ labels: [], series: [], unit: 'C', stats: null, lastObservedAt: '' });
 
     expect(el.textContent).toContain('No hay datos suficientes para graficar.');
-    expect(el.querySelector('canvas')).toBeFalsy();
+    expect(el.querySelector('[data-chart-stub="line"]')).toBeFalsy();
 
     unmount();
   });
 
-  it('renders the chart canvas and the honest V1 stats when data is present', async () => {
+  it('renders the chart and passes the view-model to its chart adapter when data is present', async () => {
     const { el, unmount } = await renderChart(sampleViewModel);
 
-    expect(el.querySelector('canvas')).toBeTruthy();
+    const chart = el.querySelector('[data-chart-stub="line"]');
+    expect(chart).toBeTruthy();
+    expect(JSON.parse(chart.getAttribute('data-chart-labels'))).toEqual(sampleViewModel.labels);
+    expect(JSON.parse(chart.getAttribute('data-chart-series'))).toEqual(sampleViewModel.series);
+    expect(chart.getAttribute('data-chart-unit')).toContain(sampleViewModel.unit);
     expect(el.textContent).toContain('10');
     expect(el.textContent).toContain('30');
     expect(el.textContent).toContain('20');

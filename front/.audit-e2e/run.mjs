@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { installAuth, mockApi } from './fixtures.mjs';
 import { hasInteractionFailure } from './result-policy.mjs';
+import { buildAuthTransitionEvidence } from './auth-transition.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.AUDIT_BASE_URL || 'http://127.0.0.1:5173';
@@ -317,6 +318,108 @@ async function runDashboardLifecycle() {
   };
 }
 
+// Auth boundary proof: move through the rendered logout/login flow while keeping every API
+// request mocked. The second /auth/me response is deliberately standard-user shaped so the
+// store's post-login fetchUser step cannot retain the initial administrator identity.
+async function runAuthTransition() {
+  const startedAsAdministrator = await page.evaluate(() => {
+    const account = document.querySelector('.lab-account');
+    return Boolean(account && account.textContent.includes('Astra Admin'));
+  });
+
+  await page.route((url) => new URL(url).pathname === '/api/auth/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: { id: 2, name: 'Astra User', email: 'user@astra.test', is_admin: false }
+      })
+    });
+  });
+
+  await page.locator('.lab-account').click();
+  await page.waitForURL((url) => url.pathname === '/dashboard', { timeout: 5000 });
+  await page.waitForFunction(() =>
+    !window.localStorage.getItem('iot-platform-v2.auth_token') &&
+    !document.querySelector('.lab-account'),
+    { timeout: 5000 }
+  );
+  const clearedAuthenticatedState = await page.evaluate(() =>
+    !window.localStorage.getItem('iot-platform-v2.auth_token') &&
+    !document.querySelector('.lab-account')
+  );
+
+  await page.goto(`${BASE_URL}/login?redirect=%2Fdashboard`, { waitUntil: 'networkidle', timeout: 20000 });
+  await page.locator('input[name="email"]').fill('user@astra.test');
+  await page.locator('input[name="password"]').fill('mocked-password');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForURL((url) => url.pathname === '/dashboard', { timeout: 5000 });
+  await page.waitForFunction(() => Boolean(document.querySelector('.lab-account')), { timeout: 5000 });
+
+  const afterLogin = await page.evaluate(() => {
+    const account = document.querySelector('.lab-account');
+    const board = document.querySelector('[data-testid="sensor-monitor-board"]');
+    const chartList = document.querySelector('.lab-chart-list');
+    const visible = (element) => {
+      if (!element) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    const monitor = document.querySelector('.lab-main-chart');
+    const chart = document.querySelector('.lab-main-chart .sensor-chart[role="img"]');
+    const ranges = Array.from(document.querySelectorAll('.lab-main-chart .lab-ranges button'));
+    const readingRows = document.querySelectorAll('.lab-main-chart .lab-readings-table tbody tr');
+    const chartSummary = chart?.getAttribute('aria-label') || '';
+    const adminControls = [
+      ...document.querySelectorAll([
+        '.lab-actions button',
+        '.lab-chart-list .lab-card-heading button',
+        '.lab-add-row',
+        '.lab-empty button',
+        '.lab-edit-actions button',
+        '.lab-undo button'
+      ].join(', '))
+    ];
+    return {
+      standardUser: Boolean(account && account.textContent.includes('Astra User')),
+      isPrivateSpace: document.querySelector('.lab-mode')?.textContent.includes('Espacio privado') || false,
+      monitorVisible: Boolean(board && chartList && visible(monitor) && visible(chart)),
+      rangeControlsAvailable: ranges.length > 0 && ranges.every(visible),
+      populatedReadings: readingRows.length > 0 && /\bmuestras\b/i.test(chartSummary),
+      adminControls: adminControls.map((control) => control.textContent.trim()).filter(Boolean)
+    };
+  });
+
+  const adminRoutes = [
+    '/config', '/config/general', '/config/alerts', '/config/email', '/config/diagnostics',
+    '/alert-rules', '/labs', '/sensor-types', '/device-types', '/users'
+  ];
+  const adminNavigationLeakFree = await page.evaluate((routes) => {
+    const hrefs = Array.from(document.querySelectorAll('a[href]')).map((link) => link.getAttribute('href'));
+    return routes.every((route) => !hrefs.includes(route));
+  }, adminRoutes) && await (async () => {
+    for (const adminRoute of adminRoutes) {
+      // eslint-disable-next-line no-await-in-loop
+      await page.goto(`${BASE_URL}${adminRoute}`, { waitUntil: 'networkidle', timeout: 20000 });
+      if (new URL(page.url()).pathname === adminRoute) return false;
+    }
+    await page.goto(`${BASE_URL}/dashboard`, { waitUntil: 'networkidle', timeout: 20000 });
+    return true;
+  })();
+
+  return buildAuthTransitionEvidence({
+    startedAsAdministrator,
+    clearedAuthenticatedState,
+    establishedStandardUser: afterLogin.standardUser && afterLogin.isPrivateSpace,
+    monitorVisible: afterLogin.monitorVisible,
+    rangeControlsAvailable: afterLogin.rangeControlsAvailable,
+    populatedReadings: afterLogin.populatedReadings,
+    adminControlsAbsent: afterLogin.adminControls.length === 0,
+    adminNavigationLeakFree
+  });
+}
+
 // Gate 9 responsive assertions that are hard to infer from a screenshot alone. The checks are
 // recorded for both mocked and live-browser runs; their provenance is in the matrix/report.
 async function inspectResponsiveLayout() {
@@ -434,6 +537,7 @@ try {
   else if (interact === 'diagnose-overflow') interaction = await diagnoseOverflow();
   else if (interact === 'add-monitors') interaction = await addMonitors(2);
   else if (interact === 'dashboard-lifecycle') interaction = await runDashboardLifecycle();
+  else if (interact === 'auth-transition') interaction = await runAuthTransition();
   else if (interact === 'responsive-layout') interaction = await inspectResponsiveLayout();
 } catch (err) {
   interaction = { error: String(err) };

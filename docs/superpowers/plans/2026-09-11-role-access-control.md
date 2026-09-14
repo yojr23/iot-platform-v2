@@ -4,11 +4,23 @@
 
 **Goal:** Make metrics available to every authenticated user while restricting every product mutation except alert resolution to administrators.
 
-**Architecture:** Keep the existing boolean `User::is_admin` and `admin` middleware as the sole authorization source. Move only metric reads into authenticated route groups; put inherited configuration and dashboard-preference writes behind `admin`. The Vue client mirrors those rules by making Metrics visible to all authenticated sessions and showing persistent dashboard-personalization controls only to administrators; it never substitutes for backend authorization.
+**Architecture:** Keep the existing boolean `User::is_admin` and `admin` middleware as the sole authorization source. Move only metric reads into authenticated route groups; keep configuration writes and dashboard-preference writes/persistence administrator-only behind `admin`, while preserving authenticated preference reads. The Vue client mirrors those rules by making Metrics visible to all authenticated sessions and showing persistent dashboard-personalization controls only to administrators; it never substitutes for backend authorization.
 
 **Tech Stack:** Laravel 12 / Sanctum / PHPUnit feature tests, Vue 3 / Pinia / Vue Router / Vitest.
 
 **Spec:** `docs/superpowers/specs/2026-09-11-role-access-control-design.md`
+
+## Completion and evidence ledger — 2026-09-14
+
+Status source/date: repository source inspection against planning base SHA `26aedcfb05ecda2044f68d7732853cdc12a85140`. The implementation portions of Tasks 1–3 are source-backed and present: authenticated metrics reads, administrator-only configuration/preferences, authenticated metrics navigation, and the `canManageDashboard` capability gate. Runtime test, build, and browser steps were not executed in this session and remain unchecked/unverified. The audit-supplied CI/browser records are retained as reported evidence, not rerun evidence here.
+
+| Scope | Status | Evidence boundary |
+|---|---|---|
+| Tasks 1–3 implementation | Complete by source inspection | Routes/components/composable inspected; no runtime claim. |
+| Tasks 1–3 tests and build | Unverified | Not executed in this session. |
+| Task 4 backend/frontend verification | Unverified | Not executed in this session. |
+| Task 4 rendered browser QA | Unverified | No live browser session in this session. |
+| Commit/diff verification steps | Unexecuted | No commit made; repository changes remain subject to the shared worktree. |
 
 ## Global Constraints
 
