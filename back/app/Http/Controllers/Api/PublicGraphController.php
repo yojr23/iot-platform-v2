@@ -34,6 +34,8 @@ class PublicGraphController extends Controller
 {
     private const TIMESTAMP_FORMAT = 'Y-m-d\TH:i:s\Z';
 
+    private const MAX_GRAPH_WINDOW_SECONDS = 24 * 60 * 60;
+
     public function bootstrap(PublicGraphVisibility $visibility, RuleToGraphZones $zones): JsonResponse
     {
         $startTime = microtime(true);
@@ -166,9 +168,10 @@ class PublicGraphController extends Controller
         $from = CarbonImmutable::createFromFormat(self::TIMESTAMP_FORMAT, $validated['from'], 'UTC') ?: null;
         $to = CarbonImmutable::createFromFormat(self::TIMESTAMP_FORMAT, $validated['to'], 'UTC') ?: null;
 
-        if (! $from || ! $to || ! $from->lessThan($to)) {
+        if (! $from || ! $to || ! $from->lessThan($to)
+            || $from->diffInSeconds($to) > self::MAX_GRAPH_WINDOW_SECONDS) {
             throw ValidationException::withMessages([
-                'range' => 'The graph window requires from < to using YYYY-MM-DDTHH:mm:ssZ.',
+                'range' => 'The graph window must be between 1 second and 24 hours using YYYY-MM-DDTHH:mm:ssZ.',
             ]);
         }
 

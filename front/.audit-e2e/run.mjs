@@ -261,6 +261,121 @@ async function addMonitors(count) {
   return { overflowAfter, headers };
 }
 
+// Gate 9: exercise the workspace mutations through the rendered UI. This is deliberately kept
+// in the shared runner so matrix rows remain declarative rather than growing one-off scripts.
+async function runDashboardLifecycle() {
+  const items = page.locator('.lab-list-item');
+  const before = await items.count();
+  const add = page.getByRole('button', { name: 'Agregar gráfica' }).first();
+  await add.click();
+
+  const dialog = page.locator('dialog.lab-dialog');
+  await dialog.waitFor({ state: 'visible', timeout: 5000 });
+  const selects = dialog.locator('select');
+  // The initial normal fixture preloads the first four catalog sensors. Pick the final device's
+  // first sensor so this exercises a real add, rather than merely selecting an existing widget.
+  const deviceValues = await selects.nth(0).locator('option').evaluateAll((options) => options.map((option) => option.value));
+  const deviceId = deviceValues.at(-1);
+  if (!deviceId) throw new Error('Dashboard lifecycle fixture did not expose an addable device.');
+  await selects.nth(0).selectOption(deviceId);
+  const sensorValues = await selects.nth(1).locator('option').evaluateAll((options) => options.map((option) => option.value));
+  const sensorId = sensorValues.at(0);
+  if (!sensorId) throw new Error(`Dashboard lifecycle fixture device ${deviceId} did not expose an addable sensor.`);
+  await selects.nth(1).selectOption(sensorId);
+  await dialog.getByRole('button', { name: 'Agregar gráfica' }).click();
+  await dialog.waitFor({ state: 'hidden', timeout: 5000 });
+
+  const afterAdd = await items.count();
+  const selected = items.nth(afterAdd - 1).getByRole('button');
+  await selected.click();
+  const selectedPressed = await selected.getAttribute('aria-pressed');
+
+  await page.getByRole('button', { name: 'Editar' }).click();
+  const remove = page.getByRole('button', { name: /^Quitar / }).last();
+  await remove.click();
+  const afterRemove = await items.count();
+  const undo = page.getByRole('button', { name: 'Deshacer' });
+  const undoVisible = await undo.isVisible().catch(() => false);
+  if (undoVisible) await undo.click();
+  await page.waitForTimeout(100);
+  const afterUndo = await items.count();
+
+  return {
+    before,
+    afterAdd,
+    selectedPressed,
+    afterRemove,
+    undoVisible,
+    afterUndo,
+    pass:
+      afterAdd === before + 1 &&
+      selectedPressed === 'true' &&
+      afterRemove === afterAdd - 1 &&
+      undoVisible &&
+      afterUndo === afterAdd
+  };
+}
+
+// Gate 9 responsive assertions that are hard to infer from a screenshot alone. The checks are
+// recorded for both mocked and live-browser runs; their provenance is in the matrix/report.
+async function inspectResponsiveLayout() {
+  return page.evaluate(() => {
+    const width = document.documentElement.clientWidth;
+    const height = window.innerHeight;
+    const rect = (el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+    };
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    };
+    const toolbarActions = Array.from(document.querySelectorAll('.lab-toolbar .lab-actions > button'))
+      .filter(visible)
+      .map((el) => ({ text: el.textContent.trim(), ...rect(el), insideViewport: rect(el).left >= 0 && rect(el).right <= width + 1 }));
+    const controls = Array.from(document.querySelectorAll('button, a.lab-button, select, input'))
+      .filter(visible)
+      .map((el) => ({ text: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 60), ...rect(el) }));
+    const undersizedControls = controls.filter((control) => control.width < 44 || control.height < 44);
+    const bottomNav = document.querySelector('.lab-bottom');
+    const bottomNavStyle = bottomNav ? getComputedStyle(bottomNav) : null;
+    const tables = Array.from(document.querySelectorAll('.lab-table-wrap')).map((wrap) => ({
+      ...rect(wrap),
+      clientWidth: wrap.clientWidth,
+      scrollWidth: wrap.scrollWidth,
+      contained: wrap.getBoundingClientRect().right <= width + 1
+    }));
+    const expanded = Array.from(document.querySelectorAll('.lab-main-chart')).filter(visible).length;
+    const canvases = Array.from(document.querySelectorAll('canvas')).filter(visible).map((canvas) => ({
+      width: canvas.width,
+      height: canvas.height,
+      clientWidth: canvas.clientWidth,
+      clientHeight: canvas.clientHeight,
+      has2dContext: Boolean(canvas.getContext('2d'))
+    }));
+
+    return {
+      documentOverflow: document.documentElement.scrollWidth > width,
+      toolbarActions,
+      toolbarActionsInsideViewport: toolbarActions.every((action) => action.insideViewport),
+      controlsCount: controls.length,
+      undersizedControls,
+      bottomNav: bottomNav ? {
+        ...rect(bottomNav),
+        position: bottomNavStyle.position,
+        paddingBottom: bottomNavStyle.paddingBottom,
+        insideViewport: rect(bottomNav).bottom <= height + 1
+      } : null,
+      tables,
+      tableScrollersContained: tables.every((table) => table.contained),
+      expanded,
+      mobileSingleExpanded: width > 767 || expanded === 1,
+      canvases,
+      populatedChartsRender: canvases.length > 0 && canvases.every((canvas) => canvas.clientWidth > 0 && canvas.clientHeight > 0 && canvas.has2dContext)
+    };
+  });
+}
+
 async function diagnoseOverflow() {
   return page.evaluate(() => {
     const docWidth = document.documentElement.clientWidth;
@@ -317,6 +432,8 @@ try {
   else if (interact === 'measure-buttons') interaction = { buttons: await measureButtons() };
   else if (interact === 'diagnose-overflow') interaction = await diagnoseOverflow();
   else if (interact === 'add-monitors') interaction = await addMonitors(2);
+  else if (interact === 'dashboard-lifecycle') interaction = await runDashboardLifecycle();
+  else if (interact === 'responsive-layout') interaction = await inspectResponsiveLayout();
 } catch (err) {
   interaction = { error: String(err) };
 }

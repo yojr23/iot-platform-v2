@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AlertController as ApiAlertController;
 use App\Http\Controllers\Api\AlertRuleController as ApiAlertRuleController;
 use App\Http\Controllers\Api\ConfigController as ApiConfigController;
 use App\Http\Controllers\Api\DashboardController as ApiDashboardController;
+use App\Http\Controllers\Api\DashboardGraphCatalogController;
 use App\Http\Controllers\Api\DashboardPreferenceController as ApiDashboardPreferenceController;
 use App\Http\Controllers\Api\DeviceTypeController as ApiDeviceTypeController;
 use App\Http\Controllers\Api\EmailConfigController as ApiEmailConfigController;
@@ -92,6 +93,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/metrics', [ApiDashboardController::class, 'metrics'])->middleware('throttle:api-read');
+        Route::get('/graph-catalog', [DashboardGraphCatalogController::class, 'index'])->middleware('throttle:api-read');
         Route::get('/preferences', [ApiDashboardPreferenceController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/preferences', [ApiDashboardPreferenceController::class, 'store'])
             ->middleware(['admin', 'throttle:api-write']);

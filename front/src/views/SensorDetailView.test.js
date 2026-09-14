@@ -20,6 +20,13 @@ vi.mock('@/realtime/useSensorRealtime', () => ({
   RECOVERY_WINDOW_MS: 5 * 60 * 1000
 }));
 
+// These tests exercise the view's live-tail/table projection, not Chart.js pixels.
+// Keep the pixel/render contract in SensorReadingChart.test.js and avoid jsdom's
+// unsupported canvas context warning here.
+vi.mock('@/components/sensors/SensorReadingsChart.vue', () => ({
+  default: { template: '<div data-testid="sensor-readings-chart-stub" />' }
+}));
+
 const getSensor = vi.fn(() => Promise.resolve({ data: { id: 7, name: 'S7', unit: 'C' } }));
 let latestDeferred;
 const getSensorLatestReadings = vi.fn(() => latestDeferred.promise);

@@ -339,29 +339,26 @@ class PublicGraphControllerTest extends TestCase
         $this->assertCount(1, $sensorIds);
     }
 
-    /**
-     * SEC-PUBLIC-001: a window longer than PublicGraphSeriesService::MAX_WINDOW_HOURS (24h) is
-     * clamped server-side. The response must say so instead of silently serving a shorter window
-     * than asked for.
-     */
-    public function test_series_reports_max_window_truncation_when_requested_window_exceeds_the_cap(): void
+    public function test_series_rejects_a_window_longer_than_24_hours_at_the_http_boundary(): void
     {
         $sensor = $this->publicSensor();
 
-        $response = $this->getJson(
+        $this->getJson(
             "/api/public/graph/sensors/{$sensor->id}/series?from=2026-09-01T00:00:00Z&to=2026-09-04T00:00:00Z"
-        );
+        )->assertStatus(422)->assertJsonValidationErrors('range');
+    }
 
-        $response->assertOk()
-            ->assertJsonPath('truncated', true)
-            ->assertJsonPath('truncation_reason', 'max_window')
-            ->assertJsonPath('requested_window.from', '2026-09-01T00:00:00Z')
-            ->assertJsonPath('requested_window.to', '2026-09-04T00:00:00Z')
-            ->assertJsonPath('effective_window.from', '2026-09-01T00:00:00Z');
+    public function test_series_accepts_a_window_exactly_24_hours_wide(): void
+    {
+        $sensor = $this->publicSensor();
 
-        $effectiveTo = CarbonImmutable::parse($response->json('effective_window.to'));
-        $requestedTo = CarbonImmutable::parse($response->json('requested_window.to'));
-        $this->assertTrue($effectiveTo->lessThan($requestedTo));
+        $this->getJson(
+            "/api/public/graph/sensors/{$sensor->id}/series?from=2026-09-01T00:00:00Z&to=2026-09-02T00:00:00Z"
+        )->assertOk()
+            ->assertJsonPath('window.from', '2026-09-01T00:00:00Z')
+            ->assertJsonPath('window.to', '2026-09-02T00:00:00Z')
+            ->assertJsonPath('effective_window.from', '2026-09-01T00:00:00Z')
+            ->assertJsonPath('effective_window.to', '2026-09-02T00:00:00Z');
     }
 
     /**

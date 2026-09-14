@@ -70,6 +70,54 @@ jobs:
       - name: Static no-polling gate
         run: npm run audit:no-polling:source
 
+  # Deliberately mocked API fixtures: this is a responsive-regression gate, not evidence for the
+  # live Pusher/WebSocket deployment proof. The latter needs its own real-stack closure workflow.
+  frontend-responsive-e2e-mocked:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: front
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run mocked responsive E2E matrix
+        run: |
+          npm run dev:demo -- --port 5173 > /tmp/iot-vite.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:5173/dashboard >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:5173/dashboard >/dev/null
+          npm run audit:gate9
+      - name: Upload mocked responsive artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mocked-responsive-e2e
+          path: front/.audit-e2e/results/t10-*
+
+  ingestion:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ingestion_service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ingestion_service/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
   architecture:
     runs-on: ubuntu-latest
     steps:

@@ -1,4 +1,4 @@
-import { createApp, nextTick } from 'vue';
+import { createApp, h, nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,10 +15,19 @@ const getDashboardMetrics = vi.fn(() => Promise.resolve({
 const getGraphBootstrap = vi.fn(() => Promise.resolve({
   data: { version: 1, default_sensor_id: null, devices: [] }
 }));
-const getDevices = vi.fn(() => Promise.resolve({
-  data: { data: [{ id: 9, name: 'Authenticated device', status: true, is_active: true }] }
+const getAuthenticatedGraphCatalog = vi.fn(() => Promise.resolve({
+  data: {
+    version: 1,
+    default_sensor_id: 17,
+    devices: [{
+      id: 9,
+      name: 'Authenticated device',
+      sensors: [{ id: 17, name: 'Restricted sensor', unit: '°C', bands: [], boundaries: [] }]
+    }]
+  }
 }));
 const getActiveAlerts = vi.fn(() => Promise.resolve({ data: { alerts: [], count: 0 } }));
+const boardDevices = vi.fn();
 
 vi.mock('@/api/dashboard', () => ({
   getDashboardMetrics: (...args) => getDashboardMetrics(...args),
@@ -27,11 +36,8 @@ vi.mock('@/api/dashboard', () => ({
 }));
 
 vi.mock('@/api/graph', () => ({
-  getGraphBootstrap: (...args) => getGraphBootstrap(...args)
-}));
-
-vi.mock('@/api/devices', () => ({
-  getDevices: (...args) => getDevices(...args)
+  getGraphBootstrap: (...args) => getGraphBootstrap(...args),
+  getAuthenticatedGraphCatalog: (...args) => getAuthenticatedGraphCatalog(...args)
 }));
 
 vi.mock('@/api/alerts', () => ({
@@ -43,7 +49,16 @@ vi.mock('@/api/alerts', () => ({
 }));
 
 vi.mock('@/components/dashboard/SensorMonitorBoard.vue', () => ({
-  default: { template: '<section data-testid="sensor-monitor-board" />' }
+  default: {
+    props: { devices: { type: Array, required: true } },
+    setup(props) {
+      boardDevices(props.devices);
+      return () => h('section', {
+        'data-testid': 'sensor-monitor-board',
+        'data-device-ids': props.devices.map((device) => device.id).join(',')
+      });
+    }
+  }
 }));
 
 vi.mock('@/components/dashboard/DeviceStatusList.vue', () => ({
@@ -116,6 +131,7 @@ describe('DashboardView guest alert containment', () => {
 
     expect(getDashboardMetrics).not.toHaveBeenCalled();
     expect(getGraphBootstrap).toHaveBeenCalledTimes(1);
+    expect(getAuthenticatedGraphCatalog).not.toHaveBeenCalled();
     // Protected widgets are authenticated-only and must be absent from the guest surface.
     expect(el.querySelector('[data-testid="device-status-list"]')).toBeFalsy();
     expect(el.querySelector('[data-testid="recent-readings-table"]')).toBeFalsy();
@@ -123,13 +139,20 @@ describe('DashboardView guest alert containment', () => {
     unmount();
   });
 
-  it('uses the shared graph catalog without fetching unrelated global metrics in private mode', async () => {
+  it('passes the authenticated graph catalog including a restricted sensor to the actual board prop', async () => {
     const { el, unmount } = await mountDashboardView({ authenticated: true });
 
     expect(getDashboardMetrics).not.toHaveBeenCalled();
-    expect(getDevices).toHaveBeenCalledOnce();
     expect(getGraphBootstrap).toHaveBeenCalledOnce();
+    expect(getAuthenticatedGraphCatalog).toHaveBeenCalledOnce();
     expect(el.querySelector('[data-testid="sensor-monitor-board"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="sensor-monitor-board"]')?.dataset.deviceIds).toBe('9');
+    expect(boardDevices).toHaveBeenLastCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        id: 9,
+        sensors: [expect.objectContaining({ id: 17, name: 'Restricted sensor' })]
+      })
+    ]));
 
     unmount();
   });

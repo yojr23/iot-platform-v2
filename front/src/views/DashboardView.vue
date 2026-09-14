@@ -19,10 +19,8 @@
 </template>
 <script setup>
 import { onBeforeUnmount, ref, watch } from "vue";
-import { getGraphBootstrap } from "@/api/graph";
-import { getDevices } from "@/api/devices";
+import { getAuthenticatedGraphCatalog, getGraphBootstrap } from "@/api/graph";
 import { getApiErrorMessage, unwrapData } from "@/api/client";
-import { paginatedItems } from "@/utils/formatters";
 import SensorMonitorBoard from "@/components/dashboard/SensorMonitorBoard.vue";
 import { useAuthStore } from "@/stores/auth";
 const auth = useAuthStore(),
@@ -42,20 +40,16 @@ async function load() {
         if (g !== generation) return;
         const publicDevices = unwrapData(graphPayload)?.devices || [];
 
-        // DOCX RF01: authenticated users can see authorized restricted sensors.
-        // Merge public bootstrap devices with the full authorized device catalog.
+        // Authenticated users supplement the public bootstrap with the complete graph-only
+        // catalog, which includes restricted sensors without loading the general device payload.
         let allDevices = publicDevices;
         if (auth.isAuthenticated) {
             try {
-                const authResponse = await getDevices({ signal: controller.signal });
+                const authResponse = await getAuthenticatedGraphCatalog({ signal: controller.signal });
                 if (g === generation) {
-                    // getDevices returns a paginator body ({data:[…], current_page,…}); use the
-                    // shared helper. Previously double-unwrapped (unwrapData already returns the
-                    // inner array, then .data → undefined → []), silently dropping the authorized
-                    // catalog so restricted sensors never showed for authenticated users.
-                    const authDevices = paginatedItems(authResponse);
-                    // Merge: auth devices take precedence (they include restricted sensors),
-                    // public devices fill gaps for sensors not in the auth catalog.
+                    const authDevices = unwrapData(authResponse)?.devices || [];
+                    // Authenticated graph entries take precedence; retain a public entry only if
+                    // it is absent from the authorized catalog during a transient rollout.
                     const authMap = new Map(authDevices.map((d) => [String(d.id), d]));
                     const merged = [...authDevices];
                     for (const pd of publicDevices) {

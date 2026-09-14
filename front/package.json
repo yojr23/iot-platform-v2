@@ -14,6 +14,7 @@
     "test:unit": "vitest run",
     "test:realtime": "vitest run src/realtime",
     "audit:baseline": "node .audit-e2e/run-all.mjs",
+    "audit:gate9": "node .audit-e2e/run-all.mjs --matrix=task10-matrix.txt --summary=task10-summary.json",
     "audit:events": "node .audit-e2e/event-injection.mjs",
     "audit:network": "node .audit-e2e/network-assertion.mjs",
     "audit:network:live": "node .audit-e2e/network-assertion-live.mjs",

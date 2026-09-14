@@ -193,6 +193,8 @@
     gap: 10px;
     color: #334155;
     font-size: 12px !important;
+    min-width: 44px;
+    min-height: 44px;
 }
 .lab-avatar {
     width: 30px;
@@ -249,7 +251,8 @@
     border: 1px solid #d6e1f0;
     border-radius: 6px;
     background: white;
-    min-height: 38px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 8px 13px;
     color: #2563eb;
     display: inline-flex;
@@ -347,6 +350,9 @@
     max-width: 45%;
     min-width: 0;
 }
+.lab-chart-selectors select {
+    min-height: 44px;
+}
 .lab-app select {
     border: 1px solid #d6e1f0;
     border-radius: 6px;
@@ -356,7 +362,7 @@
     width: 100%;
     font-size: 12px;
     font-weight: 550;
-    min-height: 38px;
+    min-height: 44px;
 }
 .lab-chart-caption {
     margin-left: auto;
@@ -438,7 +444,8 @@
     font-size: 11px;
     padding: 4px 12px;
     color: #64748b;
-    min-height: 28px;
+    min-width: 44px;
+    min-height: 44px;
 }
 .lab-ranges button.active {
     background: #2563eb;
@@ -543,6 +550,8 @@
     border-radius: 5px;
     padding: 4px 8px;
     font-size: 10px !important;
+    min-width: 44px;
+    min-height: 44px;
 }
 .lab-list-item {
     border-radius: 5px;
@@ -843,8 +852,8 @@
     background: white;
     border: 1px solid #e2e8f0;
     border-radius: 4px;
-    min-width: 36px;
-    height: 32px;
+    min-width: 44px;
+    min-height: 44px;
     color: #64748b;
 }
 .lab-edit-actions button:last-child {
@@ -862,6 +871,8 @@
     border: 0;
     background: none;
     color: #2563eb;
+    min-width: 44px;
+    min-height: 44px;
 }
 .lab-dialog {
     border: 1px solid #e2e8f0;
@@ -902,6 +913,8 @@
     background: transparent;
     padding: 6px;
     color: #475569;
+    min-width: 44px;
+    min-height: 44px;
 }
 .lab-empty {
     padding: 55px 24px;
@@ -943,7 +956,7 @@
     left: 0;
     right: 0;
     z-index: 30;
-    min-height: 28px;
+    min-height: 44px;
     padding: 5px 16px;
     background: #eef2f7;
     border-top: 1px solid #e2e8f0;
@@ -961,6 +974,8 @@
     font-size: 10px;
     font-weight: 600;
     text-decoration: underline;
+    min-width: 44px;
+    min-height: 44px;
 }
 .lab-skip {
     position: fixed;
@@ -1359,7 +1374,7 @@
         min-height: 64px;
     }
     .lab-app:has(.lab-demo-bar) .lab-bottom {
-        bottom: 28px;
+        bottom: 44px;
     }
     .lab-bottom a {
         display: flex;
@@ -1387,7 +1402,7 @@
     }
     .lab-menu {
         padding: 0;
-        min-width: 24px;
+        min-width: 44px;
     }
     .lab-skip:focus {
         left: 10px;

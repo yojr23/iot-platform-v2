@@ -38,8 +38,6 @@ final class PublicGraphSeriesService
 {
     private const DEFAULT_SAMPLE_LIMIT = 5000;
 
-    private const MAX_WINDOW_HOURS = 24;
-
     /**
      * @return array{
      *     window: array{from:string,to:string},
@@ -73,17 +71,6 @@ final class PublicGraphSeriesService
             'window_hours' => $windowHours,
         ]);
 
-        $windowClamped = $windowHours > self::MAX_WINDOW_HOURS;
-
-        if ($windowClamped) {
-            Log::warning('PublicGraphSeriesService:series window clamped', [
-                'sensor_id' => $sensor->id,
-                'original_window_hours' => $windowHours,
-                'clamped_to_hours' => self::MAX_WINDOW_HOURS,
-            ]);
-            $toLocal = $fromLocal->addHours(self::MAX_WINDOW_HOURS);
-        }
-
         $fromLocalStr = $fromLocal->format('Y-m-d H:i:s');
         $toLocalStr = $toLocal->format('Y-m-d H:i:s');
 
@@ -100,16 +87,10 @@ final class PublicGraphSeriesService
         $sampleTruncated = $fetched->count() > $sampleLimit;
         $readings = $sampleTruncated ? $fetched->take($sampleLimit) : $fetched;
 
-        // Overall truncation covers BOTH ways the served window can differ from what was asked
-        // for: the max-window clamp (time range shortened) and the sample-limit cap (time range
-        // kept, row count capped). `truncation_reason` disambiguates which one a client hit;
-        // `max_window` takes priority since it also implies fewer rows were even queried.
-        $truncated = $windowClamped || $sampleTruncated;
-        $truncationReason = match (true) {
-            $windowClamped => 'max_window',
-            $sampleTruncated => 'sample_limit',
-            default => null,
-        };
+        // Oversized windows are rejected by the HTTP controllers. This service never silently
+        // changes the requested time range; only the sample ceiling can truncate a response.
+        $truncated = $sampleTruncated;
+        $truncationReason = $sampleTruncated ? 'sample_limit' : null;
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         Log::info('PublicGraphSeriesService:series completed', [

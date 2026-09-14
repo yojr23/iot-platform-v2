@@ -22,6 +22,10 @@ export function getGraphBootstrap({ signal } = {}) {
   return apiClient.get('/public/graph/bootstrap', { signal });
 }
 
+export function getAuthenticatedGraphCatalog(config = {}) {
+  return apiClient.get('/dashboard/graph-catalog', config);
+}
+
 export function getGraphSeries(sensorId, { from, to, signal } = {}) {
   return apiClient.get(`/public/graph/sensors/${sensorId}/series`, {
     params: { from: toWindowParam(from), to: toWindowParam(to) },

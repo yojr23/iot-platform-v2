@@ -2,6 +2,12 @@ import { createApp, nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  onBeforeRouteLeave: vi.fn(),
+  RouterLink: { template: '<a><slot /></a>' }
+}));
+
 // PLAN.md Stage 6 — "Delete in the same cutover": pollTimer / startPolling / stopPolling /
 // refreshVisibleMonitors / refreshMonitor / the pollInterval prop are gone; this is the
 // no-sensor-polling assertion the task calls for at the component level (the store/composable
@@ -46,6 +52,11 @@ async function mountBoard() {
   const el = document.createElement('div');
   const app = createApp(SensorMonitorBoard, { devices });
   app.use(createPinia());
+  // The board is mounted standalone (outside router-view); treat navigation links as
+  // inert stubs while useRouter/onBeforeRouteLeave are mocked above.
+  const RouterLinkStub = { template: '<a><slot /></a>' };
+  app.component('RouterLink', RouterLinkStub);
+  app.component('router-link', RouterLinkStub);
   app.mount(el);
   mountedApps.push(app);
   await nextTick();
@@ -226,8 +237,9 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     unmount();
   });
 
-  it('hides admin controls from standard users', async () => {
-    // Mount with authenticated non-admin user
+  it('allows an authenticated standard user to manage their own dashboard widgets', async () => {
+    // Dashboard layout is user-owned. This must not be confused with administration of
+    // devices, sensors, or alert rules, which remains admin-only elsewhere in the app.
     const { useAuthStore } = await import('@/stores/auth');
     const { useAlertsStore } = await import('@/stores/alerts');
     const pinia = createPinia();
@@ -240,25 +252,30 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     const el = document.createElement('div');
     const app = createApp(SensorMonitorBoard, { devices });
     app.use(pinia);
+    const RouterLinkStub = { template: '<a><slot /></a>' };
+    app.component('RouterLink', RouterLinkStub);
+    app.component('router-link', RouterLinkStub);
     app.mount(el);
     mountedApps.push(app);
     await nextTick();
     await flush();
     await nextTick();
 
-    // Editar button should not be visible — look for button containing "Editar" text specifically
+    // A standard signed-in user can manage their own layout.
     const allTextButtons = el.querySelectorAll('.lab-text-button');
     const editButton = Array.from(allTextButtons).find(btn => btn.textContent.trim() === 'Editar');
-    expect(editButton).toBeUndefined();
+    expect(editButton).toBeTruthy();
 
-    // Save button with save-state indicator should not be visible
+    // The save state and action belong to the authenticated user's own preference record.
     const saveIndicator = el.querySelector('.lab-save-state');
-    expect(saveIndicator).toBeNull();
+    expect(saveIndicator).toBeTruthy();
 
-    // Guardar button should not be visible
+    // Both add entry points stay exposed for this user.
     const allButtons = el.querySelectorAll('button');
     const saveBtn = Array.from(allButtons).find(btn => btn.textContent.includes('Guardar'));
-    expect(saveBtn).toBeUndefined();
+    const addBtn = Array.from(allButtons).find(btn => btn.textContent.includes('Agregar gráfica'));
+    expect(saveBtn).toBeTruthy();
+    expect(addBtn).toBeTruthy();
 
     app.unmount();
     mountedApps.splice(mountedApps.indexOf(app), 1);

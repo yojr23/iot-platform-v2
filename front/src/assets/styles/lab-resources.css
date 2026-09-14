@@ -93,7 +93,8 @@
 }
 .lab-resource-page .lab-action {
     white-space: nowrap;
-    min-height: 34px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 7px 10px;
 }
 .lab-resource-page .lab-action > svg {
@@ -102,7 +103,7 @@
 }
 .lab-resource-page .lab-status-control {
     min-width: 96px;
-    min-height: 36px;
+    min-height: 44px;
     white-space: nowrap;
     padding-inline: 10px;
 }
@@ -283,8 +284,8 @@
     padding: 20px !important;
 }
 .lab-resource-page .phase-modal .btn-close {
-    min-width: 24px;
-    min-height: 24px;
+    min-width: 44px;
+    min-height: 44px;
 }
 .lab-resource-page .alert {
     border-radius: 6px;
@@ -376,7 +377,7 @@
     .lab-resource-page .phase-modal :is(header, header + div) { padding: 16px !important; }
     .lab-resource-page .h5 { font-size: 15px; }
     .lab-resource-page :is(.form-control, .form-select) { font-size: 16px; }
-    .lab-resource-page .phase-modal .btn-close { min-width: 32px; min-height: 32px; }
+    .lab-resource-page .phase-modal .btn-close { min-width: 44px; min-height: 44px; }
     .lab-resource-page .lab-resource-filters .btn-group { width: 100%; }
     .lab-resource-page .lab-resource-filters .btn-group > .btn { flex: 1; }
     .lab-resource-page .lab-action { padding: 7px 9px; }

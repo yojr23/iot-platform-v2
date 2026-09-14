@@ -21,6 +21,8 @@ use Throwable;
 
 class SensorApiController extends Controller
 {
+    private const MAX_GRAPH_WINDOW_SECONDS = 24 * 60 * 60;
+
     /** SEC-EXPORT-001: hard bounds on reading exports. */
     private const EXPORT_MAX_WINDOW_DAYS = 31;
     private const EXPORT_MAX_ROWS = 50000;
@@ -187,9 +189,10 @@ class SensorApiController extends Controller
         $from = CarbonImmutable::createFromFormat('Y-m-d\TH:i:s\Z', $validated['from'], 'UTC') ?: null;
         $to = CarbonImmutable::createFromFormat('Y-m-d\TH:i:s\Z', $validated['to'], 'UTC') ?: null;
 
-        if (! $from || ! $to || ! $from->lessThan($to)) {
+        if (! $from || ! $to || ! $from->lessThan($to)
+            || $from->diffInSeconds($to) > self::MAX_GRAPH_WINDOW_SECONDS) {
             throw ValidationException::withMessages([
-                'range' => 'The graph window requires from < to using YYYY-MM-DDTHH:mm:ssZ.',
+                'range' => 'The graph window must be between 1 second and 24 hours using YYYY-MM-DDTHH:mm:ssZ.',
             ]);
         }
 

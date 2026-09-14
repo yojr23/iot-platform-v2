@@ -1,6 +1,8 @@
 # Gate 10 Evidence
 
-Status: BACKEND + LIVE-DOCKER CDC PIPELINE VERIFIED — browser desktop/mobile verified
+Status: OPEN — prior live-Docker evidence is historical; Task 12 could not refresh it because the
+Docker daemon and Redis services are unavailable. Do not treat this document as a Gate 10 CLOSED
+verdict.
 
 Captured: 2026-09-11 on macOS (PHP 8.5, Docker: MySQL 8 + Redis 7 + Debezium 3.5 + CDC/raw/domain
 consumers, isolated SQLite for the test suite).
@@ -170,3 +172,94 @@ process, and the private-sensor history feature is verified in a real browser at
 Gate 10 is substantially closed; the only remaining items are the scripted A–E fault-injection runs
 and the formal live network-quiet capture (needs a local websocket server). Everything the running
 product depends on for correct event-driven delivery is proven.
+
+## Task 10 current-session closure attempt — BLOCKED, NOT LIVE PROOF (2026-09-12)
+
+Task 10 requires a real Pusher-compatible WebSocket service, a `network-assertion-live.mjs`
+observation of at least 35 seconds, and live CDC fault injection A–E. None is claimed from mocks.
+
+The exact availability command was:
+
+```sh
+docker compose ps --format json
+```
+
+Actual output:
+
+```text
+Cannot connect to the Docker daemon at unix:///Users/j.rinconc/.docker/run/docker.sock.
+Is the docker daemon running?
+```
+
+No ports for the required frontend/API/Redis/CDC/Pusher-compatible services were listening. Thus
+the following live runs were not possible and remain explicit gaps:
+
+| Requirement | Status | Reason |
+| --- | --- | --- |
+| Real Pusher-compatible WebSocket transport | BLOCKED | Docker daemon unavailable; no service to subscribe to. |
+| `npm run audit:network:live` for >=35s | BLOCKED | Requires live frontend/API credentials and the real transport. |
+| Guest public-only and authenticated private-history network assertions | BLOCKED | Cannot issue live API/transport requests without the stack. |
+| Reconnect subscription dedup and logout projection isolation | BLOCKED | Cannot observe a real transport lifecycle. |
+| A: process dies after DB commit | BLOCKED | Needs MySQL/Debezium/consumer containers. |
+| B: consumer dies after XADD before XACK | BLOCKED | Needs Redis plus a live CDC consumer PEL. |
+| C: Redis outage and recovery | BLOCKED | Needs the running Redis/CDC deployment. |
+| D: poison CDC record to DLQ | BLOCKED | Needs live Debezium input and consumer/DLQ. |
+| E: restart with pending messages/XAUTOCLAIM | BLOCKED | Needs live pending entries and a restarted consumer. |
+
+The codebase's Redis-backed feature tests may still cover portions of those semantics in CI, but
+they do not substitute for this required deployment fault proof. The mocked responsive E2E job
+added below is labelled as mocked and must never be used as live Gate 10 evidence.
+
+### CI protection added by Task 10
+
+`.github/workflows/gate10-quality.yml` now has:
+
+- `ingestion`, exactly using Python 3.12, pip dependency caching keyed by
+  `ingestion_service/requirements.txt`, `pip install -r requirements.txt`, and
+  `python -m pytest -q`.
+- `frontend-responsive-e2e-mocked`, which installs Chromium, starts the demo server, runs
+  `npm run audit:gate9`, and uploads `t10-*` artifacts. Its comments and job name explicitly say
+  that fixture-backed E2E is not live Pusher/WebSocket evidence.
+
+Workflow YAML, package JSON, audit script syntax, and whitespace validation were checked locally;
+the CI jobs themselves have not yet executed remotely in this session.
+
+## Task 12 final verification — OPEN / GAP (2026-09-12)
+
+Recorded Git `HEAD`: `3c8f8971e71d587ddda1ad59ef9e62faa5e61918`. The working tree contains
+uncommitted changes, so all fresh source, test, and browser results apply to that working tree and
+must not be represented as an immutable-commit or remote-CI result.
+
+Fresh local checks:
+
+- `back`: `TEST_REDIS_HOST=127.0.0.1 TEST_REDIS_PORT=6399 php artisan test` exited 0 with
+  **1,520 assertions**; its summary reports 425 deprecated and 6 non-deprecated test outcomes.
+  This is SQLite-suite evidence, not a real-Redis integration result.
+- `ingestion_service`: `./.venv/bin/python -m pytest -q` — **21 passed**.
+- `front`: `npm run test:unit` — **39 files, 199 tests passed**; `npm run build` exited 0;
+  `npm run audit:no-polling:source` passed.
+- Fixture-backed browser matrix: `npm run audit:gate9` — **33/33 clean**; the separate 33,004ms
+  mocked `npm run audit:network` run had no recurring offender. These are explicitly not live
+  Gate 10 transport evidence.
+
+Current availability checks were negative:
+
+```text
+docker compose ps --format json
+Cannot connect to the Docker daemon at unix:///Users/j.rinconc/.docker/run/docker.sock.
+
+redis-cli -h 127.0.0.1 -p 6399 ping
+Could not connect to Redis at 127.0.0.1:6399: Connection refused
+
+redis-cli -h 127.0.0.1 -p 6379 ping
+Could not connect to Redis at 127.0.0.1:6379: Connection refused
+```
+
+Only local Vite on `127.0.0.1:5173` was listening. Static Compose inspection declares the worker
+profile services but no Pusher-compatible service. `graphify 0.9.58` is installed, but it was not
+run because Task 12 forbids modification of `graphify-out/` artifacts.
+
+Accordingly, the following remain **BLOCKED**, not passed: real Redis-backed suite; Docker MySQL →
+Debezium → Redis → CDC/raw/domain consumer delivery; Pusher/WebSocket subscription and reconnect
+proof; `npm run audit:network:live`; guest/authenticated live boundary traces; CDC failure scenarios
+A–E; and remote `gate10-quality.yml` execution. Gate 10 and the PLAN Stage 10 DoD remain open.

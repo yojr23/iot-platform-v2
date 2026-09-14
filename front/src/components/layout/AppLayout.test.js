@@ -2,6 +2,10 @@ import { createApp, nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ name: undefined })
+}));
+
 const subscribeAlerts = vi.fn(() => true);
 const unsubscribeAlerts = vi.fn();
 const getRuntimeConfig = vi.fn(() => Promise.resolve({ data: {} }));

@@ -139,6 +139,24 @@ export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
         system_status: 'ok'
       });
     }
+    // DashboardView consumes the graph-only bootstrap/catalog contracts, not the broader
+    // `/dashboard/public` payload. Keep the fixture aligned so lifecycle rows exercise the
+    // rendered workspace instead of an empty catalog.
+    if (p === '/public/graph/bootstrap') {
+      return json(route, { version: 1, default_sensor_id: sensors[0]?.id ?? null, devices });
+    }
+    if (p === '/dashboard/graph-catalog') {
+      if (role === 'guest') return json(route, { message: 'Unauthenticated.' }, 401);
+      return json(route, { version: 1, default_sensor_id: sensors[0]?.id ?? null, devices });
+    }
+    if (/^\/public\/graph\/sensors\/\d+\/series$/.test(p) || /^\/sensors\/\d+\/series$/.test(p)) {
+      const points = readings(mode === 'dense' ? 60 : 20).map((reading) => ({
+        timestamp: reading.reading_time,
+        value: reading.value,
+        reading_id: reading.id
+      }));
+      return json(route, { points, stats: { min: 15, max: 25, mean: 20, count: points.length }, truncated: false });
+    }
     if (p === '/dashboard/preferences') {
       return json(route, { data: { monitors: sensors.slice(0, 3).map((s) => s.id), poll_interval: 2000 } });
     }

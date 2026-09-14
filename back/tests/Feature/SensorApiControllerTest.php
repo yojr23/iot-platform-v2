@@ -429,4 +429,27 @@ class SensorApiControllerTest extends TestCase
         $this->getJson("/api/sensors/{$sensor->id}/series?from=2026-09-11T00:00:00Z&to=2026-09-11T01:00:00Z")
             ->assertUnauthorized();
     }
+
+    public function test_authenticated_series_rejects_a_window_longer_than_24_hours(): void
+    {
+        $sensor = Sensor::factory()->create(['device_id' => Device::factory()->create()->id]);
+
+        $this->actingAs(User::factory()->create())
+            ->getJson("/api/sensors/{$sensor->id}/series?from=2026-09-01T00:00:00Z&to=2026-09-02T00:00:01Z")
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('range');
+    }
+
+    public function test_authenticated_series_accepts_a_window_exactly_24_hours_wide(): void
+    {
+        $sensor = Sensor::factory()->create(['device_id' => Device::factory()->create()->id]);
+
+        $this->actingAs(User::factory()->create())
+            ->getJson("/api/sensors/{$sensor->id}/series?from=2026-09-01T00:00:00Z&to=2026-09-02T00:00:00Z")
+            ->assertOk()
+            ->assertJsonPath('window.from', '2026-09-01T00:00:00Z')
+            ->assertJsonPath('window.to', '2026-09-02T00:00:00Z')
+            ->assertJsonPath('effective_window.from', '2026-09-01T00:00:00Z')
+            ->assertJsonPath('effective_window.to', '2026-09-02T00:00:00Z');
+    }
 }
