@@ -40,7 +40,7 @@
                 <RouterLink class="btn btn-outline-primary lab-action" :to="`/sensors/${sensor.id}`"><I name="eye" />Ver</RouterLink>
                 <button class="btn btn-outline-info lab-action" type="button" @click="$emit('export', sensor)"><I name="download" />Exportar</button>
                 <button
-                  v-if="authStore.user?.is_admin"
+                  v-if="authStore.can('sensor.update')"
                   class="btn btn-outline-warning lab-action"
                   type="button"
                   @click="$emit('edit', sensor)"
@@ -48,7 +48,7 @@
                   <I name="edit" />Editar
                 </button>
                 <button
-                  v-if="authStore.user?.is_admin"
+                  v-if="authStore.can('sensor.delete')"
                   class="btn btn-outline-danger lab-action"
                   type="button"
                   @click="$emit('delete', sensor)"

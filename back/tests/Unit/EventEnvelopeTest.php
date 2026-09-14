@@ -70,22 +70,35 @@ class EventEnvelopeTest extends TestCase
 
     public function test_new_alert_triggered_broadcast_payload_keeps_legacy_fields_and_adds_envelope(): void
     {
-        $sensorType = SensorType::factory()->create();
-        $sensor = Sensor::factory()->create(['sensor_type_id' => $sensorType->id]);
-        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id]);
-        $alertRule = AlertRule::factory()->create(['sensor_type_id' => $sensorType->id]);
-        $alert = Alert::factory()->create([
-            'sensor_reading_id' => $reading->id,
-            'alert_rule_id' => $alertRule->id,
-        ]);
-
-        $event = new NewAlertTriggered($alert, correlationId: 'corr-123', causationId: 'cause-456');
+        $event = new NewAlertTriggered(
+            alertId: 42,
+            message: 'Mensaje original',
+            severity: 'danger',
+            value: 81.5,
+            sensorName: 'Sensor original',
+            sensorType: 'Temperatura original',
+            unit: 'C',
+            deviceName: 'Dispositivo original',
+            labName: 'Laboratorio original',
+            timestamp: '2026-09-14T12:00:00+00:00',
+            correlationId: 'corr-123',
+            causationId: 'cause-456',
+        );
         $data = $event->broadcastWith();
 
-        $this->assertSame($alert->id, $data['id']);
+        $this->assertSame(42, $data['id']);
+        $this->assertSame('Mensaje original', $data['message']);
+        $this->assertSame('danger', $data['severity']);
+        $this->assertSame(81.5, $data['value']);
+        $this->assertSame('Sensor original', $data['sensor_name']);
+        $this->assertSame('Temperatura original', $data['sensor_type']);
+        $this->assertSame('C', $data['unit']);
+        $this->assertSame('Dispositivo original', $data['device_name']);
+        $this->assertSame('Laboratorio original', $data['lab_name']);
+        $this->assertSame('2026-09-14T12:00:00+00:00', $data['timestamp']);
         $this->assertSame('alert.triggered', $data['event_type']);
         $this->assertSame('alert', $data['aggregate_type']);
-        $this->assertSame($alert->id, $data['aggregate_id']);
+        $this->assertSame(42, $data['aggregate_id']);
         $this->assertSame('corr-123', $data['correlation_id']);
         $this->assertSame('cause-456', $data['causation_id']);
 

@@ -107,7 +107,7 @@ const navItems = computed(() => {
     ...publicItems,
     ...laboratoryItems,
     ...authenticatedItems,
-    ...(authStore.user?.is_admin ? adminItems : [])
+    ...(authStore.can('user.view') ? adminItems : [])
   ];
 });
 

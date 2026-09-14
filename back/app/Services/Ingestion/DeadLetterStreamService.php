@@ -9,9 +9,10 @@ use InvalidArgumentException;
 /**
  * Operational access to the shared dead-letter stream.
  *
- * Replay is deliberately explicit: DLQ records do not contain a full event payload, so the
- * original stream and original entry must still exist. The Lua operation atomically copies the
- * original fields, writes an audit record, and records an idempotency marker.
+ * Replay is deliberately explicit. Current DLQ records retain the original Redis field map in
+ * `payload_json`, so they remain replayable after source-stream retention removes the entry.
+ * Legacy records without it can use the original entry while it still exists. The Lua operation
+ * atomically re-drives, audits, and records an idempotency marker.
  */
 class DeadLetterStreamService
 {
@@ -69,15 +70,33 @@ class DeadLetterStreamService
 local dlq = redis.call('XRANGE', KEYS[1], ARGV[1], ARGV[1])
 if #dlq == 0 then return {'missing_dlq', ''} end
 local original_id = ''
+local stored_source = ''
+local payload_json = nil
 for i = 1, #dlq[1][2], 2 do
     if dlq[1][2][i] == 'orig_id' then original_id = dlq[1][2][i + 1] end
+    if dlq[1][2][i] == 'orig_stream' then stored_source = dlq[1][2][i + 1] end
+    if dlq[1][2][i] == 'payload_json' then payload_json = dlq[1][2][i + 1] end
 end
 if original_id == '' then return {'missing_orig_id', ''} end
+if stored_source ~= '' and stored_source ~= KEYS[2] then return {'source_mismatch', ''} end
 local existing = redis.call('GET', KEYS[3])
 if existing then return {'already_replayed', existing} end
-local source = redis.call('XRANGE', KEYS[2], original_id, original_id)
-if #source == 0 then return {'missing_source', ''} end
-local replay_id = redis.call('XADD', KEYS[2], '*', unpack(source[1][2]))
+local replay_fields = nil
+if payload_json ~= nil then
+    local decoded, payload = pcall(cjson.decode, payload_json)
+    if not decoded or type(payload) ~= 'table' or next(payload) == nil then return {'malformed_payload', ''} end
+    replay_fields = {}
+    for field, value in pairs(payload) do
+        if type(field) ~= 'string' or type(value) ~= 'string' then return {'malformed_payload', ''} end
+        table.insert(replay_fields, field)
+        table.insert(replay_fields, value)
+    end
+else
+    local source = redis.call('XRANGE', KEYS[2], original_id, original_id)
+    if #source == 0 then return {'missing_source', ''} end
+    replay_fields = source[1][2]
+end
+local replay_id = redis.call('XADD', KEYS[2], '*', unpack(replay_fields))
 redis.call('XADD', KEYS[4], '*', 'dlq_id', ARGV[1], 'source_stream', KEYS[2], 'original_id', original_id, 'replay_id', replay_id, 'actor', ARGV[2])
 redis.call('SET', KEYS[3], replay_id)
 return {'replayed', replay_id}
@@ -86,7 +105,7 @@ LUA
         ]);
 
         $status = (string) ($result[0] ?? 'unknown');
-        if (in_array($status, ['missing_dlq', 'missing_orig_id', 'missing_source'], true)) {
+        if (in_array($status, ['missing_dlq', 'missing_orig_id', 'missing_source', 'source_mismatch', 'malformed_payload'], true)) {
             throw new InvalidArgumentException(str_replace('_', ' ', $status).'.');
         }
 

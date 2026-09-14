@@ -29,7 +29,7 @@ export function useLabWorkspace(devices) {
     // The API makes persistent dashboard layouts an administrator capability. Keep the client
     // aligned so standard users retain temporary monitoring interactions without seeing a save
     // flow that will inevitably receive 403 from the server.
-    const canManageDashboard = computed(() => Boolean(auth.user?.is_admin));
+    const canManageDashboard = computed(() => Boolean(auth.can('system_setting.update')));
     const widgets = ref([]),
         selectedId = ref(""),
         editing = ref(false),

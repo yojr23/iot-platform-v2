@@ -20,7 +20,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Seed roles and permissions first (required for RBAC)
         $this->call([
+            RolePermissionSeeder::class,
             UserSeeder::class,
             DeviceTypeSeeder::class,
             SensorTypeSeeder::class,

@@ -6,7 +6,7 @@
         <p class="lab-resource-description">Explora tus sensores, consulta sus lecturas y gestiona su configuración.</p>
       </div>
       <div class="lab-resource-actions">
-        <button v-if="authStore.user?.is_admin" class="btn btn-primary" type="button" @click="openCreate">
+        <button v-if="authStore.can('sensor.create')" class="btn btn-primary" type="button" @click="openCreate">
           <I name="plus" />Nuevo sensor
         </button>
         <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
@@ -145,7 +145,7 @@ async function load() {
   error.value = '';
 
   try {
-    const shouldLoadAdminData = Boolean(authStore.user?.is_admin);
+    const shouldLoadAdminData = Boolean(authStore.can('sensor.create'));
     const [sensorsResponse, devicesResponse, typesResponse] = await Promise.all([
       getSensors({ per_page: 50 }),
       shouldLoadAdminData ? getDevices({ per_page: 100 }) : Promise.resolve({ data: [] }),
@@ -266,7 +266,7 @@ onMounted(async () => {
   // D5 (sensor side): honor a `?device_id=` preselect from a device-detail "add sensor" link.
   const deviceId = route.query.device_id;
 
-  if (deviceId && authStore.user?.is_admin) {
+  if (deviceId && authStore.can('sensor.create')) {
     openCreate();
     sensorForm.value.device_id = Number(deviceId);
   }

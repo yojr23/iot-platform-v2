@@ -14,7 +14,7 @@ use Tests\TestCase;
  * Task 19 — one table-driven authorization matrix over the sensitive routes ×
  * {guest, unverified, standard-verified, admin}. Makes permission drift a single
  * obvious failure. Backend is authoritative: guests/unverified never reach private
- * data, standard verified users cannot mutate, admin can.
+ * data; standard verified users may resolve alerts but no other product mutation.
  *
  * Actors mint real Sanctum PATs (standard = ['read'], admin = ['*']) and send them via
  * the Authorization header, because Sanctum's ability middleware inspects
@@ -61,7 +61,7 @@ class AuthorizationMatrixFullTest extends TestCase
             'device create'      => ['POST',  '/api/devices',                 ['guest' => 401, 'unverified' => 403, 'standard' => 403, 'admin' => 422]],
             'sensors index'      => ['GET',   '/api/sensors',                 ['guest' => 401, 'unverified' => 403, 'standard' => 200, 'admin' => 200]],
             'alerts index'       => ['GET',   '/api/alerts',                  ['guest' => 401, 'unverified' => 403, 'standard' => 200, 'admin' => 200]],
-            'resolve all alerts' => ['POST',  '/api/alerts/resolve-all',      ['guest' => 401, 'unverified' => 403, 'standard' => 403, 'admin' => 200]],
+            'resolve all alerts' => ['POST',  '/api/alerts/resolve-all',      ['guest' => 401, 'unverified' => 403, 'standard' => 200, 'admin' => 200]],
             'users index'        => ['GET',   '/api/users',                   ['guest' => 401, 'unverified' => 403, 'standard' => 403, 'admin' => 200]],
             'email config'       => ['GET',   '/api/config/email',            ['guest' => 401, 'unverified' => 403, 'standard' => 403, 'admin' => 200]],
             'dashboard metrics'  => ['GET',   '/api/dashboard/metrics',       ['guest' => 401, 'unverified' => 403, 'standard' => 200, 'admin' => 200]],

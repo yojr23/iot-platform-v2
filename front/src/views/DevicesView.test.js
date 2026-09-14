@@ -43,7 +43,7 @@ async function mountDevicesView() {
   app.component('RouterLink', { template: '<a><slot /></a>', props: ['to'] });
   const authStore = useAuthStore();
   authStore.token = 'test-token';
-  authStore.user = { id: 1, name: 'Admin', is_admin: true };
+  authStore.user = { id: 1, name: 'Admin', role: { code: 'superadmin', level: 3 }, permissions: ['device.create', 'device.update'] };
   app.mount(el);
   mountedApps.push(app);
   await nextTick();

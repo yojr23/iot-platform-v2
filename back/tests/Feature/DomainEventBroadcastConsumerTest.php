@@ -7,11 +7,15 @@ use App\Events\DeviceStatusUpdated;
 use App\Events\NewAlertTriggered;
 use App\Events\NewSensorReading;
 use App\Models\Alert;
+use App\Models\AlertRule;
 use App\Models\Device;
 use App\Models\DomainEventOutbox;
+use App\Models\Lab;
 use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Models\SensorType;
+use App\Services\Alerts\AlertLifecycleService;
+use App\Services\Alerts\AlertService;
 use App\Services\Ingestion\DomainEventBroadcastConsumer;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -76,12 +80,28 @@ class DomainEventBroadcastConsumerTest extends TestCase
     private function triggeredAlertOutbox(): DomainEventOutbox
     {
         $alert = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
+        $alert->load('alertRule', 'sensorReading.sensor.sensorType', 'sensorReading.sensor.device.lab');
+        $reading = $alert->sensorReading;
+        $sensor = $reading?->sensor;
+        $sensorType = $sensor?->sensorType;
+        $device = $sensor?->device;
 
         return DomainEventOutbox::factory()->create([
             'event_type' => 'alert.triggered',
             'aggregate_type' => 'alert',
             'aggregate_id' => (string) $alert->id,
-            'payload' => ['alert_id' => $alert->id],
+            'payload' => [
+                'alert_id' => $alert->id,
+                'message' => (string) ($alert->alertRule?->message ?? 'Alerta generada'),
+                'severity' => (string) ($alert->alertRule?->severity ?? 'warning'),
+                'value' => $reading?->value !== null ? (float) $reading->value : null,
+                'sensor_name' => (string) ($sensor?->name ?? 'Sensor desconocido'),
+                'sensor_type' => (string) ($sensorType?->name ?? ''),
+                'unit' => (string) ($sensorType?->unit ?? ''),
+                'device_name' => (string) ($device?->name ?? 'Dispositivo desconocido'),
+                'lab_name' => (string) ($device?->lab?->name ?? 'Lab no definido'),
+                'timestamp' => $alert->created_at?->toIso8601String(),
+            ],
             'status' => 'published',
         ]);
     }
@@ -94,7 +114,11 @@ class DomainEventBroadcastConsumerTest extends TestCase
             'event_type' => 'alert.resolved',
             'aggregate_type' => 'alert',
             'aggregate_id' => (string) $alert->id,
-            'payload' => ['alert_id' => $alert->id],
+            'payload' => [
+                'alert_id' => $alert->id,
+                'resolved' => true,
+                'resolved_at' => $alert->resolved_at?->toIso8601String(),
+            ],
             'status' => 'published',
         ]);
     }
@@ -148,6 +172,88 @@ class DomainEventBroadcastConsumerTest extends TestCase
         $this->assertNotNull($outbox->fresh()->delivered_at);
     }
 
+    public function test_triggered_alert_broadcast_keeps_the_original_snapshot_after_related_models_change(): void
+    {
+        Event::fake([NewAlertTriggered::class]);
+
+        $lab = Lab::factory()->create(['name' => 'Laboratorio original']);
+        $device = Device::factory()->create(['lab_id' => $lab->id, 'name' => 'Dispositivo original']);
+        $sensorType = SensorType::factory()->create(['name' => 'Temperatura original', 'unit' => 'C']);
+        $sensor = Sensor::factory()->create([
+            'device_id' => $device->id,
+            'sensor_type_id' => $sensorType->id,
+            'name' => 'Sensor original',
+        ]);
+        $rule = AlertRule::create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => $device->id,
+            'sensor_id' => $sensor->id,
+            'min_value' => null,
+            'max_value' => 50,
+            'severity' => 'danger',
+            'message' => 'Mensaje original',
+            'name' => 'Regla original',
+        ]);
+        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 81.5]);
+
+        app(AlertService::class)->createAlertsForReading($reading);
+
+        $alert = Alert::query()->where('sensor_reading_id', $reading->id)->where('alert_rule_id', $rule->id)->firstOrFail();
+        $outbox = DomainEventOutbox::query()
+            ->where('event_type', 'alert.triggered')
+            ->where('aggregate_id', (string) $alert->id)
+            ->firstOrFail();
+        $timestamp = $outbox->payload['timestamp'];
+
+        $rule->update(['message' => 'Mensaje posterior', 'severity' => 'warning']);
+        $device->update(['name' => 'Dispositivo posterior']);
+        $lab->update(['name' => 'Laboratorio posterior']);
+        $this->xadd($outbox->id, 'alert.triggered');
+
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        Event::assertDispatched(NewAlertTriggered::class, function (NewAlertTriggered $event) use ($alert, $timestamp) {
+            $payload = $event->broadcastWith();
+
+            $this->assertSame($alert->id, $payload['id']);
+            $this->assertSame('Mensaje original', $payload['message']);
+            $this->assertSame('danger', $payload['severity']);
+            $this->assertSame(81.5, $payload['value']);
+            $this->assertSame('Sensor original', $payload['sensor_name']);
+            $this->assertSame('Temperatura original', $payload['sensor_type']);
+            $this->assertSame('C', $payload['unit']);
+            $this->assertSame('Dispositivo original', $payload['device_name']);
+            $this->assertSame('Laboratorio original', $payload['lab_name']);
+            $this->assertSame($timestamp, $payload['timestamp']);
+
+            return true;
+        });
+    }
+
+    public function test_triggered_alert_snapshot_is_broadcast_after_the_alert_row_is_deleted(): void
+    {
+        Event::fake([NewAlertTriggered::class]);
+
+        $outbox = $this->triggeredAlertOutbox();
+        $alertId = $outbox->payload['alert_id'];
+        Alert::query()->findOrFail($alertId)->delete();
+        $this->xadd($outbox->id, 'alert.triggered');
+
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        Event::assertDispatched(NewAlertTriggered::class, function (NewAlertTriggered $event) use ($outbox, $alertId) {
+            $payload = $event->broadcastWith();
+
+            $this->assertSame($alertId, $payload['id']);
+            $this->assertSame($outbox->payload['message'], $payload['message']);
+            $this->assertSame($outbox->payload['severity'], $payload['severity']);
+            $this->assertSame($outbox->payload['value'], $payload['value']);
+            $this->assertSame($outbox->payload['timestamp'], $payload['timestamp']);
+
+            return true;
+        });
+    }
+
     public function test_duplicate_delivery_of_alert_triggered_broadcasts_only_once(): void
     {
         Event::fake([NewAlertTriggered::class]);
@@ -174,6 +280,35 @@ class DomainEventBroadcastConsumerTest extends TestCase
         $this->assertSame(1, $stats['acked']);
         Event::assertDispatchedTimes(AlertResolved::class, 1);
         $this->assertNotNull($outbox->fresh()->delivered_at);
+    }
+
+    public function test_resolved_alert_snapshot_is_broadcast_after_the_alert_row_is_deleted(): void
+    {
+        Event::fake([AlertResolved::class]);
+
+        $alert = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
+        app(AlertLifecycleService::class)->resolve($alert);
+        $outbox = DomainEventOutbox::query()
+            ->where('event_type', 'alert.resolved')
+            ->where('aggregate_id', (string) $alert->id)
+            ->firstOrFail();
+        $alertId = $outbox->payload['alert_id'];
+        $resolvedAt = $outbox->payload['resolved_at'];
+
+        $alert->delete();
+        $this->xadd($outbox->id, 'alert.resolved');
+
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        Event::assertDispatched(AlertResolved::class, function (AlertResolved $event) use ($alertId, $resolvedAt) {
+            $payload = $event->broadcastWith();
+
+            $this->assertSame($alertId, $payload['id']);
+            $this->assertTrue($payload['resolved']);
+            $this->assertSame($resolvedAt, $payload['resolved_at']);
+
+            return true;
+        });
     }
 
     public function test_device_status_changed_fact_is_broadcast_exactly_once(): void
@@ -347,6 +482,14 @@ class DomainEventBroadcastConsumerTest extends TestCase
 
         $this->assertSame(1, $stats['dlq']);
         $this->assertSame(1, (int) $this->conn->client()->executeRaw(['XLEN', $this->dlq]));
+        $fields = $this->latestDeadLetterFields();
+        $this->assertSame($this->stream, $fields['orig_stream']);
+        $this->assertSame([
+            'event_id' => '999999',
+            'event_type' => 'alert.resolved',
+            'event_version' => '1',
+        ], json_decode($fields['payload_json'], true, 512, JSON_THROW_ON_ERROR));
+        $this->assertNotSame('', $fields['failed_at']);
     }
 
     /**
@@ -487,5 +630,23 @@ class DomainEventBroadcastConsumerTest extends TestCase
 
         $this->assertSame(1, $stats['acked']);
         Event::assertNotDispatched(AlertResolved::class);
+    }
+
+    /** @return array<string,string> */
+    private function latestDeadLetterFields(): array
+    {
+        $entry = array_values($this->conn->client()->executeRaw(['XRANGE', $this->dlq, '-', '+']))[0] ?? [];
+        $rawFields = array_is_list($entry) ? ($entry[1] ?? []) : $entry;
+        $fields = [];
+
+        foreach ($rawFields as $key => $value) {
+            if (is_int($key) && $key % 2 === 0) {
+                $fields[(string) $value] = (string) ($rawFields[$key + 1] ?? '');
+            } elseif (! is_int($key)) {
+                $fields[(string) $key] = (string) $value;
+            }
+        }
+
+        return $fields;
     }
 }

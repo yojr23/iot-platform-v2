@@ -4,12 +4,10 @@ namespace App\Events;
 
 use App\Events\Concerns\HasEventEnvelope;
 use App\Events\Contracts\VersionedDomainEvent;
-use App\Models\Alert;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 /**
  * PLAN.md Stage 4.2/4.4 — the `alert.resolved` fact (audit RC2: previously never emitted, because
@@ -34,13 +32,15 @@ use Illuminate\Queue\SerializesModels;
  */
 class AlertResolved implements ShouldBroadcastNow, VersionedDomainEvent
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels, HasEventEnvelope;
+    use Dispatchable, InteractsWithSockets, HasEventEnvelope;
 
-    public $alert;
-
-    public function __construct(Alert $alert, ?string $correlationId = null, ?string $causationId = null)
-    {
-        $this->alert = $alert;
+    public function __construct(
+        public readonly int $alertId,
+        public readonly bool $resolved,
+        public readonly ?string $resolvedAt,
+        ?string $correlationId = null,
+        ?string $causationId = null,
+    ) {
         $this->correlationId = $correlationId;
         $this->causationId = $causationId;
     }
@@ -53,9 +53,9 @@ class AlertResolved implements ShouldBroadcastNow, VersionedDomainEvent
     public function broadcastWith()
     {
         $legacy = [
-            'id' => $this->alert->id,
-            'resolved' => true,
-            'resolved_at' => $this->alert->resolved_at,
+            'id' => $this->alertId,
+            'resolved' => $this->resolved,
+            'resolved_at' => $this->resolvedAt,
         ];
 
         return array_merge($legacy, $this->envelopeMetadata());
@@ -73,6 +73,6 @@ class AlertResolved implements ShouldBroadcastNow, VersionedDomainEvent
 
     public function aggregateId(): int|string
     {
-        return $this->alert->id;
+        return $this->alertId;
     }
 }

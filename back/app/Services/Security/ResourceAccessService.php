@@ -12,20 +12,13 @@ use App\Models\User;
  * closures (`routes/channels.php`) delegate here so the two authorization surfaces (HTTP + Pusher
  * `/broadcasting/auth`) cannot diverge.
  *
- * Existing code reused: `User::hasVerifiedEmail()` (Illuminate\Auth\MustVerifyEmail, already the
- * gate for the `verified` route middleware) and `User::$is_admin` (already the sole gate for the
- * `admin` route middleware). Mirrors the shape of `App\Policies\AlertPolicy` (SEC-ALERT-001).
- * Existing owner retired/delegated: `routes/channels.php` previously hardcoded `true` (`alerts`,
- * `device-status`) or a bare `exists()` check (`sensor.{sensorId}`) with no user check at all —
- * this is a net-new authority, not a replacement of prior *logic* (there wasn't any), but it does
- * retire those closures' right to decide the rule themselves.
- * Compatibility window: none needed — behavior for verified users is unchanged; only unverified
- * users lose realtime channel access, matching the REST boundary they already hit.
+ * RBAC integration: This service now uses the roles + permissions system instead of is_admin.
+ * The user must have the appropriate permission for the requested resource.
  *
  * No user-to-lab ownership model exists in this app (`User` has no lab relation). The documented
- * business rule, until one exists, is: any verified authenticated user may read all private
- * telemetry; unverified users may not; admins always may (admin implies verified in practice, but
- * checked explicitly here for clarity, not by construction).
+ * business rule, until one exists, is: any verified authenticated user with the appropriate
+ * permission may read private telemetry; unverified users may not; users with the required
+ * permissions may access resources.
  *
  * To add lab-scoped access later: change ONLY this service (e.g. add a user_lab_access lookup and
  * consult it here) — do not scatter per-resource checks back into controllers or channels.php.
@@ -34,21 +27,21 @@ final class ResourceAccessService
 {
     public function canViewDevice(User $user, Device $device): bool
     {
-        return $user->is_admin || $user->hasVerifiedEmail();
+        return $user->hasVerifiedEmail() && $user->can('device.view');
     }
 
     public function canViewSensor(User $user, Sensor $sensor): bool
     {
-        return $user->is_admin || $user->hasVerifiedEmail();
+        return $user->hasVerifiedEmail() && $user->can('sensor.view');
     }
 
     public function canReceiveAlerts(User $user): bool
     {
-        return $user->is_admin || $user->hasVerifiedEmail();
+        return $user->hasVerifiedEmail() && $user->can('alert.view');
     }
 
     public function canReceiveDeviceStatus(User $user): bool
     {
-        return $user->is_admin || $user->hasVerifiedEmail();
+        return $user->hasVerifiedEmail() && $user->can('device.view');
     }
 }

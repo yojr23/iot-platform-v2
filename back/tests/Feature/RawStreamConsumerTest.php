@@ -151,6 +151,14 @@ class RawStreamConsumerTest extends TestCase
 
         $this->assertSame(1, $stats['dlq']);
         $this->assertSame(1, (int) $this->conn->client()->executeRaw(['XLEN', $this->dlq]));
+        $fields = $this->latestDeadLetterFields();
+        $this->assertSame($this->stream, $fields['orig_stream']);
+        $this->assertSame([
+            'event_id' => '999999',
+            'event_type' => 'raw.sensor.received',
+            'event_version' => '1',
+        ], json_decode($fields['payload_json'], true, 512, JSON_THROW_ON_ERROR));
+        $this->assertNotSame('', $fields['failed_at']);
     }
 
     public function test_total_normalization_failure_is_not_marked_processed(): void
@@ -190,5 +198,23 @@ class RawStreamConsumerTest extends TestCase
         $this->assertSame(0, $sensor->readings()->count());
         $this->assertDatabaseCount('domain_event_outboxes', 0);
         $this->assertSame(0, (int) $this->conn->client()->executeRaw(['XLEN', $this->dlq]));
+    }
+
+    /** @return array<string,string> */
+    private function latestDeadLetterFields(): array
+    {
+        $entry = array_values($this->conn->client()->executeRaw(['XRANGE', $this->dlq, '-', '+']))[0] ?? [];
+        $rawFields = array_is_list($entry) ? ($entry[1] ?? []) : $entry;
+        $fields = [];
+
+        foreach ($rawFields as $key => $value) {
+            if (is_int($key) && $key % 2 === 0) {
+                $fields[(string) $value] = (string) ($rawFields[$key + 1] ?? '');
+            } elseif (! is_int($key)) {
+                $fields[(string) $key] = (string) $value;
+            }
+        }
+
+        return $fields;
     }
 }

@@ -48,7 +48,7 @@ async function mountView() {
   app.use(pinia);
   setActivePinia(pinia);
   const authStore = useAuthStore();
-  authStore.user = { id: 1, is_admin: true };
+  authStore.user = { id: 1, role: { code: 'superadmin', level: 3 }, permissions: ['sensor.create'] };
   app.component('RouterLink', { template: '<a><slot /></a>' });
   app.mount(el);
   mountedApps.push(app);

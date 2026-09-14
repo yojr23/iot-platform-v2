@@ -103,7 +103,7 @@ const links = computed(() => [
               { to: "/metrics", label: "Métricas", icon: "chart" },
           ]
         : []),
-    ...(auth.user?.is_admin
+    ...(auth.can('system_setting.view')
         ? [
               { to: "/config", label: "Configuración", icon: "grip" },
           ]

@@ -86,6 +86,25 @@ class DeadLetterStreamServiceTest extends TestCase
         $service->replay('1-0', 'arbitrary.stream', 'operator');
     }
 
+    public function test_replay_rejects_a_malformed_stored_payload_reported_by_the_atomic_operation(): void
+    {
+        $client = $this->fakePredisClient(['malformed_payload', '']);
+
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('client')->andReturn($client);
+
+        $service = new DeadLetterStreamService(
+            $connection,
+            'iot.dead-letter-events',
+            ['iot.raw-events'],
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('malformed payload');
+
+        $service->replay('1710000000000-0', 'iot.raw-events', 'operator');
+    }
+
     public function test_replay_returns_idempotent_result_from_atomic_redis_operation(): void
     {
         $client = $this->fakePredisClient(['replayed', '1710000001000-0']);

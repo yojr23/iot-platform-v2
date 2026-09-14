@@ -36,7 +36,7 @@
             <td>{{ formatDate(device.last_seen || device.last_communication) }}</td>
             <td>
               <button
-                v-if="authStore.user?.is_admin"
+                v-if="authStore.can('device.update')"
                 class="btn btn-sm lab-status-control"
                 :class="device.status && device.is_active ? 'btn-success' : 'btn-outline-secondary'"
                 type="button"
@@ -52,7 +52,7 @@
               <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de dispositivo">
                 <RouterLink class="btn btn-outline-primary lab-action" :to="`/devices/${device.id}`"><I name="eye" />Ver</RouterLink>
                 <button
-                  v-if="authStore.user?.is_admin"
+                  v-if="authStore.can('device.update')"
                   class="btn btn-outline-secondary lab-action"
                   type="button"
                   @click="$emit('edit', device)"
@@ -60,7 +60,7 @@
                   <I name="edit" />Editar
                 </button>
                 <button
-                  v-if="authStore.user?.is_admin"
+                  v-if="authStore.can('device.delete')"
                   class="btn btn-outline-danger lab-action"
                   type="button"
                   @click="$emit('delete', device)"

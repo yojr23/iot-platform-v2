@@ -4,7 +4,9 @@ namespace Tests\Feature\Api;
 
 use App\Models\Alert;
 use App\Models\DomainEventOutbox;
+use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,6 +18,12 @@ use Tests\TestCase;
 class AlertAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RolePermissionSeeder::class);
+    }
 
     public function test_guest_cannot_resolve_single_alert(): void
     {
@@ -31,28 +39,29 @@ class AlertAuthorizationTest extends TestCase
         $this->postJson('/api/alerts/resolve-all')->assertUnauthorized();
     }
 
-    public function test_standard_verified_user_cannot_resolve_single_alert(): void
+    public function test_standard_verified_user_can_resolve_single_alert(): void
     {
-        $user = User::factory()->create(['is_admin' => false]);
+        $user = User::factory()->create(['role_id' => Role::where('code', 'user')->value('id')]);
         $alert = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
 
         $this->actingAs($user)
             ->patchJson("/api/alerts/{$alert->id}/resolve")
-            ->assertForbidden();
+            ->assertOk();
 
-        $this->assertFalse((bool) $alert->fresh()->resolved);
+        $this->assertTrue((bool) $alert->fresh()->resolved);
     }
 
-    public function test_standard_verified_user_cannot_resolve_all_alerts(): void
+    public function test_standard_verified_user_can_resolve_all_alerts(): void
     {
-        $user = User::factory()->create(['is_admin' => false]);
+        $user = User::factory()->create(['role_id' => Role::where('code', 'user')->value('id')]);
         Alert::factory()->count(2)->create(['resolved' => false, 'resolved_at' => null]);
 
         $this->actingAs($user)
             ->postJson('/api/alerts/resolve-all')
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('resolved_count', 2);
 
-        $this->assertSame(2, Alert::active()->count());
+        $this->assertSame(0, Alert::active()->count());
     }
 
     public function test_admin_can_resolve_single_alert_and_emits_domain_fact(): void

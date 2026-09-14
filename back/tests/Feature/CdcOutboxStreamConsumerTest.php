@@ -200,6 +200,22 @@ class CdcOutboxStreamConsumerTest extends TestCase
         $this->assertNotSame('published', $outbox->fresh()->status);
     }
 
+    public function test_malformed_cdc_entry_dead_letters_the_original_field_map(): void
+    {
+        $this->conn->client()->executeRaw([
+            'XADD', $this->rawStream, '*',
+            'key', '{not-json}',
+        ]);
+
+        $stats = $this->consumer()->runOnce('worker-A', 10, 100);
+
+        $this->assertSame(1, $stats['dlq']);
+        $fields = $this->latestDeadLetterFields();
+        $this->assertSame($this->rawStream, $fields['orig_stream']);
+        $this->assertSame(['key' => '{not-json}'], json_decode($fields['payload_json'], true, 512, JSON_THROW_ON_ERROR));
+        $this->assertNotSame('', $fields['failed_at']);
+    }
+
     // 7
     public function test_terminal_failure_dead_letters_before_ack(): void
     {
@@ -258,6 +274,41 @@ class CdcOutboxStreamConsumerTest extends TestCase
         $this->assertSame(1, $this->rawPublisher->calls);
         $this->assertSame(1, $stats['acked']);
         $this->assertSame('published', $outbox->fresh()->status);
+    }
+
+    public function test_production_environment_ignores_pause_after_publish_fault_injection_setting(): void
+    {
+        // This must fail if the local/testing environment guard is removed: a production process
+        // must never honour a process-level fault-injection environment variable.
+        $previous = getenv('GATE10_CDC_PAUSE_AFTER_PUBLISH_MS');
+
+        try {
+            putenv('GATE10_CDC_PAUSE_AFTER_PUBLISH_MS=30000');
+            $this->app->detectEnvironment(static fn (): string => 'production');
+
+            $this->assertSame(0, CdcOutboxStreamConsumer::faultInjectionPauseAfterPublishMs());
+        } finally {
+            putenv($previous === false ? 'GATE10_CDC_PAUSE_AFTER_PUBLISH_MS' : 'GATE10_CDC_PAUSE_AFTER_PUBLISH_MS='.$previous);
+            $this->app->detectEnvironment(static fn (): string => 'testing');
+        }
+    }
+
+    /** @return array<string,string> */
+    private function latestDeadLetterFields(): array
+    {
+        $entry = array_values($this->conn->client()->executeRaw(['XRANGE', $this->dlq, '-', '+']))[0] ?? [];
+        $rawFields = array_is_list($entry) ? ($entry[1] ?? []) : $entry;
+        $fields = [];
+
+        foreach ($rawFields as $key => $value) {
+            if (is_int($key) && $key % 2 === 0) {
+                $fields[(string) $value] = (string) ($rawFields[$key + 1] ?? '');
+            } elseif (! is_int($key)) {
+                $fields[(string) $key] = (string) $value;
+            }
+        }
+
+        return $fields;
     }
 }
 

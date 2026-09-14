@@ -7,3 +7,7 @@ export function getUsers(params = {}) {
 export function updateUserRole(userId, payload) {
   return apiClient.patch(`/users/${userId}/role`, payload);
 }
+
+export function getRoles(params = {}) {
+  return apiClient.get('/roles', { params });
+}

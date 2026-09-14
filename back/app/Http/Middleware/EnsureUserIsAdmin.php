@@ -11,13 +11,21 @@ class EnsureUserIsAdmin
 {
     /**
      * Handle an incoming request.
+     *
+     * Accepts either the legacy is_admin column or the new RBAC admin/superadmin role.
+     * During the transition period both paths are supported so legacy web.php routes
+     * keep working while API routes already use can:middleware.
      */
     public function handle(Request $request, Closure $next)
     {
         $startTime = microtime(true);
         $user = Auth::user();
         $userId = $user?->id;
-        $isAdmin = $user?->is_admin ?? false;
+
+        $isAdmin = $user && (
+            $user->is_admin
+            || $user->hasAnyRole(['admin', 'superadmin'])
+        );
 
         Log::info('EnsureUserIsAdmin: checking', [
             'user_id' => $userId,

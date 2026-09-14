@@ -245,7 +245,7 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     setActivePinia(pinia);
     const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, is_admin: false };
+    authStore.user = { id: 1, role: { code: 'user', level: 1 }, permissions: [] };
 
     const { default: SensorMonitorBoard } = await import('./SensorMonitorBoard.vue');
     const el = document.createElement('div');
@@ -286,7 +286,7 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     setActivePinia(pinia);
     const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, is_admin: false };
+    authStore.user = { id: 1, role: { code: 'user', level: 1 }, permissions: [] };
     const alertsStore = useAlertsStore();
     alertsStore.activeAlerts = [{
       id: 101,
@@ -321,7 +321,7 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     setActivePinia(pinia);
     const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, is_admin: false };
+    authStore.user = { id: 1, role: { code: 'user', level: 1 }, permissions: [] };
     const alertsStore = useAlertsStore();
     alertsStore.activeAlerts = [fixtureAlert(1, 'normal')];
 

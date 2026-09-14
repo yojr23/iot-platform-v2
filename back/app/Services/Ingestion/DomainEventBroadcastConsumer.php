@@ -6,7 +6,6 @@ use App\Events\AlertResolved;
 use App\Events\DeviceStatusUpdated;
 use App\Events\NewAlertTriggered;
 use App\Events\NewSensorReading;
-use App\Models\Alert;
 use App\Models\DomainEventOutbox;
 use App\Models\SensorReading;
 use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
@@ -265,41 +264,34 @@ class DomainEventBroadcastConsumer
 
     private function broadcastAlertTriggered(DomainEventOutbox $outbox): void
     {
-        $alertId = data_get($outbox->payload, 'alert_id');
-        $alert = Alert::query()->with(['sensorReading.sensor.sensorType', 'sensorReading.sensor.device.lab', 'alertRule'])
-            ->find($alertId);
+        $payload = $outbox->payload;
+        $value = data_get($payload, 'value');
+        $timestamp = data_get($payload, 'timestamp');
 
-        if (! $alert) {
-            Log::warning('DomainEventBroadcastConsumer: alert.triggered target no longer exists', [
-                'outbox_id' => $outbox->id,
-                'alert_id' => $alertId,
-            ]);
-
-            return;
-        }
-
-        event(new NewAlertTriggered($alert));
+        event(new NewAlertTriggered(
+            alertId: (int) data_get($payload, 'alert_id'),
+            message: (string) data_get($payload, 'message', 'Alerta generada'),
+            severity: (string) data_get($payload, 'severity', 'warning'),
+            value: $value !== null ? (float) $value : null,
+            sensorName: (string) data_get($payload, 'sensor_name', 'Sensor desconocido'),
+            sensorType: (string) data_get($payload, 'sensor_type', ''),
+            unit: (string) data_get($payload, 'unit', ''),
+            deviceName: (string) data_get($payload, 'device_name', 'Dispositivo desconocido'),
+            labName: (string) data_get($payload, 'lab_name', 'Lab no definido'),
+            timestamp: $timestamp !== null ? (string) $timestamp : null,
+        ));
     }
 
     private function broadcastAlertResolved(DomainEventOutbox $outbox): void
     {
-        $alertId = data_get($outbox->payload, 'alert_id');
-        $alert = Alert::query()->with(['sensorReading.sensor.sensorType', 'sensorReading.sensor.device.lab', 'alertRule'])
-            ->find($alertId);
+        $payload = $outbox->payload;
+        $resolvedAt = data_get($payload, 'resolved_at');
 
-        if (! $alert) {
-            // Alert was deleted after resolution — nothing meaningful left to broadcast, but the
-            // outbox row is still marked delivered (this is a legitimate terminal outcome, not a
-            // retryable failure).
-            Log::warning('DomainEventBroadcastConsumer: alert.resolved target no longer exists', [
-                'outbox_id' => $outbox->id,
-                'alert_id' => $alertId,
-            ]);
-
-            return;
-        }
-
-        event(new AlertResolved($alert));
+        event(new AlertResolved(
+            alertId: (int) data_get($payload, 'alert_id'),
+            resolved: (bool) data_get($payload, 'resolved', true),
+            resolvedAt: $resolvedAt !== null ? (string) $resolvedAt : null,
+        ));
     }
 
     private function broadcastDeviceStatusChanged(DomainEventOutbox $outbox): void
@@ -359,11 +351,14 @@ class DomainEventBroadcastConsumer
     private function deadLetter(string $id, array $fields, string $reason, int $attempts): void
     {
         $this->rawXadd($this->connection, $this->deadLetterStream, (int) config('app.dlq_maxlen', 1000000), [
+            'orig_stream' => $this->stream,
             'orig_id' => $id,
             'reason' => $reason,
             'event_id' => (string) ($fields['event_id'] ?? ''),
             'event_type' => (string) ($fields['event_type'] ?? ''),
             'attempts' => (string) $attempts,
+            'payload_json' => json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            'failed_at' => now()->toIso8601String(),
         ]);
     }
 

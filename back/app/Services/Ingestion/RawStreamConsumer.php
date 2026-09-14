@@ -289,11 +289,15 @@ class RawStreamConsumer
     private function deadLetter(string $id, array $fields, string $reason, ?string $sourceEventId, int $attempts): void
     {
         $this->rawXadd($this->connection, $this->deadLetterStream, (int) config('app.dlq_maxlen', 1000000), [
+            'orig_stream' => $this->stream,
             'orig_id' => $id,
             'reason' => $reason,
             'event_id' => (string) ($fields['event_id'] ?? ''),
+            'event_type' => (string) ($fields['event_type'] ?? ''),
             'source_event_id' => (string) ($sourceEventId ?? ''),
             'attempts' => (string) $attempts,
+            'payload_json' => json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            'failed_at' => now()->toIso8601String(),
         ]);
     }
 

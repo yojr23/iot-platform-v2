@@ -18,7 +18,7 @@ describe('configuration routes', () => {
     names.forEach((name) => {
       const route = router.getRoutes().find((candidate) => candidate.name === name);
 
-      expect(route?.meta).toMatchObject({ requiresAuth: true, requiresAdmin: true });
+      expect(route?.meta).toMatchObject({ requiresAuth: true, requiresPermission: 'system_setting.view' });
     });
   });
 
@@ -27,5 +27,6 @@ describe('configuration routes', () => {
 
     expect(route?.meta).toMatchObject({ requiresAuth: true });
     expect(route?.meta?.requiresAdmin).toBeUndefined();
+    expect(route?.meta?.requiresPermission).toBeUndefined();
   });
 });

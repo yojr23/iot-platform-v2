@@ -40,7 +40,7 @@
                 {{ effectiveDevice?.status && effectiveDevice?.is_active ? 'Activo' : 'Inactivo' }}
               </span>
               <button
-                v-if="authStore.user?.is_admin"
+                v-if="authStore.can('device.update')"
                 class="btn btn-sm"
                 :class="effectiveDevice?.status && effectiveDevice?.is_active ? 'btn-outline-secondary' : 'btn-success'"
                 type="button"
@@ -52,7 +52,7 @@
             </dd>
           </dl>
 
-          <div v-if="authStore.user?.is_admin && device?.api_key" class="mt-3">
+          <div v-if="authStore.can('device.api_key.rotate') && device?.api_key" class="mt-3">
             <label class="form-label d-block" for="device_api_key">Credencial de ingesta (API key)</label>
             <div class="input-group input-group-sm">
               <input
@@ -82,7 +82,7 @@
             <div class="d-flex align-items-center gap-2">
               <span class="badge text-bg-light border">{{ sensors.length }}</span>
               <RouterLink
-                v-if="authStore.user?.is_admin"
+                v-if="authStore.can('sensor.create')"
                 class="btn btn-sm btn-outline-primary"
                 :to="`/sensors?device_id=${id}`"
               >
@@ -229,7 +229,7 @@ async function load() {
 }
 
 async function toggleStatus() {
-  if (!authStore.user?.is_admin || !device.value) {
+  if (!authStore.can('device.update') || !device.value) {
     return;
   }
 

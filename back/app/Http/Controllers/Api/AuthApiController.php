@@ -73,8 +73,7 @@ class AuthApiController extends Controller
         }
 
         $tokenName = $validated['device_name'] ?? 'api-client';
-        $abilities = $user->is_admin ? ['*'] : ['read'];
-        $plainTextToken = $user->createToken($tokenName, $abilities)->plainTextToken;
+        $plainTextToken = $user->createToken($tokenName, ['*'])->plainTextToken;
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -360,7 +359,7 @@ class AuthApiController extends Controller
         ]);
 
         return response()->json([
-            'user' => $this->userPayload($request->user()),
+            'data' => $this->userPayload($request->user()),
         ]);
     }
 
@@ -415,12 +414,19 @@ class AuthApiController extends Controller
      */
     private function userPayload(User $user): array
     {
+        $user->load('role');
+
         return [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'is_admin' => (bool) $user->is_admin,
             'email_verified' => $user->hasVerifiedEmail(),
+            'role' => $user->role ? [
+                'code' => $user->role->code,
+                'name' => $user->role->name,
+                'level' => $user->role->level,
+            ] : null,
+            'permissions' => $user->getAllPermissions()->toArray(),
         ];
     }
 }

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Role;
+use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,11 +13,15 @@ use Illuminate\Validation\ValidationException;
 
 class UserRoleController extends Controller
 {
+    public function __construct(
+        private readonly AuditService $auditService
+    ) {}
+
     public function index()
     {
         $startTime = microtime(true);
 
-        $data = User::query()
+        $data = User::with('role.permissions')
             ->orderBy('name')
             ->get()
             ->map(fn (User $user): array => $this->userPayload($user))
@@ -41,47 +47,71 @@ class UserRoleController extends Controller
         $startTime = microtime(true);
 
         $validated = $request->validate([
-            'is_admin' => ['required', 'boolean'],
+            'role_code' => ['required', 'string', 'exists:roles,code'],
         ]);
 
-        $requestedAdminValue = (bool) $validated['is_admin'];
         $currentUser = $request->user();
+        $newRole = Role::where('code', $validated['role_code'])->firstOrFail();
 
-        if ($currentUser && $currentUser->id === $user->id && ! $requestedAdminValue) {
+        // Reject non-assignable roles
+        if (! $newRole->assignable) {
             throw ValidationException::withMessages([
-                'is_admin' => 'No puedes retirarte tu propio rol de administrador.',
+                'role_code' => 'Este rol no puede ser asignado.',
             ]);
         }
 
-        if (! $requestedAdminValue && $user->is_admin && User::where('is_admin', true)->count() <= 1) {
+        // Check if actor can assign this role
+        if (! $currentUser->canAssignRole($newRole->code)) {
             throw ValidationException::withMessages([
-                'is_admin' => 'Debe existir al menos un administrador activo en la plataforma.',
+                'role_code' => 'No tienes permiso para asignar este rol.',
             ]);
         }
 
-        DB::transaction(function () use ($user, $requestedAdminValue): void {
-            $isMysql = DB::getDriverName() === 'mysql';
+        // Check if actor can manage the target user
+        if (! $currentUser->canManageRole($user)) {
+            throw ValidationException::withMessages([
+                'role_code' => 'No puedes modificar el rol de este usuario.',
+            ]);
+        }
 
-            if ($isMysql) {
-                DB::statement('SET @allow_admin_role_change = 1');
-            }
+        // Prevent self-demotion from superadmin
+        if ($currentUser->id === $user->id && $currentUser->role?->code === 'superadmin' && $newRole->code !== 'superadmin') {
+            throw ValidationException::withMessages([
+                'role_code' => 'No puedes retirar tu propio rol de superadministrador.',
+            ]);
+        }
 
-            try {
-                $user->is_admin = $requestedAdminValue;
-                $user->save();
-            } finally {
-                if ($isMysql) {
-                    DB::statement('SET @allow_admin_role_change = 0');
+        // Last SuperAdmin protection — locked inside transaction to prevent race condition
+        $oldRoleCode = $user->role?->code;
+
+        DB::transaction(function () use ($user, $newRole, $request, $currentUser, $oldRoleCode): void {
+            if ($user->role?->code === 'superadmin' && $newRole->code !== 'superadmin') {
+                $superadminCount = User::where('role_id', $user->role_id)->lockForUpdate()->count();
+                if ($superadminCount <= 1) {
+                    throw ValidationException::withMessages([
+                        'role_code' => 'Debe existir al menos un superadministrador activo en la plataforma.',
+                    ]);
                 }
             }
 
-            // SEC-TOKEN-001: a previously issued token for this user was minted with the
-            // abilities of the *old* role (e.g. a `['*']` admin PAT). Revoke every existing
-            // token on any role change so a stale token can't keep exercising privileges
-            // the user's current role no longer has. A promoted user simply re-logs in to
-            // get a token reflecting the new role.
+            $user->role_id = $newRole->id;
+
+            // Sync is_admin for backward compatibility
+            $user->is_admin = in_array($newRole->code, ['admin', 'superadmin'], true);
+
+            $user->save();
+
+            // Revoke all tokens on role change
             $user->tokens()->delete();
         });
+
+        // Audit log
+        $this->auditService->logRoleChange(
+            $user->id,
+            $oldRoleCode,
+            $newRole->code,
+            $request
+        );
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -92,12 +122,13 @@ class UserRoleController extends Controller
             'request_id' => $request->header('X-Request-Id', uniqid()),
             'user_id' => auth()->id(),
             'target_user_id' => $user->id,
-            'is_admin' => $requestedAdminValue,
+            'old_role' => $oldRoleCode,
+            'new_role' => $newRole->code,
             'duration_ms' => $durationMs,
         ]);
 
         return response()->json([
-            'data' => $this->userPayload($user->fresh()),
+            'data' => $this->userPayload($user->fresh()->load('role.permissions')),
             'message' => 'Rol de usuario actualizado correctamente.',
         ]);
     }
@@ -112,7 +143,12 @@ class UserRoleController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'is_admin' => (bool) $user->is_admin,
-            'role' => $user->is_admin ? 'Administrador' : 'Usuario',
+            'role' => $user->role ? [
+                'code' => $user->role->code,
+                'name' => $user->role->name,
+                'level' => $user->role->level,
+            ] : null,
+            'permissions' => $user->getAllPermissions()->toArray(),
             'email_verified_at' => $user->email_verified_at?->toIso8601String(),
             'created_at' => $user->created_at?->toIso8601String(),
             'updated_at' => $user->updated_at?->toIso8601String(),

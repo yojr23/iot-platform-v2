@@ -6,7 +6,7 @@
         <p class="lab-resource-description">Consulta el estado de tus equipos y sus sensores asociados.</p>
       </div>
       <div class="lab-resource-actions">
-        <button v-if="authStore.user?.is_admin" class="btn btn-primary" type="button" @click="openCreate">
+        <button v-if="authStore.can('device.create')" class="btn btn-primary" type="button" @click="openCreate">
           <I name="plus" />Nuevo dispositivo
         </button>
         <button class="btn btn-outline-secondary" type="button" :disabled="loading" @click="load"><I name="refresh" />Actualizar</button>
@@ -152,7 +152,7 @@ async function load() {
   error.value = '';
 
   try {
-    const shouldLoadCatalogs = Boolean(authStore.user?.is_admin);
+    const shouldLoadCatalogs = Boolean(authStore.can('device.create'));
     const [devicesResponse, labsResponse, typesResponse] = await Promise.all([
       getDevices({ per_page: DEVICES_PER_PAGE, page: 1 }),
       shouldLoadCatalogs ? getLabs() : Promise.resolve({ data: [] }),
@@ -215,7 +215,7 @@ const filteredDevices = computed(() => {
 });
 
 async function toggleDeviceStatus(device) {
-  if (!authStore.user?.is_admin) {
+  if (!authStore.can('device.update')) {
     return;
   }
 

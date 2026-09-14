@@ -43,6 +43,27 @@ class CdcOutboxStreamConsumer
 
     public const MAX_ATTEMPTS = 5;
 
+    /**
+     * Fault injection is deliberately limited to local/test processes. The Gate 10 live-Docker
+     * harness uses the pause to create the otherwise unobservable XADD-before-XACK crash window.
+     * Production ignores the variable even when it is accidentally present in a container env.
+     */
+    public static function faultInjectionPauseAfterPublishMs(): int
+    {
+        if (! app()->environment(['local', 'testing'])) {
+            return 0;
+        }
+
+        $configured = getenv('GATE10_CDC_PAUSE_AFTER_PUBLISH_MS');
+
+        if (! is_string($configured) || ! ctype_digit($configured)) {
+            return 0;
+        }
+
+        // A bounded pause keeps a mistaken local setting from indefinitely wedging a worker.
+        return min((int) $configured, 60000);
+    }
+
     private const KIND_RAW = 'raw';
     private const KIND_DOMAIN = 'domain';
 
@@ -201,7 +222,7 @@ class CdcOutboxStreamConsumer
         try {
             $change = DebeziumChange::fromRedisFields($fields);
         } catch (Throwable $e) {
-            $this->deadLetter($stream, $id, 'malformed_cdc_message: '.$e->getMessage(), $this->deliveryCount($stream, $id));
+            $this->deadLetter($stream, $id, $fields, 'malformed_cdc_message: '.$e->getMessage(), $this->deliveryCount($stream, $id));
             $this->ack($stream, $id);
 
             return 'dlq';
@@ -218,7 +239,7 @@ class CdcOutboxStreamConsumer
         $outboxId = isset($change->after['id']) ? (int) $change->after['id'] : 0;
 
         if ($outboxId <= 0) {
-            $this->deadLetter($stream, $id, 'cdc_after_missing_id', $this->deliveryCount($stream, $id));
+            $this->deadLetter($stream, $id, $fields, 'cdc_after_missing_id', $this->deliveryCount($stream, $id));
             $this->ack($stream, $id);
 
             return 'dlq';
@@ -234,16 +255,17 @@ class CdcOutboxStreamConsumer
         }
 
         return $kind === self::KIND_DOMAIN
-            ? $this->publishDomain($stream, $id, $outboxId)
-            : $this->publishRaw($stream, $id, $outboxId);
+            ? $this->publishDomain($stream, $id, $outboxId, $fields)
+            : $this->publishRaw($stream, $id, $outboxId, $fields);
     }
 
-    private function publishRaw(string $stream, string $id, int $outboxId): string
+    /** @param array<string,string|null> $fields */
+    private function publishRaw(string $stream, string $id, int $outboxId, array $fields): string
     {
         $outbox = RawEventOutbox::query()->with('rawSensorEvent')->find($outboxId);
 
         if (! $outbox) {
-            $this->deadLetter($stream, $id, 'unknown_raw_event_outbox:'.$outboxId, $this->deliveryCount($stream, $id));
+            $this->deadLetter($stream, $id, $fields, 'unknown_raw_event_outbox:'.$outboxId, $this->deliveryCount($stream, $id));
             $this->ack($stream, $id);
 
             return 'dlq';
@@ -258,7 +280,7 @@ class CdcOutboxStreamConsumer
 
         if (! $outbox->rawSensorEvent) {
             $outbox->forceFill(['status' => 'failed', 'last_error' => 'raw_sensor_event missing', 'locked_until' => null])->save();
-            $this->deadLetter($stream, $id, 'raw_sensor_event_missing:'.$outboxId, $this->deliveryCount($stream, $id));
+            $this->deadLetter($stream, $id, $fields, 'raw_sensor_event_missing:'.$outboxId, $this->deliveryCount($stream, $id));
             $this->ack($stream, $id);
             EventPipelineMetricsService::increment('cdc_dlq');
 
@@ -268,6 +290,7 @@ class CdcOutboxStreamConsumer
         return $this->finish(
             $stream,
             $id,
+            $fields,
             fn (): bool => $this->rawPublisher->publish($outbox->rawSensorEvent),
             function () use ($outbox): void {
                 $outbox->forceFill([
@@ -281,12 +304,13 @@ class CdcOutboxStreamConsumer
         );
     }
 
-    private function publishDomain(string $stream, string $id, int $outboxId): string
+    /** @param array<string,string|null> $fields */
+    private function publishDomain(string $stream, string $id, int $outboxId, array $fields): string
     {
         $outbox = DomainEventOutbox::query()->find($outboxId);
 
         if (! $outbox) {
-            $this->deadLetter($stream, $id, 'unknown_domain_event_outbox:'.$outboxId, $this->deliveryCount($stream, $id));
+            $this->deadLetter($stream, $id, $fields, 'unknown_domain_event_outbox:'.$outboxId, $this->deliveryCount($stream, $id));
             $this->ack($stream, $id);
 
             return 'dlq';
@@ -301,6 +325,7 @@ class CdcOutboxStreamConsumer
         return $this->finish(
             $stream,
             $id,
+            $fields,
             fn (): bool => $this->domainPublisher->publish($outbox),
             function () use ($outbox): void {
                 // delivered_at is owned by DomainEventBroadcastConsumer — do NOT set it here.
@@ -323,23 +348,33 @@ class CdcOutboxStreamConsumer
      * @param  callable():void  $recordFailure
      * @return 'acked'|'dlq'|'pending'
      */
-    private function finish(string $stream, string $id, callable $publish, callable $markPublished, callable $recordFailure): string
+    private function finish(string $stream, string $id, array $fields, callable $publish, callable $markPublished, callable $recordFailure): string
     {
         try {
             $published = $publish();
         } catch (Throwable $e) {
-            return $this->afterFailure($stream, $id, $e->getMessage(), $recordFailure);
+            return $this->afterFailure($stream, $id, $fields, $e->getMessage(), $recordFailure);
         }
 
         if (! $published) {
             // Publish (XADD to the application stream) failed — typically Redis unavailable. Leave
             // unacked so XAUTOCLAIM redelivers after the idle window; that idle window is the
             // bounded backoff. Only DLQ once delivery count crosses MAX_ATTEMPTS.
-            return $this->afterFailure($stream, $id, 'cdc publish() returned false', $recordFailure);
+            return $this->afterFailure($stream, $id, $fields, 'cdc publish() returned false', $recordFailure);
         }
 
         // Ordering matters: XADD already succeeded. Commit the outbox status, then ack. A crash
         // between these two is the accepted at-least-once duplicate window (see class docblock).
+        $faultPauseMs = self::faultInjectionPauseAfterPublishMs();
+        if ($faultPauseMs > 0) {
+            Log::warning('CdcOutboxStreamConsumer: Gate 10 fault checkpoint reached after publish before ack', [
+                'stream' => $stream,
+                'stream_id' => $id,
+                'pause_ms' => $faultPauseMs,
+            ]);
+            usleep($faultPauseMs * 1000);
+        }
+
         $markPublished();
         $this->ack($stream, $id);
         EventPipelineMetricsService::increment('cdc_publish_success');
@@ -351,7 +386,7 @@ class CdcOutboxStreamConsumer
      * @param  callable():void  $recordFailure
      * @return 'dlq'|'pending'
      */
-    private function afterFailure(string $stream, string $id, string $reason, callable $recordFailure): string
+    private function afterFailure(string $stream, string $id, array $fields, string $reason, callable $recordFailure): string
     {
         try {
             $recordFailure();
@@ -364,7 +399,7 @@ class CdcOutboxStreamConsumer
         $attempts = $this->deliveryCount($stream, $id);
 
         if ($attempts >= self::MAX_ATTEMPTS) {
-            $this->deadLetter($stream, $id, 'max_attempts_exceeded: '.$reason, $attempts);
+            $this->deadLetter($stream, $id, $fields, 'max_attempts_exceeded: '.$reason, $attempts);
             $this->ack($stream, $id);
             EventPipelineMetricsService::increment('cdc_dlq');
 
@@ -386,13 +421,16 @@ class CdcOutboxStreamConsumer
         $this->raw($this->connection, ['XACK', $stream, $this->group, $id]);
     }
 
-    private function deadLetter(string $stream, string $id, string $reason, int $attempts): void
+    /** @param array<string,string|null> $fields */
+    private function deadLetter(string $stream, string $id, array $fields, string $reason, int $attempts): void
     {
         $this->rawXadd($this->connection, $this->deadLetterStream, (int) config('app.dlq_maxlen', 1000000), [
             'orig_stream' => $stream,
             'orig_id' => $id,
             'reason' => $reason,
             'attempts' => (string) $attempts,
+            'payload_json' => json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            'failed_at' => now()->toIso8601String(),
         ]);
     }
 

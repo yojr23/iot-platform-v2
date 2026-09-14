@@ -30,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
+            'can' => \App\Http\Middleware\EnsureUserHasPermission::class,
             'api.metrics' => \App\Http\Middleware\TrackApiPerformance::class,
             'ingestion.token' => \App\Http\Middleware\EnsureIngestionToken::class,
             // SEC-AUTH-002: not registered by default in Laravel 12's minimal bootstrap/app.php

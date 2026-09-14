@@ -22,7 +22,7 @@ async function mountShell({ authenticated = false, admin = false } = {}) {
     const { useAuthStore } = await import('@/stores/auth');
     const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test', is_admin: admin };
+    authStore.user = { id: 1, name: 'Test', role: { code: admin ? 'superadmin' : 'user', level: admin ? 3 : 1 }, permissions: admin ? ['system_setting.view', 'system_setting.update'] : [] };
   }
   await nextTick();
   return { el, unmount: () => { app.unmount(); mountedApps.splice(mountedApps.indexOf(app), 1); } };

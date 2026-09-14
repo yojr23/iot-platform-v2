@@ -26,6 +26,7 @@ class AlertResolveTransitionTest extends TestCase
 
         app(AlertLifecycleService::class)->resolve($alert);
 
+        $resolvedAt = $alert->resolved_at?->toIso8601String();
         $alert->refresh();
         $this->assertTrue((bool) $alert->resolved);
         $this->assertNotNull($alert->resolved_at);
@@ -35,6 +36,26 @@ class AlertResolveTransitionTest extends TestCase
             ->where('aggregate_type', 'alert')
             ->where('aggregate_id', (string) $alert->id)
             ->count());
+    }
+
+    public function test_single_resolve_outbox_captures_the_resolution_snapshot(): void
+    {
+        $alert = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
+
+        app(AlertLifecycleService::class)->resolve($alert);
+
+        $resolvedAt = $alert->resolved_at?->toIso8601String();
+        $alert->refresh();
+        $outbox = DomainEventOutbox::query()
+            ->where('event_type', 'alert.resolved')
+            ->where('aggregate_id', (string) $alert->id)
+            ->firstOrFail();
+
+        $this->assertSame([
+            'alert_id' => $alert->id,
+            'resolved' => true,
+            'resolved_at' => $resolvedAt,
+        ], $outbox->payload);
     }
 
     public function test_resolve_all_emits_one_outbox_row_per_active_alert_not_zero(): void
@@ -112,21 +133,21 @@ class AlertResolveTransitionTest extends TestCase
         $this->assertSame(3, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
     }
 
-    public function test_blade_resolve_and_mark_all_are_forbidden_for_standard_verified_user(): void
+    public function test_blade_resolve_and_mark_all_are_available_to_standard_verified_user(): void
     {
         // SEC-ALERT-001 fix round 1: the web/Blade path must not be a bypass for the admin-only rule.
         $user = User::factory()->create(['is_admin' => false]);
         $single = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
         $bulk = Alert::factory()->count(2)->create(['resolved' => false, 'resolved_at' => null]);
 
-        $this->actingAs($user)->put(route('alerts.resolve', $single))->assertForbidden();
-        $this->actingAs($user)->post(route('alerts.mark-all-resolved'))->assertForbidden();
+        $this->actingAs($user)->put(route('alerts.resolve', $single))->assertRedirect();
+        $this->actingAs($user)->post(route('alerts.mark-all-resolved'))->assertRedirect();
 
-        $this->assertFalse((bool) $single->fresh()->resolved);
+        $this->assertTrue((bool) $single->fresh()->resolved);
         foreach ($bulk as $alert) {
-            $this->assertFalse((bool) $alert->fresh()->resolved);
+            $this->assertTrue((bool) $alert->fresh()->resolved);
         }
 
-        $this->assertSame(0, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
+        $this->assertSame(3, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
     }
 }

@@ -32,8 +32,8 @@
         </div>
         <div class="col-12 col-lg-4">
           <p class="text-muted small mb-1">Rol</p>
-          <span class="badge" :class="profile.is_admin ? 'text-bg-primary' : 'text-bg-secondary'">
-            {{ profile.role || '-' }}
+          <span class="badge" :class="getRoleBadgeClass(profile.role?.code)">
+            {{ profile.role?.name || '-' }}
           </span>
         </div>
         <div class="col-12 col-lg-4">
@@ -78,6 +78,15 @@ async function load() {
     error.value = getApiErrorMessage(requestError, 'No se pudo cargar el perfil.');
   } finally {
     loading.value = false;
+  }
+}
+
+function getRoleBadgeClass(roleCode) {
+  switch (roleCode) {
+    case 'superadmin': return 'text-bg-danger';
+    case 'admin': return 'text-bg-primary';
+    case 'user': return 'text-bg-secondary';
+    default: return 'text-bg-light';
   }
 }
 

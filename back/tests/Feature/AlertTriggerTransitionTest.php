@@ -7,10 +7,13 @@ use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Models\Alert;
 use App\Models\AlertRule;
+use App\Models\Device;
 use App\Models\DomainEventOutbox;
+use App\Models\Lab;
 use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Models\SensorType;
+use App\Services\Alerts\AlertService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -60,6 +63,50 @@ class AlertTriggerTransitionTest extends TestCase
             ->where('aggregate_type', 'alert')
             ->where('aggregate_id', (string) $alert->id)
             ->count());
+    }
+
+    public function test_alert_triggered_outbox_captures_the_complete_broadcast_snapshot_at_creation(): void
+    {
+        $lab = Lab::factory()->create(['name' => 'Laboratorio original']);
+        $device = Device::factory()->create(['lab_id' => $lab->id, 'name' => 'Dispositivo original']);
+        $sensorType = SensorType::factory()->create(['name' => 'Temperatura original', 'unit' => 'C']);
+        $sensor = Sensor::factory()->create([
+            'device_id' => $device->id,
+            'sensor_type_id' => $sensorType->id,
+            'name' => 'Sensor original',
+        ]);
+        $rule = AlertRule::create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => $device->id,
+            'sensor_id' => $sensor->id,
+            'min_value' => null,
+            'max_value' => 50,
+            'severity' => 'danger',
+            'message' => 'Mensaje original',
+            'name' => 'Regla original',
+        ]);
+        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 81.5]);
+
+        app(AlertService::class)->createAlertsForReading($reading);
+
+        $alert = Alert::query()->where('sensor_reading_id', $reading->id)->where('alert_rule_id', $rule->id)->firstOrFail();
+        $outbox = DomainEventOutbox::query()
+            ->where('event_type', 'alert.triggered')
+            ->where('aggregate_id', (string) $alert->id)
+            ->firstOrFail();
+
+        $this->assertSame([
+            'alert_id' => $alert->id,
+            'message' => 'Mensaje original',
+            'severity' => 'danger',
+            'value' => 81.5,
+            'sensor_name' => 'Sensor original',
+            'sensor_type' => 'Temperatura original',
+            'unit' => 'C',
+            'device_name' => 'Dispositivo original',
+            'lab_name' => 'Laboratorio original',
+            'timestamp' => $alert->created_at?->toIso8601String(),
+        ], $outbox->payload);
     }
 
     public function test_alert_creation_does_not_broadcast_synchronously_but_still_queues_the_email_job(): void

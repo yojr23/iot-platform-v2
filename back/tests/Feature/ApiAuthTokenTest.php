@@ -52,12 +52,15 @@ class ApiAuthTokenTest extends TestCase
         $token = $loginResponse->json('access_token');
         $this->assertNotEmpty($token);
 
-        $this->withHeaders([
+        $meResponse = $this->withHeaders([
             'Authorization' => 'Bearer '.$token,
         ])->getJson('/api/auth/me')
             ->assertOk()
-            ->assertJsonPath('user.id', $user->id)
-            ->assertJsonPath('user.is_admin', false);
+            ->assertJsonPath('data.id', $user->id)
+            ->assertJsonPath('data.role.code', 'user')
+            ->assertJsonStructure(['data' => ['id', 'role' => ['code', 'name', 'level'], 'permissions']]);
+
+        $this->assertContains('alert.resolve', $meResponse->json('data.permissions'));
 
         $this->withToken($token)->getJson('/api/metrics')
             ->assertOk()

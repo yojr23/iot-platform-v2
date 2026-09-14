@@ -112,6 +112,9 @@ class AlertService
 
         $startTime = microtime(true);
         $triggeredRules = $this->triggeredRulesForReading($reading);
+        $sensor = $reading->relationLoaded('sensor') && $reading->sensor !== null
+            ? $reading->sensor->loadMissing(['sensorType', 'device.lab'])
+            : $reading->sensor()->with(['sensorType', 'device.lab'])->first();
         $alertsCreated = 0;
 
         foreach ($triggeredRules as $alertRule) {
@@ -127,7 +130,7 @@ class AlertService
                 continue;
             }
 
-            DB::transaction(function () use ($reading, $alertRule, &$alertsCreated): void {
+            DB::transaction(function () use ($reading, $alertRule, $sensor, &$alertsCreated): void {
                 $alert = Alert::create([
                     'sensor_reading_id' => $reading->id,
                     'alert_rule_id' => $alertRule->id,
@@ -136,6 +139,15 @@ class AlertService
 
                 $this->recorder->record('alert.triggered', 'alert', $alert->id, [
                     'alert_id' => $alert->id,
+                    'message' => (string) ($alertRule->message ?? 'Alerta generada'),
+                    'severity' => (string) ($alertRule->severity ?? 'warning'),
+                    'value' => $reading->value !== null ? (float) $reading->value : null,
+                    'sensor_name' => (string) ($sensor?->name ?? 'Sensor desconocido'),
+                    'sensor_type' => (string) ($sensor?->sensorType?->name ?? ''),
+                    'unit' => (string) ($sensor?->sensorType?->unit ?? ''),
+                    'device_name' => (string) ($sensor?->device?->name ?? 'Dispositivo desconocido'),
+                    'lab_name' => (string) ($sensor?->device?->lab?->name ?? 'Lab no definido'),
+                    'timestamp' => $alert->created_at?->toIso8601String(),
                 ]);
 
                 $alertsCreated++;
@@ -198,4 +210,3 @@ class AlertService
         return $result;
     }
 }
-

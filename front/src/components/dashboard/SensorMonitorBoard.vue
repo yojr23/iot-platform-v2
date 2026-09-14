@@ -390,7 +390,7 @@
                                 }}<small>{{ sensor(w)?.unit }}</small></b
                             >
                         </button>
-                        <div v-if="editing" class="lab-edit-actions">
+                        <div v-if="editing && canManageDashboard" class="lab-edit-actions">
                             <button
                                 :disabled="i === 0"
                                 :aria-label="`Subir ${sensor(w)?.name}`"

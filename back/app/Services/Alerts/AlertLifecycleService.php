@@ -119,6 +119,8 @@ class AlertLifecycleService
 
         $this->recorder->record('alert.resolved', 'alert', $alert->id, [
             'alert_id' => $alert->id,
+            'resolved' => true,
+            'resolved_at' => $alert->resolved_at?->toIso8601String(),
         ]);
     }
 }

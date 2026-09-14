@@ -8,34 +8,28 @@ use App\Models\User;
 /**
  * SEC-ALERT-001: authorization gate for alert reads and lifecycle mutations.
  *
- * Existing code reused: `User::hasVerifiedEmail()` (Illuminate\Auth\MustVerifyEmail, already used
- * by the `verified` route middleware) and `User::$is_admin` (existing admin flag, already the sole
- * gate for the `admin` route middleware — see `routes/api.php`).
- * Existing owner retired/delegated: none — `AlertController::resolve()/resolveAll()` previously had
- * no authorization check at all; this is a net-new gate, not a replacement of prior logic.
- * Compatibility window: none needed. If an operator role is introduced later, replace the
- * `is_admin` check in `resolve()`/`resolveAll()` with an explicit operator capability check —
- * do NOT reopen alert resolution to every authenticated/verified user.
+ * RBAC integration: This policy now uses the roles + permissions system instead of is_admin.
+ * The user must have the appropriate permission for the requested operation.
  */
 class AlertPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasVerifiedEmail();
+        return $user->hasVerifiedEmail() && $user->can('alert.view');
     }
 
     public function view(User $user, Alert $alert): bool
     {
-        return $user->hasVerifiedEmail();
+        return $user->hasVerifiedEmail() && $user->can('alert.view');
     }
 
     public function resolve(User $user, Alert $alert): bool
     {
-        return (bool) $user->is_admin;
+        return $user->can('alert.resolve');
     }
 
     public function resolveAll(User $user): bool
     {
-        return (bool) $user->is_admin;
+        return $user->can('alert.resolve');
     }
 }

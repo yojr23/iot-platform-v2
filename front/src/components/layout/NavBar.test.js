@@ -28,7 +28,7 @@ async function mountNavBar({ authenticated = false, admin = false } = {}) {
     const { useAuthStore } = await import('@/stores/auth');
     const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User', is_admin: admin };
+    authStore.user = { id: 1, name: 'Test User', role: { code: admin ? 'superadmin' : 'user', level: admin ? 3 : 1 }, permissions: admin ? ['system_setting.view', 'system_setting.update'] : [] };
   }
   app.mount(el);
   await nextTick();

@@ -1,4 +1,5 @@
 import { createApp, nextTick } from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/catalogs', () => ({
@@ -10,6 +11,7 @@ vi.mock('@/api/catalogs', () => ({
 
 vi.mock('@/api/users', () => ({
   getUsers: vi.fn(() => Promise.resolve({ data: [] })),
+  getRoles: vi.fn(() => Promise.resolve({ data: [] })),
   updateUserRole: vi.fn()
 }));
 
@@ -21,8 +23,11 @@ const apps = [];
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 async function mount(component, props = {}) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
   const host = document.createElement('div');
   const app = createApp(component, props);
+  app.use(pinia);
   app.mount(host);
   apps.push(app);
   await flush();

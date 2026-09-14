@@ -19,7 +19,35 @@ export const useAuthStore = defineStore('auth', {
   }),
 
   getters: {
-    isAuthenticated: (state) => Boolean(state.token && state.user)
+    isAuthenticated: (state) => Boolean(state.token && state.user),
+
+    isSuperAdmin: (state) => state.user?.role?.code === 'superadmin',
+    isAdmin: (state) => state.user?.role?.code === 'admin',
+    isUser: (state) => state.user?.role?.code === 'user',
+
+    hasRole: (state) => (roleCode) => {
+      return state.user?.role?.code === roleCode;
+    },
+
+    hasAnyRole: (state) => (roleCodes) => {
+      return roleCodes.includes(state.user?.role?.code);
+    },
+
+    can: (state) => (permission) => {
+      // SuperAdmin bypass
+      if (state.user?.role?.code === 'superadmin') {
+        return true;
+      }
+      return state.user?.permissions?.includes(permission) ?? false;
+    },
+
+    hasPermission: (state) => (permission) => {
+      // SuperAdmin bypass
+      if (state.user?.role?.code === 'superadmin') {
+        return true;
+      }
+      return state.user?.permissions?.includes(permission) ?? false;
+    }
   },
 
   actions: {

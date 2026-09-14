@@ -4,23 +4,32 @@ namespace App\Events;
 
 use App\Events\Concerns\HasEventEnvelope;
 use App\Events\Contracts\VersionedDomainEvent;
-use App\Models\Alert;
-
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
 
 class NewAlertTriggered implements ShouldBroadcastNow, VersionedDomainEvent
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels, HasEventEnvelope;
+    use Dispatchable, InteractsWithSockets, HasEventEnvelope;
 
-    public $alert;
-
-    public function __construct(Alert $alert, ?string $correlationId = null, ?string $causationId = null)
-    {
-        $this->alert = $alert;
+    /**
+     * Immutable alert.triggered fact, captured in DomainEventOutbox when the alert is created.
+     */
+    public function __construct(
+        public readonly int $alertId,
+        public readonly string $message,
+        public readonly string $severity,
+        public readonly ?float $value,
+        public readonly string $sensorName,
+        public readonly string $sensorType,
+        public readonly string $unit,
+        public readonly string $deviceName,
+        public readonly string $labName,
+        public readonly ?string $timestamp,
+        ?string $correlationId = null,
+        ?string $causationId = null,
+    ) {
         $this->correlationId = $correlationId;
         $this->causationId = $causationId;
     }
@@ -37,24 +46,17 @@ class NewAlertTriggered implements ShouldBroadcastNow, VersionedDomainEvent
 
     public function broadcastWith()
     {
-        $reading = $this->alert->sensorReading;
-        $sensor = $reading?->sensor;
-        $sensorType = $sensor?->sensorType;
-        $device = $sensor?->device;
-        $lab = $device?->lab;
-        $rule = $this->alert->alertRule;
-
         $legacy = [
-            'id' => $this->alert->id,
-            'message' => $rule?->message ?? 'Alerta generada',
-            'severity' => $rule?->severity ?? 'warning',
-            'value' => $reading?->value,
-            'sensor_name' => $sensor?->name ?? 'Sensor desconocido',
-            'sensor_type' => $sensorType?->name ?? '',
-            'unit' => $sensorType?->unit ?? '',
-            'device_name' => $device?->name ?? 'Dispositivo desconocido',
-            'lab_name' => $lab?->name ?? 'Lab no definido',
-            'timestamp' => $this->alert->created_at,
+            'id' => $this->alertId,
+            'message' => $this->message,
+            'severity' => $this->severity,
+            'value' => $this->value,
+            'sensor_name' => $this->sensorName,
+            'sensor_type' => $this->sensorType,
+            'unit' => $this->unit,
+            'device_name' => $this->deviceName,
+            'lab_name' => $this->labName,
+            'timestamp' => $this->timestamp,
         ];
 
         // Additive envelope metadata (Stage 2.2) — existing keys unchanged.
@@ -73,6 +75,6 @@ class NewAlertTriggered implements ShouldBroadcastNow, VersionedDomainEvent
 
     public function aggregateId(): int|string
     {
-        return $this->alert->id;
+        return $this->alertId;
     }
 }

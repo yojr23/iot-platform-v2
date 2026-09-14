@@ -2,8 +2,10 @@
 
 namespace Tests;
 
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 abstract class TestCase extends BaseTestCase
@@ -11,6 +13,10 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        if (Schema::hasTable('roles')) {
+            $this->seed(RolePermissionSeeder::class);
+        }
 
         // Aislar Redis en pruebas evita lecturas cacheadas entre tests cuando
         // el entorno de Docker dispone de un servidor Redis real.

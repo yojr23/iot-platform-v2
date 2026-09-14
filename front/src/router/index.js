@@ -55,109 +55,110 @@ const router = createRouter({
         {
           path: 'dashboard',
           name: 'dashboard',
-          component: DashboardView
+          component: DashboardView,
+          meta: { requiresAuth: true }
         },
         {
           path: 'sensors',
           name: 'sensors',
           component: () => import('@/views/SensorsView.vue'),
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, requiresPermission: 'sensor.view' }
         },
         {
           path: 'sensors/:id',
           name: 'sensor-detail',
           component: () => import('@/views/SensorDetailView.vue'),
           props: true,
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, requiresPermission: 'sensor.view' }
         },
         {
           path: 'devices',
           name: 'devices',
           component: () => import('@/views/DevicesView.vue'),
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, requiresPermission: 'device.view' }
         },
         {
           path: 'devices/:id',
           name: 'device-detail',
           component: () => import('@/views/DeviceDetailView.vue'),
           props: true,
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, requiresPermission: 'device.view' }
         },
         {
           path: 'alerts',
           name: 'alerts',
           component: () => import('@/views/AlertsView.vue'),
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, requiresPermission: 'alert.view' }
         },
         {
           path: 'alerts/:id',
           name: 'alert-detail',
           component: () => import('@/views/AlertDetailView.vue'),
           props: true,
-          meta: { requiresAuth: true }
+          meta: { requiresAuth: true, requiresPermission: 'alert.view' }
         },
         {
           path: 'alert-rules',
           name: 'alert-rules',
           component: () => import('@/views/AlertRulesView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'alert_rule.view' }
         },
         {
           path: 'config',
           name: 'config',
           component: () => import('@/views/ConfigView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'system_setting.view' }
         },
         {
           path: 'config/general',
           name: 'config-general',
           component: () => import('@/views/config/GeneralConfigView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'system_setting.view' }
         },
         {
           path: 'config/alerts',
           name: 'config-alerts',
           component: () => import('@/views/config/AlertConfigView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'system_setting.view' }
         },
         {
           path: 'config/email',
           name: 'config-email',
           component: () => import('@/views/config/EmailConfigView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'system_setting.view' }
         },
         {
           path: 'config/diagnostics',
           name: 'config-diagnostics',
           component: () => import('@/views/config/DiagnosticsConfigView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'system_setting.view' }
         },
         {
           path: 'labs',
           name: 'labs',
           component: () => import('@/views/CatalogAdminView.vue'),
           props: { type: 'labs' },
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'device.view' }
         },
         {
           path: 'sensor-types',
           name: 'sensor-types',
           component: () => import('@/views/CatalogAdminView.vue'),
           props: { type: 'sensor-types' },
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'sensor.view' }
         },
         {
           path: 'device-types',
           name: 'device-types',
           component: () => import('@/views/CatalogAdminView.vue'),
           props: { type: 'device-types' },
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'device.view' }
         },
         {
           path: 'users',
           name: 'users',
           component: () => import('@/views/UserRolesView.vue'),
-          meta: { requiresAuth: true, requiresAdmin: true }
+          meta: { requiresAuth: true, requiresPermission: 'user.view' }
         },
         {
           path: 'metrics',
@@ -199,10 +200,10 @@ router.beforeEach(async (to) => {
     };
   }
 
-  if (to.meta.requiresAdmin && !authStore.user?.is_admin) {
+  if (to.meta.requiresPermission && !authStore.can(to.meta.requiresPermission)) {
     return {
       name: 'dashboard',
-      query: { denied: 'admin' }
+      query: { denied: 'permission' }
     };
   }
 
