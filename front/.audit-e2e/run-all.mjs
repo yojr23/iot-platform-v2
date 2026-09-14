@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isCleanResult } from './result-policy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const filter = process.argv.find((a) => a.startsWith('--filter='))?.slice('--filter='.length);
@@ -76,8 +77,8 @@ for (const line of lines) {
 fs.mkdirSync(path.join(__dirname, 'results'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'results', summaryName), JSON.stringify(summary, null, 2));
 
-const clean = summary.filter(
-  (s) => s.exitCode === 0 && !s.navError && s.hasOverflow === false && s.consoleErrors === 0 && s.pageErrors === 0 && s.failedRequests === 0
-);
-console.log(`\n${clean.length}/${summary.length} runs clean (no nav error, no doc overflow, no console/page errors, no failed requests).`);
+const clean = summary.filter(isCleanResult);
+console.log(`\n${clean.length}/${summary.length} runs clean (no nav or interaction error, no failed interaction assertion, no doc overflow, no console/page errors, no failed requests).`);
 console.log(`Full results: front/.audit-e2e/results/${summaryName} (per-run JSON/PNG also written there).`);
+
+if (clean.length !== summary.length) process.exitCode = 1;

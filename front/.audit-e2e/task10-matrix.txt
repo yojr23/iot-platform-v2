@@ -15,7 +15,7 @@
 /dashboard|guest|320x700|long|responsive-layout|t10-dashboard-guest-long-320
 
 # Authenticated dashboard: lifecycle, single mobile expanded signal, populated Chart.js.
-/dashboard|user|320x700|normal|dashboard-lifecycle|t10-dashboard-user-lifecycle-320
+/dashboard|admin|320x700|normal|dashboard-lifecycle|t10-dashboard-admin-lifecycle-320
 /dashboard|user|320x700|normal|responsive-layout|t10-dashboard-user-320
 /dashboard|user|390x844|normal|responsive-layout|t10-dashboard-user-390
 /dashboard|user|768x1024|normal|responsive-layout|t10-dashboard-user-768

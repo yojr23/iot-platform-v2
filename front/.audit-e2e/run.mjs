@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { installAuth, mockApi } from './fixtures.mjs';
+import { hasInteractionFailure } from './result-policy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.AUDIT_BASE_URL || 'http://127.0.0.1:5173';
@@ -463,5 +464,9 @@ const summary = {
 
 fs.writeFileSync(path.join(resultsDir, `${name}.json`), JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary));
+
+// An explicitly requested interaction is part of the audit contract. Preserve the JSON artifact
+// for diagnosis, but make its failed assertion or caught exception fail the matrix subprocess.
+if (hasInteractionFailure(interaction)) process.exitCode = 1;
 
 await browser.close();

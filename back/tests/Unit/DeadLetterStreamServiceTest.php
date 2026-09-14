@@ -9,12 +9,29 @@ use Tests\TestCase;
 
 class DeadLetterStreamServiceTest extends TestCase
 {
+    private function fakePredisClient(mixed $reply): object
+    {
+        return new class($reply)
+        {
+            /** @var list<array<int,string>> */
+            public array $commands = [];
+
+            public function __construct(private mixed $reply)
+            {
+            }
+
+            public function executeRaw(array $args): mixed
+            {
+                $this->commands[] = $args;
+
+                return $this->reply;
+            }
+        };
+    }
+
     public function test_inspect_normalizes_flat_redis_entries(): void
     {
-        $client = Mockery::mock();
-        $client->shouldReceive('executeRaw')->once()->with([
-            'XRANGE', 'iot.dead-letter-events', '-', '+', 'COUNT', '10',
-        ])->andReturn([
+        $client = $this->fakePredisClient([
             ['1710000000000-0', ['orig_id', '1-0', 'reason', 'bad payload', 'attempts', '5']],
         ]);
 
@@ -23,18 +40,20 @@ class DeadLetterStreamServiceTest extends TestCase
 
         $service = new DeadLetterStreamService($connection, 'iot.dead-letter-events');
 
+        $entries = $service->inspect(10);
+
         $this->assertSame([
             [
                 'id' => '1710000000000-0',
                 'fields' => ['orig_id' => '1-0', 'reason' => 'bad payload', 'attempts' => '5'],
             ],
-        ], $service->inspect(10));
+        ], $entries);
+        $this->assertSame([['XRANGE', 'iot.dead-letter-events', '-', '+', 'COUNT', '10']], $client->commands);
     }
 
     public function test_inspect_normalizes_associative_redis_entries(): void
     {
-        $client = Mockery::mock();
-        $client->shouldReceive('executeRaw')->once()->andReturn([
+        $client = $this->fakePredisClient([
             '1710000000000-0' => ['orig_id' => '1-0', 'reason' => 'bad payload', 'attempts' => '5'],
         ]);
 
@@ -43,12 +62,15 @@ class DeadLetterStreamServiceTest extends TestCase
 
         $service = new DeadLetterStreamService($connection, 'iot.dead-letter-events');
 
+        $entries = $service->inspect();
+
         $this->assertSame([
             [
                 'id' => '1710000000000-0',
                 'fields' => ['orig_id' => '1-0', 'reason' => 'bad payload', 'attempts' => '5'],
             ],
-        ], $service->inspect());
+        ], $entries);
+        $this->assertSame([['XRANGE', 'iot.dead-letter-events', '-', '+', 'COUNT', '50']], $client->commands);
     }
 
     public function test_replay_is_rejected_for_an_unapproved_source_stream(): void
@@ -66,17 +88,7 @@ class DeadLetterStreamServiceTest extends TestCase
 
     public function test_replay_returns_idempotent_result_from_atomic_redis_operation(): void
     {
-        $client = Mockery::mock();
-        $client->shouldReceive('executeRaw')->once()->withArgs(function (array $args): bool {
-            return $args[0] === 'EVAL'
-                && $args[1] !== ''
-                && $args[2] === '4'
-                && $args[3] === 'iot.dead-letter-events'
-                && $args[4] === 'iot.raw-events'
-                && $args[6] === 'iot.dead-letter-replays'
-                && $args[7] === '1710000000000-0'
-                && $args[8] === 'operator';
-        })->andReturn(['replayed', '1710000001000-0']);
+        $client = $this->fakePredisClient(['replayed', '1710000001000-0']);
 
         $connection = Mockery::mock(Connection::class);
         $connection->shouldReceive('client')->andReturn($client);
@@ -87,11 +99,25 @@ class DeadLetterStreamServiceTest extends TestCase
             ['iot.raw-events'],
         );
 
+        $result = $service->replay('1710000000000-0', 'iot.raw-events', 'operator');
+
         $this->assertSame([
             'status' => 'replayed',
             'replay_id' => '1710000001000-0',
             'source' => 'iot.raw-events',
             'original_id' => '1710000000000-0',
-        ], $service->replay('1710000000000-0', 'iot.raw-events', 'operator'));
+        ], $result);
+        $this->assertCount(1, $client->commands);
+        $this->assertSame('EVAL', $client->commands[0][0]);
+        $this->assertNotSame('', $client->commands[0][1]);
+        $this->assertSame([
+            '4',
+            'iot.dead-letter-events',
+            'iot.raw-events',
+            'iot:dlq:replayed:1710000000000-0',
+            'iot.dead-letter-replays',
+            '1710000000000-0',
+            'operator',
+        ], array_slice($client->commands[0], 2));
     }
 }

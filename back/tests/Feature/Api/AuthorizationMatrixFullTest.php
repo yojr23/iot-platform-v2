@@ -7,6 +7,7 @@ use App\Models\Device;
 use App\Models\Sensor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -67,7 +68,7 @@ class AuthorizationMatrixFullTest extends TestCase
         ];
     }
 
-    /** @dataProvider matrix */
+    #[DataProvider('matrix')]
     public function test_route_authorization(string $method, string $url, array $expected): void
     {
         // Seed the resources the read routes list, so a 200 is a real allow.
