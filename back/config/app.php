@@ -129,6 +129,9 @@ return [
     'ingestion_raw_events_stream' => env('INGESTION_RAW_EVENTS_STREAM', 'iot.raw-events'),
 
     'ingestion_raw_events_maxlen' => (int) env('INGESTION_RAW_EVENTS_MAXLEN', 500000),
+    // Optional MINID-based time retention (milliseconds). When > 0, XADD trims entries older
+    // than approximately this many milliseconds. 0 disables (MAXLEN only).
+    'ingestion_raw_events_min_age_ms' => (int) env('INGESTION_RAW_EVENTS_MIN_AGE_MS', 0),
 
     // Stage 3 (PLAN.md) / docs/implementation/adr-g1.md ADR-3: consumer group name for the raw
     // stream and the dedicated dead-letter stream for terminal (poison) delivery failures.
@@ -144,6 +147,8 @@ return [
     // dead-letter stream is reused (ADR-3 does not require a separate DLQ per source stream).
     'domain_events_stream' => env('DOMAIN_EVENTS_STREAM', 'iot.domain-events'),
     'domain_events_maxlen' => (int) env('DOMAIN_EVENTS_MAXLEN', 500000),
+    // Optional MINID-based time retention for domain events (milliseconds). 0 disables.
+    'domain_events_min_age_ms' => (int) env('DOMAIN_EVENTS_MIN_AGE_MS', 0),
     'domain_events_consumer_group' => env('DOMAIN_EVENTS_CONSUMER_GROUP', 'browser-delivery-v1'),
 
     // Gate 10 (PLAN.md Stage 10 / ADR-G1): Debezium Server captures the two outbox tables from the

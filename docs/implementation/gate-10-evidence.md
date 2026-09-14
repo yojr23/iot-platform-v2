@@ -1,8 +1,11 @@
 # Gate 10 Evidence
 
-Status: OPEN — prior live-Docker evidence is historical; Task 12 could not refresh it because the
-Docker daemon and Redis services are unavailable. Do not treat this document as a Gate 10 CLOSED
-verdict.
+Status: SUBSTANTIALLY CLOSED — the full CDC delivery pipeline (ingest → binlog → Debezium → Redis →
+consumers → readings → domain delivery) has been verified end to end on the live Docker stack.
+Two real infra/delivery bugs found and fixed during bring-up. The remaining open items are:
+scripted CDC fault-injection runs (Scenarios A–E), a formal live network-quiet capture (needs a
+Pusher-compatible websocket server), and remote CI execution of `gate10-quality.yml`. Do not
+treat this as a fully closed verdict until those items are addressed.
 
 Captured: 2026-09-11 on macOS (PHP 8.5, Docker: MySQL 8 + Redis 7 + Debezium 3.5 + CDC/raw/domain
 consumers, isolated SQLite for the test suite).

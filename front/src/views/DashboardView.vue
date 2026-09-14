@@ -59,8 +59,9 @@ async function load() {
                     }
                     allDevices = merged;
                 }
-            } catch {
+            } catch (e) {
                 // Authorized device list is optional; fall back to public catalog.
+                console.warn('[DashboardView] Authenticated graph catalog unavailable, using public only:', e?.message || e);
             }
         }
         if (g === generation) {

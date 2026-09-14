@@ -156,4 +156,45 @@ describe('DashboardView guest alert containment', () => {
 
     unmount();
   });
+
+  it('merges auth and public devices with auth taking precedence on overlap', async () => {
+    getGraphBootstrap.mockResolvedValueOnce({
+      data: {
+        version: 1,
+        default_sensor_id: null,
+        devices: [
+          { id: 9, name: 'Public copy of auth device', sensors: [{ id: 99, name: 'Public-only sensor', unit: 'pH' }] },
+          { id: 5, name: 'Public-only device', sensors: [{ id: 50, name: 'Public sensor', unit: '°C' }] }
+        ]
+      }
+    });
+    getAuthenticatedGraphCatalog.mockResolvedValueOnce({
+      data: {
+        version: 1,
+        default_sensor_id: 17,
+        devices: [
+          { id: 9, name: 'Auth device', sensors: [{ id: 17, name: 'Restricted sensor', unit: '°C' }] }
+        ]
+      }
+    });
+
+    const { el, unmount } = await mountDashboardView({ authenticated: true });
+
+    const board = el.querySelector('[data-testid="sensor-monitor-board"]');
+    expect(board).toBeTruthy();
+    // Device 9 appears once (auth version wins), device 5 appears from public fallback
+    const deviceIds = board.dataset.deviceIds.split(',').map(Number);
+    expect(deviceIds).toContain(9);
+    expect(deviceIds).toContain(5);
+    expect(deviceIds.filter((id) => id === 9)).toHaveLength(1);
+    // The auth version (name "Auth device") should be in the data, not "Public copy"
+    expect(boardDevices).toHaveBeenLastCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 9, name: 'Auth device' }),
+        expect.objectContaining({ id: 5, name: 'Public-only device' }),
+      ])
+    );
+
+    unmount();
+  });
 });

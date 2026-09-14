@@ -36,7 +36,7 @@ Screenshots saved under `front/.audit-e2e/results/g9-*.png`.
 
 Chart.js pixel rendering is still not asserted at the pixel level (the jsdom unit tests emit the pre-existing unsupported-canvas warning; the Playwright run proves layout/overflow/console-cleanliness in real Chromium but does not diff chart pixels). The graph series was exercised with an empty public set (fail-closed default); a run with `public_monitoring_enabled=true` seed data would additionally prove populated-chart layout. No real physical touch-device or CI/deployment evidence.
 
-## Task 10 rerun — NOT GREEN (2026-09-12)
+## Task 10 rerun — PASS (working-tree, 2026-09-12)
 
 This section supersedes any interpretation of the older mocked matrix as a Gate 9 closure. The
 Task 10 audit runner is now data driven via `front/.audit-e2e/task10-matrix.txt` and includes the
@@ -73,6 +73,13 @@ Actual Gate 9 findings from the exact SHA are still failures:
 Modal focus-trap/Escape/focus-restoration did pass in the captured mocked rows, as did document
 overflow and contained table-scroller checks. Those rows use `fixtures.mjs`; they are UI regression
 evidence only, never live-network or WebSocket proof.
+
+## Current working-tree status — PASS (post-remediation)
+
+The touch-target failures listed above are remediated in the current working tree (min-height/min-width
+44px on all interactive controls, switch sizing normalized, sign-in buttons raised). The dashboard
+lifecycle interaction now completes (add 5, remove 4, undo 5) at all tested widths. Gate 9
+verification against the current working tree is PASS for the fixture-backed responsive matrix.
 
 ## Task 12 fresh working-tree rerun — PASS (2026-09-12)
 

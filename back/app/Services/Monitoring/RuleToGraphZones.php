@@ -42,6 +42,56 @@ class RuleToGraphZones
             ->filter(fn (AlertRule $rule) => is_numeric($rule->min_value) || is_numeric($rule->max_value))
             ->values();
 
+        return $this->zonesFromRules($rules);
+    }
+
+    /**
+     * Resolve graph zones for a catalog with one candidate-rule query rather than one query per
+     * sensor. The in-memory scope predicate deliberately mirrors AlertService::applicableRules(),
+     * which remains the owner for individual alert evaluation.
+     *
+     * @param Collection<int, Sensor> $sensors
+     * @return Collection<int, array{zones: list<array{from: float|null, to: float|null, severity: string}>, boundaries: list<array{value: float, severity: string, bound: string, rule_id: int}>}>
+     */
+    public function zonesForMany(Collection $sensors): Collection
+    {
+        $sensors = $sensors->values();
+        if ($sensors->isEmpty()) {
+            return collect();
+        }
+
+        $sensorTypeIds = $sensors->pluck('sensor_type_id')->filter()->unique()->values();
+        $deviceIds = $sensors->pluck('device_id')->filter()->unique()->values();
+        $sensorIds = $sensors->pluck('id')->filter()->unique()->values();
+
+        $candidates = AlertRule::query()
+            ->whereIn('sensor_type_id', $sensorTypeIds)
+            ->where(fn ($query) => $query->whereNotNull('min_value')->orWhereNotNull('max_value'))
+            ->where(fn ($query) => $query->whereNull('device_id')->orWhereIn('device_id', $deviceIds))
+            ->where(fn ($query) => $query->whereNull('sensor_id')->orWhereIn('sensor_id', $sensorIds))
+            ->get();
+
+        return $sensors->mapWithKeys(function (Sensor $sensor) use ($candidates): array {
+            $rules = $candidates
+                ->filter(fn (AlertRule $rule): bool => $rule->sensor_type_id === $sensor->sensor_type_id
+                    && ($rule->device_id === null || $rule->device_id === $sensor->device_id)
+                    && ($rule->sensor_id === null || $rule->sensor_id === $sensor->id))
+                ->values();
+
+            return [$sensor->id => $this->zonesFromRules($rules)];
+        });
+    }
+
+    /**
+     * @param Collection<int, AlertRule> $rules
+     * @return array{
+     *     zones: list<array{from: float|null, to: float|null, severity: string}>,
+     *     boundaries: list<array{value: float, severity: string, bound: string, rule_id: int}>,
+     * }
+     */
+    private function zonesFromRules(Collection $rules): array
+    {
+
         if ($rules->isEmpty()) {
             return [
                 'zones' => [['from' => null, 'to' => null, 'severity' => 'neutral']],

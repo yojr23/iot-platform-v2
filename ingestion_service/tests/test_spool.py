@@ -99,3 +99,56 @@ def test_creates_missing_spool_parent_directory(tmp_path):
 
     assert path.exists()
     spool.close()
+
+
+def test_mark_failed_dead_letters_after_max_attempts(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    spool.enqueue(event())
+
+    # Exhaust max_attempts (default 5)
+    for i in range(1, 6):
+        spool.mark_failed("event-1", f"error-{i}", time.time() + 60 * i)
+
+    # Event should be removed from pending
+    assert spool.claim_due(limit=10) == []
+
+    # Event should appear in dead_letters
+    dead = spool.dead_letters()
+    assert len(dead) == 1
+    assert dead[0]["source_event_id"] == "event-1"
+    assert dead[0]["attempts"] == 5
+    spool.close()
+
+
+def test_mark_failed_respects_custom_max_attempts(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3", max_attempts=3)
+    spool.enqueue(event())
+
+    for i in range(1, 4):
+        spool.mark_failed("event-1", f"error-{i}", time.time() + 60 * i)
+
+    dead = spool.dead_letters()
+    assert len(dead) == 1
+    assert dead[0]["attempts"] == 3
+    spool.close()
+
+
+def test_dead_letters_returns_empty_when_no_exhausted_events(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    spool.enqueue(event())
+
+    assert spool.dead_letters() == []
+    spool.close()
+
+
+def test_mark_failed_does_not_dead_letter_below_max_attempts(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    spool.enqueue(event())
+
+    spool.mark_failed("event-1", "error-1", time.time() + 60, max_attempts=5)
+
+    # Still in pending, not dead-lettered
+    pending = spool.claim_due(limit=10)
+    assert len(pending) == 1
+    assert spool.dead_letters() == []
+    spool.close()

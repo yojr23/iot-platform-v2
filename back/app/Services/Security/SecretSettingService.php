@@ -5,6 +5,7 @@ namespace App\Services\Security;
 use App\Models\SystemSetting;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 
 /**
  * SEC-SECRET-001: the single place that encrypts/decrypts values stored via `SystemSetting`
@@ -22,13 +23,27 @@ use Illuminate\Support\Facades\Crypt;
  */
 class SecretSettingService
 {
+    /**
+     * Keys that this service is allowed to encrypt/decrypt.
+     * Enforced to prevent accidental encryption of non-secret settings.
+     */
+    private const ALLOWED_KEYS = ['mail_password'];
+
     public function put(string $key, string $plaintext, string $group): void
     {
+        if (! in_array($key, self::ALLOWED_KEYS, true)) {
+            throw new \InvalidArgumentException("SecretSettingService: key '{$key}' is not in the allowed encryption allowlist.");
+        }
+
         SystemSetting::set($key, Crypt::encryptString($plaintext), 'string', $group);
     }
 
     public function get(string $key, string $default = ''): string
     {
+        if (! in_array($key, self::ALLOWED_KEYS, true)) {
+            throw new \InvalidArgumentException("SecretSettingService: key '{$key}' is not in the allowed encryption allowlist.");
+        }
+
         $raw = (string) SystemSetting::get($key, '');
 
         if ($raw === '') {
@@ -37,7 +52,12 @@ class SecretSettingService
 
         try {
             return Crypt::decryptString($raw);
-        } catch (DecryptException) {
+        } catch (DecryptException $e) {
+            Log::error('SecretSettingService: failed to decrypt value', [
+                'key' => $key,
+                'exception' => $e->getMessage(),
+            ]);
+
             return $default;
         }
     }

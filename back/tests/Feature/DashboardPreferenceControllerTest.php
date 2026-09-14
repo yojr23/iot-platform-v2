@@ -109,4 +109,43 @@ class DashboardPreferenceControllerTest extends TestCase
             ],
         ])->assertUnprocessable()->assertJsonValidationErrors('layout.main.range');
     }
+
+    public function test_store_rejects_a_main_sensor_that_belongs_to_another_device(): void
+    {
+        $user = User::factory()->create(['is_admin' => true]);
+        $selectedDevice = Device::factory()->create();
+        $otherDevice = Device::factory()->create();
+        $otherSensor = Sensor::factory()->create(['device_id' => $otherDevice->id]);
+
+        $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+            'layout' => [
+                'main' => [
+                    'device_id' => $selectedDevice->id,
+                    'sensor_id' => $otherSensor->id,
+                ],
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors('layout.main.sensor_id');
+
+        $this->assertDatabaseMissing('dashboard_preferences', ['user_id' => $user->id]);
+    }
+
+    public function test_store_rejects_a_monitor_sensor_that_belongs_to_another_device(): void
+    {
+        $user = User::factory()->create(['is_admin' => true]);
+        $selectedDevice = Device::factory()->create();
+        $otherDevice = Device::factory()->create();
+        $otherSensor = Sensor::factory()->create(['device_id' => $otherDevice->id]);
+
+        $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+            'layout' => [
+                'monitors' => [[
+                    'id' => 'monitor-1',
+                    'device_id' => $selectedDevice->id,
+                    'sensor_id' => $otherSensor->id,
+                ]],
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors('layout.monitors.0.sensor_id');
+
+        $this->assertDatabaseMissing('dashboard_preferences', ['user_id' => $user->id]);
+    }
 }

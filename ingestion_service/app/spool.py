@@ -28,6 +28,7 @@ class DurableEventSpool:
         path: str | PathLike[str],
         *,
         lease_seconds: float = 30,
+        max_attempts: int = 20,
         clock: Callable[[], float] = time.time,
     ) -> None:
         database_path = Path(path)
@@ -35,6 +36,7 @@ class DurableEventSpool:
         self._connection = sqlite3.connect(str(database_path), check_same_thread=False)
         self._lock = threading.RLock()
         self._lease_seconds = lease_seconds
+        self._max_attempts = max_attempts
         self._clock = clock
         with self._lock:
             self._connection.execute("PRAGMA journal_mode=WAL")
@@ -142,29 +144,88 @@ class DurableEventSpool:
         next_attempt_at: float,
         *,
         claim_token: str | None = None,
-    ) -> None:
+    ) -> bool:
+        """Mark event as failed. Returns True if event is now dead-lettered (exceeded max attempts)."""
         with self._lock:
-            if claim_token is None:
-                self._connection.execute(
-                    """
-                    UPDATE pending_events
-                    SET attempts = attempts + 1, last_error = ?, next_attempt_at = ?,
-                        claim_token = NULL, claim_until = 0
-                    WHERE source_event_id = ? AND claim_token IS NULL
-                    """,
-                    (error, next_attempt_at, source_event_id),
-                )
+            where = "source_event_id = ?"
+            params: list = [source_event_id]
+            if claim_token is not None:
+                where += " AND claim_token = ?"
+                params.append(claim_token)
             else:
-                self._connection.execute(
-                    """
-                    UPDATE pending_events
-                    SET attempts = attempts + 1, last_error = ?, next_attempt_at = ?,
-                        claim_token = NULL, claim_until = 0
-                    WHERE source_event_id = ? AND claim_token = ?
-                    """,
-                    (error, next_attempt_at, source_event_id, claim_token),
-                )
+                where += " AND claim_token IS NULL"
+
+            self._connection.execute(
+                f"""
+                UPDATE pending_events
+                SET attempts = attempts + 1, last_error = ?, next_attempt_at = ?,
+                    claim_token = NULL, claim_until = 0
+                WHERE {where}
+                """,
+                [error, next_attempt_at, *params],
+            )
+
+            row = self._connection.execute(
+                "SELECT attempts FROM pending_events WHERE source_event_id = ?",
+                (source_event_id,),
+            ).fetchone()
+
+            if row is not None and row[0] >= self._max_attempts:
+                self._dead_letter(source_event_id)
+                self._connection.commit()
+                return True
+
             self._connection.commit()
+            return False
+
+    def _dead_letter(self, source_event_id: str) -> None:
+        """Move an exhausted event to the dead_letter table for later inspection."""
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dead_letters (
+                source_event_id TEXT PRIMARY KEY,
+                event_json TEXT NOT NULL,
+                attempts INTEGER NOT NULL,
+                last_error TEXT,
+                created_at REAL NOT NULL,
+                dead_lettered_at REAL NOT NULL
+            )
+            """,
+        )
+        now = self._clock()
+        self._connection.execute(
+            """
+            INSERT OR IGNORE INTO dead_letters
+                (source_event_id, event_json, attempts, last_error, created_at, dead_lettered_at)
+            SELECT source_event_id, event_json, attempts, last_error, created_at, ?
+            FROM pending_events
+            WHERE source_event_id = ?
+            """,
+            (now, source_event_id),
+        )
+        self._connection.execute(
+            "DELETE FROM pending_events WHERE source_event_id = ?",
+            (source_event_id,),
+        )
+
+    def dead_letters(self) -> list[dict]:
+        """Return all dead-lettered events for inspection."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT source_event_id, event_json, attempts, last_error, created_at, dead_lettered_at "
+                "FROM dead_letters ORDER BY dead_lettered_at",
+            ).fetchall()
+        return [
+            {
+                "source_event_id": r[0],
+                "event": json.loads(r[1]),
+                "attempts": r[2],
+                "last_error": r[3],
+                "created_at": r[4],
+                "dead_lettered_at": r[5],
+            }
+            for r in rows
+        ]
 
     def close(self) -> None:
         with self._lock:

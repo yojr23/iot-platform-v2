@@ -237,7 +237,7 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     unmount();
   });
 
-  it('allows an authenticated standard user to manage their own dashboard widgets', async () => {
+  it('keeps monitoring controls but hides persistent dashboard management from a standard user', async () => {
     // Dashboard layout is user-owned. This must not be confused with administration of
     // devices, sensors, or alert rules, which remains admin-only elsewhere in the app.
     const { useAuthStore } = await import('@/stores/auth');
@@ -264,18 +264,19 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     // A standard signed-in user can manage their own layout.
     const allTextButtons = el.querySelectorAll('.lab-text-button');
     const editButton = Array.from(allTextButtons).find(btn => btn.textContent.trim() === 'Editar');
-    expect(editButton).toBeTruthy();
+    expect(editButton).toBeFalsy();
 
     // The save state and action belong to the authenticated user's own preference record.
     const saveIndicator = el.querySelector('.lab-save-state');
-    expect(saveIndicator).toBeTruthy();
+    expect(saveIndicator).toBeFalsy();
 
     // Both add entry points stay exposed for this user.
     const allButtons = el.querySelectorAll('button');
     const saveBtn = Array.from(allButtons).find(btn => btn.textContent.includes('Guardar'));
     const addBtn = Array.from(allButtons).find(btn => btn.textContent.includes('Agregar gráfica'));
-    expect(saveBtn).toBeTruthy();
-    expect(addBtn).toBeTruthy();
+    expect(saveBtn).toBeFalsy();
+    expect(addBtn).toBeFalsy();
+    expect(el.querySelectorAll('.lab-ranges button').length).toBeGreaterThan(0);
 
     app.unmount();
     mountedApps.splice(mountedApps.indexOf(app), 1);

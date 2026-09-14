@@ -136,7 +136,29 @@ class IngestionController extends Controller
     {
         $message = $exception->getMessage();
 
-        return str_contains($message, 'raw_sensor_events_source_source_event_id_unique')
-            || str_contains($message, 'UNIQUE constraint failed: raw_sensor_events.source, raw_sensor_events.source_event_id');
+        if (str_contains($message, 'raw_sensor_events_source_source_event_id_unique')
+            || str_contains($message, 'UNIQUE constraint failed: raw_sensor_events.source, raw_sensor_events.source_event_id')
+        ) {
+            return true;
+        }
+
+        // Safe fallback: query the DB for an existing record matching the composite identity.
+        // This avoids relying on fragile string matching or unreliable lastInsertId() which
+        // returns '0' for any table after a failed INSERT — not specific to raw_sensor_events.
+        try {
+            $source = $this->payload['source'] ?? '';
+            $sourceEventId = $this->payload['source_event_id'] ?? '';
+
+            if ($source === '' || $sourceEventId === '') {
+                return false;
+            }
+
+            return DB::table('raw_sensor_events')
+                ->where('source', $source)
+                ->where('source_event_id', $sourceEventId)
+                ->exists();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

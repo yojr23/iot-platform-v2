@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 final class EvaluateSensorReadingAlerts implements ShouldQueue
 {
@@ -36,5 +37,14 @@ final class EvaluateSensorReadingAlerts implements ShouldQueue
         }
 
         $reading->checkForAlert();
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('EvaluateSensorReadingAlerts: permanently failed after all retries', [
+            'sensor_reading_id' => $this->sensorReadingId,
+            'exception' => $exception->getMessage(),
+            'attempts' => $this->attempts(),
+        ]);
     }
 }

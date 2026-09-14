@@ -72,8 +72,10 @@ services:
       INGESTION_SERVICE_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
       INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
       INGESTION_RAW_EVENTS_MAXLEN: ${INGESTION_RAW_EVENTS_MAXLEN:-500000}
+      INGESTION_RAW_EVENTS_MIN_AGE_MS: ${INGESTION_RAW_EVENTS_MIN_AGE_MS:-0}
       DOMAIN_EVENTS_STREAM: ${DOMAIN_EVENTS_STREAM:-iot.domain-events}
       DOMAIN_EVENTS_MAXLEN: ${DOMAIN_EVENTS_MAXLEN:-500000}
+      DOMAIN_EVENTS_MIN_AGE_MS: ${DOMAIN_EVENTS_MIN_AGE_MS:-0}
       INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
       DLQ_MAXLEN: ${DLQ_MAXLEN:-1000000}
       CDC_RAW_OUTBOX_STREAM: ${CDC_RAW_OUTBOX_STREAM:-iot-cdc.iot_platform.raw_event_outboxes}
@@ -149,14 +151,17 @@ services:
       INGESTION_SERVICE_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
       INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
       INGESTION_RAW_EVENTS_MAXLEN: ${INGESTION_RAW_EVENTS_MAXLEN:-500000}
+      INGESTION_RAW_EVENTS_MIN_AGE_MS: ${INGESTION_RAW_EVENTS_MIN_AGE_MS:-0}
       DOMAIN_EVENTS_STREAM: ${DOMAIN_EVENTS_STREAM:-iot.domain-events}
       DOMAIN_EVENTS_MAXLEN: ${DOMAIN_EVENTS_MAXLEN:-500000}
+      DOMAIN_EVENTS_MIN_AGE_MS: ${DOMAIN_EVENTS_MIN_AGE_MS:-0}
       INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
       DLQ_MAXLEN: ${DLQ_MAXLEN:-1000000}
       CDC_RAW_OUTBOX_STREAM: ${CDC_RAW_OUTBOX_STREAM:-iot-cdc.iot_platform.raw_event_outboxes}
       CDC_DOMAIN_OUTBOX_STREAM: ${CDC_DOMAIN_OUTBOX_STREAM:-iot-cdc.iot_platform.domain_event_outboxes}
       CDC_STREAM_MAXLEN: ${CDC_STREAM_MAXLEN:-500000}
     command: php artisan queue:work --verbose --tries=3 --timeout=90
+    restart: unless-stopped
     volumes:
       - ./back:/var/www/back
       - back_vendor:/var/www/back/vendor
@@ -298,11 +303,36 @@ services:
     networks:
       - iot-platform
 
+  # Python MQTT ingestion service (spool + delivery worker)
+  ingestion:
+    build:
+      context: ./ingestion_service
+      dockerfile: Dockerfile
+    environment:
+      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mqtt-broker}
+      MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
+      MQTT_SPOOL_DIR: /app/spool
+      MQTT_DELIVERY_URL: http://back:8000/api/ingestion/events
+      MQTT_DELIVERY_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
+      MQTT_MAX_DELIVERY_ATTEMPTS: ${INGESTION_MAX_DELIVERY_ATTEMPTS:-20}
+      MQTT_RETRY_BACKOFF_BASE: ${INGESTION_RETRY_BACKOFF_BASE:-2}
+    restart: unless-stopped
+    volumes:
+      - ingestion_spool:/app/spool
+    depends_on:
+      back:
+        condition: service_healthy
+    profiles:
+      - workers
+    networks:
+      - iot-platform
+
 volumes:
   db_data:
   redis_data:
   back_vendor:
   front_node_modules:
+  ingestion_spool:
 
 networks:
   iot-platform:

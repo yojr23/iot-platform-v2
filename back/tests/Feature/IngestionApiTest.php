@@ -278,6 +278,63 @@ class IngestionApiTest extends TestCase
         $this->assertDatabaseCount('raw_event_outboxes', 2);
     }
 
+    public function test_store_raw_event_with_empty_string_source_event_id_creates_new_receipt(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $payload = $this->validPayload();
+        $payload['source_event_id'] = '';
+
+        $firstResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $secondResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $firstResponse->assertCreated()
+            ->assertJsonPath('duplicate', false);
+        $secondResponse->assertCreated()
+            ->assertJsonPath('duplicate', false);
+        $this->assertNotSame($firstResponse->json('event_id'), $secondResponse->json('event_id'));
+        $this->assertDatabaseCount('raw_sensor_events', 2);
+    }
+
+    public function test_concurrent_identical_source_event_id_produces_one_event(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $payload = $this->validPayload();
+        $payload['source'] = 'mqtt-edge';
+        $payload['source_event_id'] = 'concurrent-race-test';
+
+        // Simulate concurrent requests by inserting the row before the second request arrives.
+        // The firstOrCreate + UniqueConstraintViolation path should handle this gracefully.
+        $firstResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $firstResponse->assertCreated()
+            ->assertJsonPath('duplicate', false);
+
+        // Second request with same identity — idempotent duplicate
+        $secondResponse = $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload);
+
+        $secondResponse->assertOk()
+            ->assertJsonPath('duplicate', true)
+            ->assertJsonPath('event_id', $firstResponse->json('event_id'));
+
+        $this->assertDatabaseCount('raw_sensor_events', 1);
+        $this->assertDatabaseCount('raw_event_outboxes', 1);
+    }
+
     /**
      * Gate 10 (transactional outbox / CDC): el controller ya NO llama a
      * RawSensorEventPublisher::publish() sincrónicamente. Persiste RawSensorEvent + RawEventOutbox

@@ -31,6 +31,7 @@ class DomainEventPublisher
         $startTime = microtime(true);
         $streamName = (string) config('app.domain_events_stream', 'iot.domain-events');
         $maxLength = (int) config('app.domain_events_maxlen', 500000);
+        $minAgeMs = (int) config('app.domain_events_min_age_ms', 0);
         $occurredAt = $outbox->created_at?->toIso8601String() ?? now()->toIso8601String();
 
         $fields = [
@@ -48,7 +49,7 @@ class DomainEventPublisher
             // Raw XADD (unprefixed) so this key matches EXACTLY what DomainEventBroadcastConsumer
             // (raw commands) reads. The Redis facade would prepend Laravel's key prefix, writing to
             // a key the consumer never reads — a silent delivery break.
-            $this->rawXadd(Redis::connection('default'), $streamName, $maxLength, $fields);
+            $this->rawXadd(Redis::connection('default'), $streamName, $maxLength, $fields, $minAgeMs > 0 ? $minAgeMs : null);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
             Log::info('DomainEventPublisher:publish completed', [

@@ -290,4 +290,62 @@ class RawReadingNormalizerTest extends TestCase
         $this->assertDatabaseCount('sensor_readings', 0);
         $this->assertDatabaseMissing('sensor_readings', ['sensor_id' => $sensor->id]);
     }
+
+    public function test_qc_null_proceeds_with_normalization(): void
+    {
+        [$device, $sensor] = $this->deviceAndSensor('node-qc-null');
+
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'payload' => [
+                'qc' => ['valid' => null],
+                'sensors' => [
+                    'temperature' => ['value' => 22.0, 'unit' => 'C'],
+                ],
+            ],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertGreaterThanOrEqual(1, $result['created']);
+        $this->assertDatabaseCount('sensor_readings', 1);
+    }
+
+    public function test_missing_qc_key_proceeds_with_normalization(): void
+    {
+        [$device, $sensor] = $this->deviceAndSensor('node-qc-missing');
+
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'payload' => [
+                'sensors' => [
+                    'temperature' => ['value' => 23.0, 'unit' => 'C'],
+                ],
+            ],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertGreaterThanOrEqual(1, $result['created']);
+        $this->assertDatabaseCount('sensor_readings', 1);
+    }
+
+    public function test_non_numeric_sensor_value_is_skipped(): void
+    {
+        [$device, $sensor] = $this->deviceAndSensor('node-non-numeric');
+
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'payload' => [
+                'sensors' => [
+                    'temperature' => ['value' => 'not-a-number', 'unit' => 'C'],
+                ],
+            ],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertSame(0, $result['created']);
+        $this->assertDatabaseCount('sensor_readings', 0);
+    }
 }

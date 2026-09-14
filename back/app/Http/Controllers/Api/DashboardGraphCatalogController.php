@@ -24,6 +24,7 @@ class DashboardGraphCatalogController extends Controller
             ->get();
 
         $sensors = $devices->flatMap->sensors;
+        $projections = $zones->zonesForMany($sensors);
 
         return response()->json([
             'version' => 1,
@@ -35,7 +36,7 @@ class DashboardGraphCatalogController extends Controller
                     'id' => $sensor->id,
                     'name' => $sensor->name,
                     'unit' => $sensor->sensorType?->unit,
-                    ...$this->graphZones($zones, $sensor),
+                    ...$this->graphZones($projections[$sensor->id]),
                 ])->values(),
             ])->values(),
         ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
@@ -44,10 +45,8 @@ class DashboardGraphCatalogController extends Controller
     /**
      * @return array{bands: list<array{from: float|null, to: float|null, severity: string}>, boundaries: list<array{value: float, severity: string, bound: string}>}
      */
-    private function graphZones(RuleToGraphZones $zones, Sensor $sensor): array
+    private function graphZones(array $projection): array
     {
-        $projection = $zones->zonesFor($sensor);
-
         return [
             'bands' => array_map(
                 fn (array $zone) => ['from' => $zone['from'], 'to' => $zone['to'], 'severity' => $zone['severity']],

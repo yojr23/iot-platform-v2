@@ -67,6 +67,24 @@ def test_source_event_identity_uses_boot_sequence_when_available():
     )
 
 
+def test_source_event_identity_uses_session_boot_count_and_reading_index_before_network_metadata():
+    first = {
+        "device": {"node_id": "lab-01"},
+        "session": {"boot_count": 3, "reading_index": 147},
+        "network": {"wifi_rssi_dbm": -67, "mqtt_reconnections": 0},
+        "sensors": {"temperature": {"value": 23.47}},
+    }
+    enriched_retry = {
+        **first,
+        "network": {"wifi_rssi_dbm": -72, "mqtt_reconnections": 1},
+    }
+
+    assert derive_source_event_id(first, topic="iot/lab/readings") == derive_source_event_id(
+        enriched_retry,
+        topic="iot/lab/readings",
+    )
+
+
 def test_source_event_identity_falls_back_to_a_canonical_semantic_fingerprint():
     first = {
         "timestamp": "2026-05-14T17:30:00Z",

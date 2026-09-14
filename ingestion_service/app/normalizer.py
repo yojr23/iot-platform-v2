@@ -42,8 +42,17 @@ def derive_source_event_id(payload: dict[str, Any], *, topic: str | None) -> str
             return _source_identity("event", scope, event_id)
 
     session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
-    boot_id = _identity_part(session.get("boot_id")) or _identity_part(payload.get("boot_id"))
-    sequence = _identity_part(payload.get("sequence")) or _identity_part(payload.get("reading_index"))
+    boot_id = (
+        _identity_part(session.get("boot_id"))
+        or _identity_part(session.get("boot_count"))
+        or _identity_part(payload.get("boot_id"))
+        or _identity_part(payload.get("boot_count"))
+    )
+    sequence = (
+        _identity_part(session.get("reading_index"))
+        or _identity_part(payload.get("sequence"))
+        or _identity_part(payload.get("reading_index"))
+    )
     if boot_id and sequence:
         return _source_identity("sequence", scope, boot_id, sequence)
 

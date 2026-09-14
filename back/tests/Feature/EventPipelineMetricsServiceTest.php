@@ -357,8 +357,9 @@ class EventPipelineMetricsServiceTest extends TestCase
         ]);
 
         try {
-            Redis::command('xadd', [$stream, '*', 'event_type', 'test']);
-            Redis::command('xgroup', ['CREATE', $stream, $group, '0']);
+            $client = Redis::connection('default')->client();
+            $client->rawCommand('XADD', $stream, '*', 'event_type', 'test');
+            $client->rawCommand('XGROUP', 'CREATE', $stream, $group, '0');
 
             $snapshot = (new EventPipelineMetricsService())->snapshot();
 
@@ -366,7 +367,7 @@ class EventPipelineMetricsServiceTest extends TestCase
             $this->assertIsInt($snapshot['streams']['raw_events']['xlen']);
             $this->assertIsInt($snapshot['consumers']['raw_process']['lag']);
         } finally {
-            Redis::command('del', [$stream]);
+            Redis::connection('default')->client()->rawCommand('DEL', $stream);
             config($original);
         }
     }

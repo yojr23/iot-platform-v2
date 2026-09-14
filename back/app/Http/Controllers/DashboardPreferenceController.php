@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\DashboardPreference;
+use App\Models\Sensor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class DashboardPreferenceController extends Controller
 {
@@ -61,6 +63,8 @@ class DashboardPreferenceController extends Controller
             'layout.selected_id' => ['nullable', 'string'],
         ]);
 
+        $this->validateSensorOwnership($data['layout']);
+
         $user = $request->user();
 
         $layout = $data['layout'];
@@ -98,5 +102,40 @@ class DashboardPreferenceController extends Controller
         return response()->json([
             'layout' => $preferences->layout,
         ]);
+    }
+
+    /**
+     * A widget is a device/sensor pair, not two unrelated foreign keys. Keeping this check at
+     * the write boundary prevents persisted layouts that the graph catalog cannot render.
+     *
+     * @param array<string, mixed> $layout
+     */
+    private function validateSensorOwnership(array $layout): void
+    {
+        $widgets = array_merge(
+            [['key' => 'layout.main', 'widget' => $layout['main'] ?? null]],
+            array_map(
+                fn (mixed $widget, int $index): array => [
+                    'key' => "layout.monitors.{$index}",
+                    'widget' => $widget,
+                ],
+                $layout['monitors'] ?? [],
+                array_keys($layout['monitors'] ?? []),
+            ),
+        );
+
+        foreach ($widgets as $entry) {
+            $widget = $entry['widget'];
+            if (! is_array($widget) || empty($widget['device_id']) || empty($widget['sensor_id'])) {
+                continue;
+            }
+
+            $sensor = Sensor::query()->find($widget['sensor_id']);
+            if ($sensor !== null && $sensor->device_id !== (int) $widget['device_id']) {
+                throw ValidationException::withMessages([
+                    "{$entry['key']}.sensor_id" => 'El sensor seleccionado no pertenece al dispositivo especificado.',
+                ]);
+            }
+        }
     }
 }

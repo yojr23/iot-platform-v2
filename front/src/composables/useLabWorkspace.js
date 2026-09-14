@@ -25,10 +25,10 @@ export function useLabWorkspace(devices) {
     const auth = useAuthStore(),
         live = useSensorReadingsStore(),
         queries = useGraphSeriesQueryStore();
-    // Dashboard widgets are a personal draft, not a system-administration capability: guests
-    // can shape an in-memory draft and signed-in users can persist their own preferences. API
-    // authorization remains the boundary for saving; device/sensor administration is elsewhere.
-    const canManageDashboard = computed(() => true);
+    // The API makes persistent dashboard layouts an administrator capability. Keep the client
+    // aligned so standard users retain temporary monitoring interactions without seeing a save
+    // flow that will inevitably receive 403 from the server.
+    const canManageDashboard = computed(() => Boolean(auth.user?.is_admin));
     const widgets = ref([]),
         selectedId = ref(""),
         editing = ref(false),

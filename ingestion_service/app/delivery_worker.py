@@ -44,19 +44,27 @@ class DeliveryWorker:
                     base=self._retry_base_seconds,
                     maximum=self._retry_max_seconds,
                 )
-                self._spool.mark_failed(
+                dead = self._spool.mark_failed(
                     item.source_event_id,
                     str(exc),
                     time.time() + delay,
                     claim_token=item.claim_token,
                 )
-                logger.warning(
-                    "Backend delivery deferred source_event_id=%s attempt=%s delay=%ss error=%s",
-                    item.source_event_id,
-                    item.attempts + 1,
-                    delay,
-                    exc,
-                )
+                if dead:
+                    logger.error(
+                        "Event dead-lettered after %s attempts source_event_id=%s error=%s",
+                        item.attempts + 1,
+                        item.source_event_id,
+                        exc,
+                    )
+                else:
+                    logger.warning(
+                        "Backend delivery deferred source_event_id=%s attempt=%s delay=%ss error=%s",
+                        item.source_event_id,
+                        item.attempts + 1,
+                        delay,
+                        exc,
+                    )
             else:
                 self._spool.mark_delivered(item.source_event_id, claim_token=item.claim_token)
                 logger.info("Backend delivery completed source_event_id=%s", item.source_event_id)

@@ -38,6 +38,7 @@ class Settings:
     retry_base_seconds: int
     retry_max_seconds: int
     delivery_batch_size: int
+    max_delivery_attempts: int
 
 
 def get_settings() -> Settings:
@@ -58,4 +59,5 @@ def get_settings() -> Settings:
         retry_base_seconds=_env_int("INGESTION_RETRY_BASE_SECONDS", 1),
         retry_max_seconds=_env_int("INGESTION_RETRY_MAX_SECONDS", 60),
         delivery_batch_size=_env_int("INGESTION_DELIVERY_BATCH_SIZE", 50),
+        max_delivery_attempts=_env_int("INGESTION_MAX_DELIVERY_ATTEMPTS", 20),
     )

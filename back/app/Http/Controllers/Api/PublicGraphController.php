@@ -47,10 +47,11 @@ class PublicGraphController extends Controller
             ->get()
             ->filter(fn (Sensor $sensor) => $sensor->device !== null)
             ->values();
+        $projections = $zones->zonesForMany($sensors);
 
         $devices = $sensors
             ->groupBy('device_id')
-            ->map(function ($sensorsForDevice) use ($zones) {
+            ->map(function ($sensorsForDevice) use ($projections) {
                 $device = $sensorsForDevice->first()->device ?? null;
 
                 if ($device === null) {
@@ -64,7 +65,7 @@ class PublicGraphController extends Controller
                         'id' => $sensor->id,
                         'name' => $sensor->name,
                         'unit' => $sensor->sensorType?->unit,
-                        ...$this->publicZones($zones, $sensor),
+                        ...$this->publicZones($projections[$sensor->id]),
                     ])->values()->all(),
                 ];
             })
@@ -135,10 +136,8 @@ class PublicGraphController extends Controller
      *     boundaries: list<array{value: float, severity: string, bound: string}>,
      * }
      */
-    private function publicZones(RuleToGraphZones $zones, Sensor $sensor): array
+    private function publicZones(array $projection): array
     {
-        $projection = $zones->zonesFor($sensor);
-
         return [
             'bands' => array_map(
                 fn (array $zone) => ['from' => $zone['from'], 'to' => $zone['to'], 'severity' => $zone['severity']],

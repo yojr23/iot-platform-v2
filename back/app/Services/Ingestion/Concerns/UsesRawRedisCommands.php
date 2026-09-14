@@ -36,9 +36,18 @@ trait UsesRawRedisCommands
     /**
      * @param  array<string,scalar>  $fields
      */
-    private function rawXadd(Connection $connection, string $stream, int $maxLength, array $fields): mixed
+    private function rawXadd(Connection $connection, string $stream, int $maxLength, array $fields, ?int $minIdMs = null): mixed
     {
-        $args = ['XADD', $stream, 'MAXLEN', '~', (string) $maxLength, '*'];
+        $args = ['XADD', $stream, 'MAXLEN', '~', (string) $maxLength];
+
+        if ($minIdMs !== null) {
+            $cutoffMs = (int) (microtime(true) * 1000) - $minIdMs;
+            $args[] = 'MINID';
+            $args[] = '~';
+            $args[] = (string) max(0, $cutoffMs).'-0';
+        }
+
+        $args[] = '*';
 
         foreach ($fields as $key => $value) {
             $args[] = $key;

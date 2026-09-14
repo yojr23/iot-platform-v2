@@ -140,9 +140,20 @@ class EventPipelineMetricsService
         return "event_pipeline_metrics:counter:{$counter}";
     }
 
-    private function counter(string $counter): int
+    private function counter(string $counter): ?int
     {
-        return (int) Cache::get(self::counterKey($counter), 0);
+        try {
+            $value = Cache::get(self::counterKey($counter));
+
+            return $value !== null ? (int) $value : null;
+        } catch (Throwable $e) {
+            Log::warning('EventPipelineMetricsService: counter unavailable', [
+                'counter' => $counter,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**

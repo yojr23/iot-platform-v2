@@ -11,6 +11,7 @@ use App\Services\Ingestion\SensorReadingService;
 use App\Services\Monitoring\PublicGraphVisibility;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -93,6 +94,33 @@ class PublicGraphControllerTest extends TestCase
         $deviceIds = collect($response->json('devices'))->pluck('id')->all();
 
         $this->assertSame([$public->device_id], $deviceIds);
+    }
+
+    public function test_bootstrap_loads_alert_rules_once_for_all_public_sensors(): void
+    {
+        $type = SensorType::factory()->create();
+        foreach (range(1, 3) as $index) {
+            $this->publicSensor(['sensor_type_id' => $type->id]);
+        }
+        AlertRule::create([
+            'sensor_type_id' => $type->id,
+            'max_value' => 30,
+            'severity' => 'danger',
+            'message' => 'Hot',
+            'name' => 'Hot',
+        ]);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $this->getJson('/api/public/graph/bootstrap')->assertOk();
+            $alertRuleQueries = collect(DB::getQueryLog())
+                ->filter(fn (array $query): bool => str_contains($query['query'], 'alert_rules'));
+
+            $this->assertCount(1, $alertRuleQueries);
+        } finally {
+            DB::disableQueryLog();
+        }
     }
 
     /**
