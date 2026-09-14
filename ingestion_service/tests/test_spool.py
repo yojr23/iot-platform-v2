@@ -142,13 +142,19 @@ def test_dead_letters_returns_empty_when_no_exhausted_events(tmp_path):
 
 
 def test_mark_failed_does_not_dead_letter_below_max_attempts(tmp_path):
-    spool = DurableEventSpool(tmp_path / "spool.sqlite3", max_attempts=5)
+    now = [100.0]
+    spool = DurableEventSpool(
+        tmp_path / "spool.sqlite3", max_attempts=5, clock=lambda: now[0]
+    )
     spool.enqueue(event())
 
-    spool.mark_failed("event-1", "error-1", time.time() + 60)
+    spool.mark_failed("event-1", "error-1", now[0] + 60)
 
-    # Still in pending, not dead-lettered
+    # It remains queued but is not due until the scheduled retry time.
+    assert spool.claim_due(limit=10) == []
+    assert spool.dead_letters() == []
+
+    now[0] += 60
     pending = spool.claim_due(limit=10)
     assert len(pending) == 1
-    assert spool.dead_letters() == []
     spool.close()
