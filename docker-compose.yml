@@ -1,4 +1,7 @@
 services:
+  # MySQL 8 with ROW-based binlog for Debezium CDC. The binlog expires after 7 days, bounding
+  # the connector's outage-recovery window. DEBEZIUM_DB_PASSWORD is consumed by the init script
+  # that creates the CDC replication user — required, no default.
   db:
     image: mysql:8.0
     # Gate 10 (Task 3.1): explicit ROW-based binlog so Debezium can capture the outbox tables.
@@ -309,13 +312,25 @@ services:
       context: ./ingestion_service
       dockerfile: Dockerfile
     environment:
-      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mqtt-broker}
-      MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
-      MQTT_SPOOL_DIR: /app/spool
-      MQTT_DELIVERY_URL: http://back:8000/api/ingestion/events
-      MQTT_DELIVERY_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
-      MQTT_MAX_DELIVERY_ATTEMPTS: ${INGESTION_MAX_DELIVERY_ATTEMPTS:-20}
-      MQTT_RETRY_BACKOFF_BASE: ${INGESTION_RETRY_BACKOFF_BASE:-2}
+      # The MQTT broker is intentionally external to this Compose topology; fail configuration
+      # resolution early instead of starting a restart loop against a nonexistent host.
+      MQTT_HOST: ${MQTT_HOST:?MQTT_HOST is required because no MQTT broker service is defined}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_TOPIC: ${MQTT_TOPIC:-iot/+/readings}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-iot-platform-v2-ingestion}
+      MQTT_QOS: ${MQTT_QOS:-1}
+      BACKEND_BASE_URL: http://back:8000
+      BACKEND_INGESTION_TOKEN: ${INGESTION_SERVICE_TOKEN:?INGESTION_SERVICE_TOKEN is required}
+      BACKEND_TIMEOUT_SECONDS: ${BACKEND_TIMEOUT_SECONDS:-10}
+      INGESTION_MODE: mqtt
+      INGESTION_SPOOL_PATH: /app/spool/ingestion-spool.sqlite3
+      INGESTION_RETRY_BASE_SECONDS: ${INGESTION_RETRY_BASE_SECONDS:-2}
+      INGESTION_RETRY_MAX_SECONDS: ${INGESTION_RETRY_MAX_SECONDS:-60}
+      INGESTION_DELIVERY_BATCH_SIZE: ${INGESTION_DELIVERY_BATCH_SIZE:-50}
+      INGESTION_MAX_DELIVERY_ATTEMPTS: ${INGESTION_MAX_DELIVERY_ATTEMPTS:-20}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     restart: unless-stopped
     volumes:
       - ingestion_spool:/app/spool

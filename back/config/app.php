@@ -138,6 +138,7 @@ return [
     'ingestion_raw_consumer_group' => env('INGESTION_RAW_CONSUMER_GROUP', 'raw-process-v1'),
 
     'ingestion_dead_letter_stream' => env('INGESTION_DEAD_LETTER_STREAM', 'iot.dead-letter-events'),
+    'ingestion_dead_letter_replay_audit_stream' => env('INGESTION_DEAD_LETTER_REPLAY_AUDIT_STREAM', 'iot.dead-letter-replays'),
 
     'dlq_maxlen' => (int) env('DLQ_MAXLEN', 1000000),
 

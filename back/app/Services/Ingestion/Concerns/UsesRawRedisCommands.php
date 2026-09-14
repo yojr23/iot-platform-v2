@@ -38,13 +38,13 @@ trait UsesRawRedisCommands
      */
     private function rawXadd(Connection $connection, string $stream, int $maxLength, array $fields, ?int $minIdMs = null): mixed
     {
-        $args = ['XADD', $stream, 'MAXLEN', '~', (string) $maxLength];
-
         if ($minIdMs !== null) {
             $cutoffMs = (int) (microtime(true) * 1000) - $minIdMs;
-            $args[] = 'MINID';
-            $args[] = '~';
-            $args[] = (string) max(0, $cutoffMs).'-0';
+            // Redis XADD accepts one trimming strategy per command. MINID takes precedence
+            // when age retention is enabled; combining it with MAXLEN is invalid grammar.
+            $args = ['XADD', $stream, 'MINID', '~', (string) max(0, $cutoffMs).'-0'];
+        } else {
+            $args = ['XADD', $stream, 'MAXLEN', '~', (string) $maxLength];
         }
 
         $args[] = '*';

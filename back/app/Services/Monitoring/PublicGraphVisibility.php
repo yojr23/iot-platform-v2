@@ -35,7 +35,7 @@ final class PublicGraphVisibility
 
     public function publicSensorsQuery(): Builder
     {
-        Log::info('PublicGraphVisibility:publicSensorsQuery entry');
+        Log::info('PublicGraphVisibility:publicSensorsQuery entry', ['filter' => 'public_monitoring_enabled=true']);
         return Sensor::query()->where('public_monitoring_enabled', true);
     }
 

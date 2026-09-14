@@ -76,7 +76,9 @@ class Alert extends Model
                 ?? env('recipient_email');
 
             if (! $recipient) {
-                Log::warning('No hay destinatario configurado para alertas peligrosas. Se omitirá el envío de correo.');
+                Log::warning('AlertService: no recipient configured for danger alert emails, skipping send', [
+                    'alert_id' => $this->id,
+                ]);
                 return false;
             }
 
@@ -110,17 +112,27 @@ class Alert extends Model
                 'mail.mailers.smtp' => $smtpConfig,
             ]);
 
-            Log::debug('Enviando alerta por correo a: ' . $recipient);
+            Log::debug('AlertService: sending danger alert email', [
+                'alert_id' => $this->id,
+                'recipient' => $recipient,
+            ]);
             $mailable = new DangerAlertMail($emailData);
             // Asegurarnos de que el destinatario quede en el propio mailable (más compatible con Mail::fake)
             $mailable->to($recipient);
             Mail::send($mailable);
 
-            Log::info('Correo de alerta de peligro enviado exitosamente a: ' . $recipient);
+            Log::info('AlertService: danger alert email sent', [
+                'alert_id' => $this->id,
+                'recipient' => $recipient,
+            ]);
             return true;
         } catch (Throwable $e) {
-            Log::error('Error enviando email de alerta: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
+            Log::error('AlertService: danger alert email failed', [
+                'alert_id' => $this->id,
+                'recipient' => $recipient ?? null,
+                'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
+            ]);
             return false;
         }
     }

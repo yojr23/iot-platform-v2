@@ -102,10 +102,10 @@ def test_creates_missing_spool_parent_directory(tmp_path):
 
 
 def test_mark_failed_dead_letters_after_max_attempts(tmp_path):
-    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3", max_attempts=5)
     spool.enqueue(event())
 
-    # Exhaust max_attempts (default 5)
+    # Exhaust the configured max_attempts.
     for i in range(1, 6):
         spool.mark_failed("event-1", f"error-{i}", time.time() + 60 * i)
 
@@ -142,10 +142,10 @@ def test_dead_letters_returns_empty_when_no_exhausted_events(tmp_path):
 
 
 def test_mark_failed_does_not_dead_letter_below_max_attempts(tmp_path):
-    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3", max_attempts=5)
     spool.enqueue(event())
 
-    spool.mark_failed("event-1", "error-1", time.time() + 60, max_attempts=5)
+    spool.mark_failed("event-1", "error-1", time.time() + 60)
 
     # Still in pending, not dead-lettered
     pending = spool.claim_due(limit=10)

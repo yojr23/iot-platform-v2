@@ -86,7 +86,10 @@ def run_mqtt() -> int:
         settings.backend_ingestion_token,
         timeout_seconds=settings.request_timeout_seconds,
     )
-    spool = DurableEventSpool(settings.spool_path)
+    spool = DurableEventSpool(
+        settings.spool_path,
+        max_attempts=settings.max_delivery_attempts,
+    )
     worker = DeliveryWorker(
         spool,
         backend_client,

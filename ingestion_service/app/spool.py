@@ -55,6 +55,18 @@ class DurableEventSpool:
                 """
             )
             self._add_missing_claim_columns()
+            self._connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dead_letters (
+                    source_event_id TEXT PRIMARY KEY,
+                    event_json TEXT NOT NULL,
+                    attempts INTEGER NOT NULL,
+                    last_error TEXT,
+                    created_at REAL NOT NULL,
+                    dead_lettered_at REAL NOT NULL
+                )
+                """
+            )
             self._connection.commit()
 
     def _add_missing_claim_columns(self) -> None:
@@ -80,6 +92,10 @@ class DurableEventSpool:
                 (source_event_id, json.dumps(event, separators=(",", ":")), self._clock()),
             )
             self._connection.commit()
+
+    def now(self) -> float:
+        """Return the spool's current time source for coordinated components."""
+        return self._clock()
 
     def claim_due(self, limit: int) -> list[PendingEvent]:
         with self._lock:
@@ -180,18 +196,6 @@ class DurableEventSpool:
 
     def _dead_letter(self, source_event_id: str) -> None:
         """Move an exhausted event to the dead_letter table for later inspection."""
-        self._connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS dead_letters (
-                source_event_id TEXT PRIMARY KEY,
-                event_json TEXT NOT NULL,
-                attempts INTEGER NOT NULL,
-                last_error TEXT,
-                created_at REAL NOT NULL,
-                dead_lettered_at REAL NOT NULL
-            )
-            """,
-        )
         now = self._clock()
         self._connection.execute(
             """

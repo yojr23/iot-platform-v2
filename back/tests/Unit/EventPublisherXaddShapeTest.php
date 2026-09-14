@@ -119,4 +119,38 @@ class EventPublisherXaddShapeTest extends TestCase
         $this->assertContains('event_type', $captured, 'field keys must be flattened positional args');
         $this->assertContains('raw.sensor.received', $captured);
     }
+
+    public function test_raw_event_publisher_uses_minid_instead_of_combining_it_with_maxlen_when_age_retention_is_enabled(): void
+    {
+        config(['app.ingestion_raw_events_min_age_ms' => 86_400_000]);
+        $captured = null;
+
+        $client = Mockery::mock(\Redis::class);
+        $client->shouldReceive('rawCommand')
+            ->once()
+            ->andReturnUsing(function (...$args) use (&$captured) {
+                $captured = $args;
+
+                return '1-0';
+            });
+
+        $connection = Mockery::mock(\Illuminate\Redis\Connections\Connection::class);
+        $connection->shouldReceive('client')->andReturn($client);
+        Redis::shouldReceive('connection')->with('default')->andReturn($connection);
+        Redis::shouldReceive('command')->with('xadd', Mockery::any())->never();
+
+        $event = new RawSensorEvent([
+            'source' => 'test',
+            'source_event_id' => 'raw-minid-test',
+            'status' => 'received',
+        ]);
+        $event->id = 7;
+
+        $this->assertTrue((new RawSensorEventPublisher())->publish($event));
+        $this->assertSame('XADD', $captured[0]);
+        $this->assertSame('MINID', $captured[2]);
+        $this->assertSame('~', $captured[3]);
+        $this->assertMatchesRegularExpression('/^\d+-0$/', $captured[4]);
+        $this->assertNotContains('MAXLEN', $captured);
+    }
 }

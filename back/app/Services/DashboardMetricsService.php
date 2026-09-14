@@ -19,7 +19,7 @@ class DashboardMetricsService
 
     public function getSummaryStats(): array
     {
-        Log::info('DashboardMetricsService:getSummaryStats entry');
+        Log::info('DashboardMetricsService:getSummaryStats entry', ['cache_key' => 'dashboard:active_alerts_count']);
 
         $startTime = microtime(true);
 
@@ -100,7 +100,7 @@ class DashboardMetricsService
 
     public function getDevicesForSelection()
     {
-        Log::info('DashboardMetricsService:getDevicesForSelection entry');
+        Log::info('DashboardMetricsService:getDevicesForSelection entry', ['table' => 'devices']);
 
         $startTime = microtime(true);
         $result = Device::with('lab')->orderBy('name')->get();
@@ -120,7 +120,7 @@ class DashboardMetricsService
 
     public function getSensorTypes()
     {
-        Log::info('DashboardMetricsService:getSensorTypes entry');
+        Log::info('DashboardMetricsService:getSensorTypes entry', ['table' => 'sensor_types']);
 
         $startTime = microtime(true);
         $result = SensorType::orderBy('name')->get();
@@ -140,7 +140,7 @@ class DashboardMetricsService
 
     public function getSensors()
     {
-        Log::info('DashboardMetricsService:getSensors entry');
+        Log::info('DashboardMetricsService:getSensors entry', ['table' => 'sensors', 'relations' => ['sensorType']]);
 
         $startTime = microtime(true);
         $result = Sensor::with('sensorType')->orderBy('name')->get();

@@ -238,10 +238,7 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
   });
 
   it('keeps monitoring controls but hides persistent dashboard management from a standard user', async () => {
-    // Dashboard layout is user-owned. This must not be confused with administration of
-    // devices, sensors, or alert rules, which remains admin-only elsewhere in the app.
     const { useAuthStore } = await import('@/stores/auth');
-    const { useAlertsStore } = await import('@/stores/alerts');
     const pinia = createPinia();
     setActivePinia(pinia);
     const authStore = useAuthStore();
@@ -261,21 +258,19 @@ describe('SensorMonitorBoard multi-chart invariants', () => {
     await flush();
     await nextTick();
 
-    // A standard signed-in user can manage their own layout.
+    // The approved role policy permits monitoring, not dashboard personalization.
     const allTextButtons = el.querySelectorAll('.lab-text-button');
     const editButton = Array.from(allTextButtons).find(btn => btn.textContent.trim() === 'Editar');
     expect(editButton).toBeFalsy();
 
-    // The save state and action belong to the authenticated user's own preference record.
+    // The server is administrator-only for persistence, so no save affordance is rendered.
     const saveIndicator = el.querySelector('.lab-save-state');
     expect(saveIndicator).toBeFalsy();
 
-    // Both add entry points stay exposed for this user.
-    const allButtons = el.querySelectorAll('button');
-    const saveBtn = Array.from(allButtons).find(btn => btn.textContent.includes('Guardar'));
-    const addBtn = Array.from(allButtons).find(btn => btn.textContent.includes('Agregar gráfica'));
-    expect(saveBtn).toBeFalsy();
-    expect(addBtn).toBeFalsy();
+    // The dialog stays mounted but closed; assert the visible toolbar/list entry points only.
+    expect(el.querySelector('.lab-actions .lab-button')).toBeFalsy();
+    expect(el.querySelector('.lab-add-row')).toBeFalsy();
+    expect(el.querySelector('.lab-empty .lab-button.primary')).toBeFalsy();
     expect(el.querySelectorAll('.lab-ranges button').length).toBeGreaterThan(0);
 
     app.unmount();

@@ -32,7 +32,8 @@ def test_run_once_deletes_successful_event(tmp_path):
 
 
 def test_run_once_keeps_transient_failure_and_increments_attempts(tmp_path):
-    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    now = [100.0]
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3", clock=lambda: now[0])
     spool.enqueue(event())
     backend = RecordingBackend(BackendClientError("backend unavailable"))
 
@@ -42,7 +43,7 @@ def test_run_once_keeps_transient_failure_and_increments_attempts(tmp_path):
         "SELECT attempts, next_attempt_at, last_error FROM pending_events WHERE source_event_id = ?", ("event-1",)
     ).fetchone()
     assert row[0] == 1
-    assert row[1] > 0
+    assert row[1] == 101.0
     assert row[2] == "backend unavailable"
     spool.close()
 
@@ -69,15 +70,19 @@ def test_reopened_spool_is_delivered_by_worker(tmp_path):
 
 
 def test_worker_dead_letters_after_exhausting_retries(tmp_path):
-    spool = DurableEventSpool(tmp_path / "spool.sqlite3", max_attempts=3)
+    now = [100.0]
+    spool = DurableEventSpool(
+        tmp_path / "spool.sqlite3", max_attempts=3, clock=lambda: now[0]
+    )
     spool.enqueue(event())
     backend = RecordingBackend(BackendClientError("persistent failure"))
 
     worker = DeliveryWorker(spool, backend, retry_base_seconds=1, retry_max_seconds=60, batch_size=10)
 
-    # Run 3 times to exhaust retries (spool's max_attempts=3)
+    # Advance through each exponential backoff window to exhaust retries.
     for _ in range(3):
         worker.run_once()
+        now[0] += 60
 
     # Event should be dead-lettered, not in pending
     assert spool.claim_due(limit=10) == []

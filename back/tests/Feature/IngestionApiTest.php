@@ -203,6 +203,79 @@ class IngestionApiTest extends TestCase
         $this->assertSame(1, RawEventOutbox::query()->count());
     }
 
+    public function test_store_raw_event_does_not_recover_unknown_outer_unique_violation_as_duplicate(): void
+    {
+        config([
+            'app.ingestion_service_token' => self::TOKEN,
+        ]);
+
+        $event = RawSensorEvent::create([
+            'topic' => 'iot/lab_postgrado_nodo_01/readings',
+            'source' => 'mqtt-edge',
+            'source_event_id' => 'generic-driver-race',
+            'node_id' => 'lab_postgrado_nodo_01',
+            'payload' => $this->validPayload()['payload'],
+            'received_at' => '2026-05-14T17:30:00Z',
+            'status' => 'received',
+        ]);
+        RawEventOutbox::create([
+            'raw_sensor_event_id' => $event->id,
+            'status' => 'pending',
+        ]);
+
+        DB::shouldReceive('transaction')
+            ->once()
+            ->andThrow(new UniqueConstraintViolationException(
+                'mysql',
+                'insert into raw_sensor_events',
+                [],
+                new PDOException('duplicate key value violates unique constraint', 1062),
+            ));
+
+        $payload = $this->validPayload();
+        $payload['source'] = 'mqtt-edge';
+        $payload['source_event_id'] = 'generic-driver-race';
+
+        $this->withHeaders([
+            'X-Ingestion-Token' => self::TOKEN,
+        ])->postJson('/api/ingestion/events', $payload)
+            ->assertStatus(500)
+            ->assertJsonPath('error', 'Transaction error');
+    }
+
+    public function test_identity_fallback_recovers_matching_raw_event_when_scoped_to_insert_boundary(): void
+    {
+        $event = RawSensorEvent::create([
+            'source' => 'mqtt-edge',
+            'source_event_id' => 'generic-driver-boundary',
+            'payload' => $this->validPayload()['payload'],
+            'status' => 'received',
+        ]);
+
+        $exception = new UniqueConstraintViolationException(
+            'mysql',
+            'insert into raw_sensor_events',
+            [],
+            new PDOException('duplicate key value violates unique constraint', 1062),
+        );
+        $method = new \ReflectionMethod(\App\Http\Controllers\Api\IngestionController::class, 'isRawSensorEventIdentityConstraintViolation');
+        $method->setAccessible(true);
+
+        $this->assertTrue($method->invoke(
+            new \App\Http\Controllers\Api\IngestionController(),
+            $exception,
+            'mqtt-edge',
+            'generic-driver-boundary',
+            true,
+        ));
+        $this->assertFalse($method->invoke(
+            new \App\Http\Controllers\Api\IngestionController(),
+            $exception,
+            'mqtt-edge',
+            'generic-driver-boundary',
+        ));
+    }
+
     public function test_store_raw_event_does_not_report_an_unrelated_unique_constraint_as_a_duplicate(): void
     {
         config([

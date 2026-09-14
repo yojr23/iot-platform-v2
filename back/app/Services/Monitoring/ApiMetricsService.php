@@ -58,7 +58,7 @@ class ApiMetricsService
 
     public function snapshot(): array
     {
-        Log::info('ApiMetricsService:snapshot entry');
+        Log::info('ApiMetricsService:snapshot entry', ['retention_minutes' => 60]);
 
         $startTime = microtime(true);
         $now = now();

@@ -159,7 +159,7 @@ class AlertService
 
     public function getActiveAlertsCount(): int
     {
-        Log::info('AlertService:getActiveAlertsCount entry');
+        Log::info('AlertService:getActiveAlertsCount entry', ['scope' => 'active']);
 
         $startTime = microtime(true);
         $count = Alert::active()->count();

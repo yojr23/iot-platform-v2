@@ -71,7 +71,10 @@ class EventPipelineMetricsService
 
     public function snapshot(): array
     {
-        Log::info('EventPipelineMetricsService:snapshot entry');
+        Log::info('EventPipelineMetricsService:snapshot entry', [
+            'raw_stream' => config('app.ingestion_raw_events_stream', 'iot.raw-events'),
+            'domain_stream' => config('app.domain_events_stream', 'iot.domain-events'),
+        ]);
         $startTime = microtime(true);
 
         $rawStream = (string) config('app.ingestion_raw_events_stream', 'iot.raw-events');

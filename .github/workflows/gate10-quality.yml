@@ -1,7 +1,12 @@
 name: gate10-quality
 
 # Gate 10 (PLAN.md Task 12) — enforce the no-polling architecture on every push/PR.
-# Note: the mocked network harness is NOT accepted as Gate-10 proof here. The live no-polling proof
+# Runs four independent jobs: backend (PHP + SQLite + Redis), frontend (Vitest + build + no-polling
+# gate), ingestion (Python pytest), and architecture (file-existence assertions). A fifth job
+# (frontend-responsive-e2e-mocked) runs Playwright against a mocked Vite server for responsive
+# regression only — it is NOT live Pusher/WebSocket or CDC evidence.
+#
+# The mocked network harness is NOT accepted as Gate-10 proof here. The live no-polling proof
 # (front/.audit-e2e/network-assertion-live.mjs) requires the full real stack and runs separately.
 
 on:
@@ -11,6 +16,11 @@ on:
     branches: [refraccion, main]
 
 jobs:
+  # -----------------------------------------------------------------------
+  # Backend: PHP 8.2, isolated SQLite + in-memory DB, real Redis on 6399.
+  # CDC/domain-event stream tests (XADD, pending recovery, DLQ, broadcast-once)
+  # execute against the Redis service instead of being skipped.
+  # -----------------------------------------------------------------------
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -31,14 +41,21 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           extensions: mbstring, pdo_sqlite, redis
           coverage: none
+
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
-      - name: Run test suite (isolated SQLite)
+
+      # Runs the full backend test suite against an in-memory SQLite database and the Redis
+      # service on port 6399. CDC stream tests, public graph boundary tests, and alert lifecycle
+      # tests all execute here. "deprecated" markers are PHP 8.5 PDO::MYSQL_ATTR_SSL_CA notices,
+      # not failures.
+      - name: Run test suite (isolated SQLite + Redis)
         env:
           APP_ENV: testing
           DB_CONNECTION: sqlite
@@ -50,6 +67,10 @@ jobs:
           REDIS_PORT: 6399
         run: php artisan test
 
+  # -----------------------------------------------------------------------
+  # Frontend: Vitest unit tests, production build, and static no-polling gate.
+  # No browser or Playwright — pure source-level verification.
+  # -----------------------------------------------------------------------
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -57,21 +78,31 @@ jobs:
         working-directory: front
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: front/package-lock.json
+
       - run: npm ci
+
       - name: Unit tests
         run: npm run test:unit
+
       - name: Production build
         run: npm run build
+
+      # Static AST scan that fails if any tracked source file contains product-state polling
+      # constructs (setInterval, setTimeout with REST/WS calls, pusher fallback loops).
       - name: Static no-polling gate
         run: npm run audit:no-polling:source
 
-  # Deliberately mocked API fixtures: this is a responsive-regression gate, not evidence for the
-  # live Pusher/WebSocket deployment proof. The latter needs its own real-stack closure workflow.
+  # -----------------------------------------------------------------------
+  # Mocked responsive E2E: Playwright against a Vite dev server with fixture
+  # data. Tests viewport overflow, touch targets, modal semantics, and
+  # dashboard lifecycle at widths 320-1440. NOT live transport evidence.
+  # -----------------------------------------------------------------------
   frontend-responsive-e2e-mocked:
     runs-on: ubuntu-latest
     defaults:
@@ -79,14 +110,20 @@ jobs:
         working-directory: front
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: front/package-lock.json
+
       - run: npm ci
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      # Start the Vite dev server with mocked API fixtures and wait for it to be ready.
+      # The for-loop retries up to 30 seconds; curl confirms the server is serving.
       - name: Run mocked responsive E2E matrix
         run: |
           npm run dev:demo -- --port 5173 > /tmp/iot-vite.log 2>&1 &
@@ -96,6 +133,8 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:5173/dashboard >/dev/null
           npm run audit:gate9
+
+      # Always upload artifacts even if the matrix fails, for manual inspection.
       - name: Upload mocked responsive artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -103,6 +142,10 @@ jobs:
           name: mocked-responsive-e2e
           path: front/.audit-e2e/results/t10-*
 
+  # -----------------------------------------------------------------------
+  # Ingestion service: Python 3.12, pytest against the spool/delivery worker
+  # unit tests. No broker or backend dependency — pure SQLite + mocks.
+  # -----------------------------------------------------------------------
   ingestion:
     runs-on: ubuntu-latest
     defaults:
@@ -110,18 +153,29 @@ jobs:
         working-directory: ingestion_service
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: ingestion_service/requirements.txt
+
       - run: pip install -r requirements.txt
+
       - run: python -m pytest -q
 
+  # -----------------------------------------------------------------------
+  # Architecture gate: file-existence assertions that enforce the retired
+  # relay pattern stays deleted and the CDC pipeline stays present.
+  # No runtime required — pure filesystem checks.
+  # -----------------------------------------------------------------------
   architecture:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Verify the six retired relay files and both compose relay services are absent.
+      # If any of these exist, the CDC migration is incomplete or partially reverted.
       - name: No retired relay commands or services exist
         run: |
           set -e
@@ -133,6 +187,9 @@ jobs:
           ! test -f back/app/Services/Ingestion/DomainOutboxRelay.php
           ! grep -qE '^\s*(outbox-relay|domain-outbox-relay):' docker-compose.yml
           ! grep -qE 'relay-outbox --interval' docker-compose.yml
+
+      # Verify the CDC pipeline components exist: Debezium config, outbox stream consumer,
+      # artisan command, and both compose services (debezium + outbox-cdc-consumer).
       - name: CDC configuration exists
         run: |
           set -e

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
+from typing import Callable
 
 from app.backend_client import BackendClient, BackendClientError
 from app.spool import DurableEventSpool
@@ -24,6 +24,7 @@ class DeliveryWorker:
         retry_max_seconds: float,
         batch_size: int,
         idle_wait_seconds: float = 1,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._spool = spool
         self._backend_client = backend_client
@@ -31,6 +32,7 @@ class DeliveryWorker:
         self._retry_max_seconds = retry_max_seconds
         self._batch_size = batch_size
         self._idle_wait_seconds = idle_wait_seconds
+        self._clock = clock or spool.now
         self._stop_event = threading.Event()
 
     def run_once(self) -> int:
@@ -47,7 +49,7 @@ class DeliveryWorker:
                 dead = self._spool.mark_failed(
                     item.source_event_id,
                     str(exc),
-                    time.time() + delay,
+                    self._clock() + delay,
                     claim_token=item.claim_token,
                 )
                 if dead:

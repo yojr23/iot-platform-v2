@@ -61,10 +61,29 @@ class IngestionController extends Controller
                 ];
 
                 if (is_string($sourceEventId) && $sourceEventId !== '') {
-                    $event = RawSensorEvent::query()->firstOrCreate([
-                        'source' => $source,
-                        'source_event_id' => $sourceEventId,
-                    ], $attributes);
+                    try {
+                        $event = RawSensorEvent::query()->firstOrCreate([
+                            'source' => $source,
+                            'source_event_id' => $sourceEventId,
+                        ], $attributes);
+                    } catch (UniqueConstraintViolationException $e) {
+                        // A driver may not identify the constraint in its message. Restrict
+                        // the identity lookup to this exact RawSensorEvent insert boundary so
+                        // unrelated unique failures later in the transaction cannot be treated
+                        // as an idempotent receipt.
+                        if (! $this->isRawSensorEventIdentityConstraintViolation($e, $source, $sourceEventId, true)) {
+                            throw $e;
+                        }
+
+                        $event = RawSensorEvent::query()->where([
+                            'source' => $source,
+                            'source_event_id' => $sourceEventId,
+                        ])->first();
+
+                        if ($event === null) {
+                            throw $e;
+                        }
+                    }
                 } else {
                     $event = RawSensorEvent::create($attributes);
                 }
@@ -79,7 +98,7 @@ class IngestionController extends Controller
                 return [$event, ! $event->wasRecentlyCreated];
             });
         } catch (UniqueConstraintViolationException $e) {
-            $event = $this->isRawSensorEventIdentityConstraintViolation($e)
+            $event = $this->isRawSensorEventIdentityConstraintViolation($e, $source, $sourceEventId)
                 && is_string($sourceEventId) && $sourceEventId !== ''
                 ? RawSensorEvent::query()->where([
                     'source' => $source,
@@ -132,7 +151,12 @@ class IngestionController extends Controller
         ], $duplicate ? 200 : 201);
     }
 
-    private function isRawSensorEventIdentityConstraintViolation(UniqueConstraintViolationException $exception): bool
+    private function isRawSensorEventIdentityConstraintViolation(
+        UniqueConstraintViolationException $exception,
+        string $source,
+        ?string $sourceEventId,
+        bool $allowIdentityLookup = false,
+    ): bool
     {
         $message = $exception->getMessage();
 
@@ -145,11 +169,12 @@ class IngestionController extends Controller
         // Safe fallback: query the DB for an existing record matching the composite identity.
         // This avoids relying on fragile string matching or unreliable lastInsertId() which
         // returns '0' for any table after a failed INSERT — not specific to raw_sensor_events.
-        try {
-            $source = $this->payload['source'] ?? '';
-            $sourceEventId = $this->payload['source_event_id'] ?? '';
+        if (! $allowIdentityLookup) {
+            return false;
+        }
 
-            if ($source === '' || $sourceEventId === '') {
+        try {
+            if ($source === '' || ! is_string($sourceEventId) || $sourceEventId === '') {
                 return false;
             }
 
