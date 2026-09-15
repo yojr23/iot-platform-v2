@@ -6,7 +6,7 @@
 
 ## RECONCILIATION — 2026-09-15
 
-This section reconciles the plan against the current source state as of the latest audit round (`eb3e00d`). It replaces stale status claims elsewhere in this document.
+This section reconciles the plan against the current source state as of the latest audit round (`85b70dc`). It replaces stale status claims elsewhere in this document.
 
 ### Items now CLOSED in source (no further action needed)
 
@@ -33,27 +33,27 @@ This section reconciles the plan against the current source state as of the late
 
 ### Items still OPEN (require action)
 
-| Item | Severity | Required action |
-|---|---|---|
-| Backend CI failing (`php artisan test`) | P0 BLOCKER | Diagnose exact failing assertion on Mac |
-| Responsive E2E failing | P1 | Debug failing matrix cases using page-identity harness |
-| Sensor-mapping cutover/backfill | P0 | Migration `2026_09_15_000003` backfills existing sensors; `createSensor()` auto-maps; needs Mac verification |
-| Temporal mapping concurrency | P1 | `mapSensor()` now uses `lockForUpdate()`; needs concurrent test on Mac |
-| `allReadings` endpoint unbounded | P1 | Now bounded by from/to (max 7 days) + per-sensor limit |
-| `api_key_hash` missing index | P2 | Migration `2026_09_15_000004` adds `UNIQUE(api_key_hash)` |
-| RBAC dual authority (`is_admin` + `role_id`) | P2 | `DeviceResource` now uses `isAdmin()` role check; `is_admin` column retained as migration bridge until retirement |
-| Live Gate 9/10 evidence | P0 | Requires Mac + Docker stack: WebSocket capture, fault injection A–E, MySQL EXPLAIN, dependency audit |
-| `PLAN.md` reconciliation | DONE | This section |
+| Item | Severity | Status | Required action |
+|---|---|---|---|
+| Backend CI failing (`php artisan test`) | P0 BLOCKER | ❌ FAIL | PHP not on Windows PATH; diagnose on Mac |
+| Responsive E2E failing | P1 | ❌ FAIL | Cannot debug on Windows; requires Mac |
+| Sensor-mapping cutover/backfill | P0 | ⚠️ CODED_NOT_VERIFIED | Migration `2026_09_15_000003` backfills; `createSensor()` auto-maps; needs Mac verification |
+| Temporal mapping concurrency | P1 | ⚠️ CODED_NOT_VERIFIED | `mapSensor()` uses `lockForUpdate()`; needs concurrent test on Mac |
+| `allReadings` endpoint unbounded | P1 | ⚠️ CODED_NOT_VERIFIED | Bounded by from/to (max 7 days) + per-sensor limit; needs runtime verification |
+| `api_key_hash` missing index | P2 | ⚠️ CODED_NOT_VERIFIED | Migration adds `UNIQUE(api_key_hash)`; needs migration run on Mac |
+| RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `DeviceResource` uses `isAdmin()`; `is_admin` retained as migration bridge; needs runtime verification |
+| Live Gate 9/10 evidence | P0 | ⬜ OPEN | Requires Mac + Docker stack: WebSocket capture, fault injection A–E, MySQL EXPLAIN, dependency audit |
+| `PLAN.md` reconciliation | DONE | ✅ | This section |
 
 ### What the reviewer asked for (correction order)
 
-1. ✅ **Fix backend CI** — Cannot diagnose on Windows (no PHP/MySQL). Requires Mac.
-2. ✅ **Fix responsive E2E** — Cannot run Playwright on Windows. Requires Mac.
-3. ✅ **Sensor-mapping cutover/backfill** — Migration + auto-mapping coded. Needs Mac `migrate:fresh` verification.
-4. ✅ **Temporal mapping concurrency** — `lockForUpdate()` added. Needs concurrent test on Mac.
-5. ✅ **Bound `allReadings`** — from/to + max 7d window + per-sensor limit.
-6. ✅ **Index `api_key_hash`** — UNIQUE constraint migration added.
-7. ✅ **RBAC cleanup** — `isAdmin()` method + `DeviceResource` uses role check. `is_admin` column retired in next migration (after all callers migrated).
+1. ❌ **Fix backend CI** — Cannot diagnose on Windows (no PHP/MySQL). Requires Mac.
+2. ❌ **Fix responsive E2E** — Cannot run Playwright on Windows. Requires Mac.
+3. ⚠️ **Sensor-mapping cutover/backfill** — Migration + auto-mapping coded. Needs Mac `migrate:fresh` verification. CODED_NOT_VERIFIED.
+4. ⚠️ **Temporal mapping concurrency** — `lockForUpdate()` added. Needs concurrent test on Mac. CODED_NOT_VERIFIED.
+5. ⚠️ **Bound `allReadings`** — from/to + max 7d window + per-sensor limit. CODED_NOT_VERIFIED.
+6. ⚠️ **Index `api_key_hash`** — UNIQUE constraint migration added. CODED_NOT_VERIFIED.
+7. ⚠️ **RBAC cleanup** — `isAdmin()` method + `DeviceResource` uses role check. `is_admin` column retired in next migration (after all callers migrated). CODED_NOT_VERIFIED.
 8. ⬜ **Live Gate 9/10 evidence** — Requires Mac + Docker + browser.
 9. ⬜ **Branch protection** — Requires GitHub admin access.
 10. ⬜ **Reconcile PLAN.md** — This section.
@@ -62,11 +62,13 @@ This section reconciles the plan against the current source state as of the late
 
 | Suite | Status | Count |
 |---|---|---|
-| Frontend unit tests | ✅ PASS | 233/233 (46 files) |
+| Frontend unit tests | ✅ PASS | 249/249 (46 files) |
 | Frontend build | ✅ PASS | Clean |
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
-| Backend Laravel suite | ⬜ UNKNOWN | Cannot run on Windows (no PHP) |
-| Responsive E2E | ⬜ UNKNOWN | Cannot run on Windows (no browser) |
+| Architecture CI | ✅ PASS | CI verified |
+| Ingestion Python | ✅ PASS | CI verified |
+| Backend Laravel suite | ❌ FAIL | PHP not on Windows PATH; requires Mac |
+| Responsive E2E | ❌ FAIL | Cannot debug Playwright on Windows; requires Mac |
 
 ---
 

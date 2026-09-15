@@ -272,3 +272,151 @@ describe('Gate 7.2 replay-safe recovery buffer (triggered + resolved)', () => {
     expect(alertsStore.unresolvedCount).toBe(0);
   });
 });
+
+describe('W10: logout clears all authorized projections', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    channelCallbacks.clear();
+    fetchActiveAlerts.mockReset();
+    listenOnChannel.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  afterEach(async () => {
+    try {
+      const { unsubscribeAlerts } = await import('./useAlertsRealtime');
+      unsubscribeAlerts();
+    } catch {}
+  });
+
+  it('clears active alerts, unresolved count, latest alert, and items on logout', async () => {
+    fetchActiveAlerts.mockResolvedValue({ data: { alerts: [{ id: 10 }, { id: 11 }], count: 2 } });
+    const { subscribeAlerts, ALERTS_EVENT } = await import('./useAlertsRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const authStore = useAuthStore();
+    const alertsStore = useAlertsStore();
+
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test User' };
+    subscribeAlerts();
+    await vi.waitFor(() => expect(alertsStore.realtimeStatus.mode).toBe('live'));
+
+    // Simulate a live event arriving
+    channelCallbacks.get(ALERTS_EVENT)({ alert: { id: 12, resolved: false } });
+    expect(alertsStore.activeAlerts.length).toBeGreaterThan(0);
+    expect(alertsStore.unresolvedCount).toBeGreaterThan(0);
+
+    // Logout
+    authStore.clearAuth();
+    for (const callback of [...resyncWatchers]) callback('auth');
+
+    expect(alertsStore.activeAlerts).toEqual([]);
+    expect(alertsStore.items).toEqual([]);
+    expect(alertsStore.unresolvedCount).toBe(0);
+    expect(alertsStore.latestAlert).toBeNull();
+  });
+
+  it('does not re-subscribe after logout even if auth resync fires multiple times', async () => {
+    fetchActiveAlerts.mockResolvedValue({ data: { alerts: [], count: 0 } });
+    const { subscribeAlerts } = await import('./useAlertsRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const authStore = useAuthStore();
+
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test' };
+    subscribeAlerts();
+    const callCountAfterSub = listenOnChannel.mock.calls.length;
+
+    authStore.clearAuth();
+    for (const callback of [...resyncWatchers]) callback('auth');
+    for (const callback of [...resyncWatchers]) callback('auth');
+
+    expect(listenOnChannel).toHaveBeenCalledTimes(callCountAfterSub);
+  });
+});
+
+describe('W11: login/auth change leaves old public subscription state clean', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    channelCallbacks.clear();
+    fetchActiveAlerts.mockReset();
+    listenOnChannel.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  afterEach(async () => {
+    try {
+      const { unsubscribeAlerts } = await import('./useAlertsRealtime');
+      unsubscribeAlerts();
+    } catch {}
+  });
+
+  it('re-subscribes with private channels after login while keeping snapshot consistent', async () => {
+    fetchActiveAlerts.mockResolvedValue({ data: { alerts: [], count: 0 } });
+    const { subscribeAlerts } = await import('./useAlertsRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const authStore = useAuthStore();
+
+    // Start as guest (no token)
+    subscribeAlerts();
+    const guestCalls = listenOnChannel.mock.calls.length;
+
+    // Login
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test' };
+    for (const callback of [...resyncWatchers]) callback('auth');
+
+    // Should have re-subscribed (2 new calls: alerts + AlertResolved)
+    expect(listenOnChannel.mock.calls.length).toBeGreaterThan(guestCalls);
+    // Alerts store should still be clean
+    expect(useAlertsStore().activeAlerts).toEqual([]);
+    expect(useAlertsStore().unresolvedCount).toBe(0);
+  });
+});
+
+describe('W6: duplicate alert event projection', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    channelCallbacks.clear();
+    fetchActiveAlerts.mockReset();
+    listenOnChannel.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  afterEach(async () => {
+    try {
+      const { unsubscribeAlerts } = await import('./useAlertsRealtime');
+      unsubscribeAlerts();
+    } catch {}
+  });
+
+  it('does not add a duplicate alert when the same event arrives twice', async () => {
+    fetchActiveAlerts.mockResolvedValue({ data: { alerts: [], count: 0 } });
+    const { subscribeAlerts, ALERTS_EVENT } = await import('./useAlertsRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const authStore = useAuthStore();
+    const alertsStore = useAlertsStore();
+
+    authStore.token = 'test-token';
+    authStore.user = { id: 1, name: 'Test' };
+    subscribeAlerts();
+    await vi.waitFor(() => expect(alertsStore.realtimeStatus.mode).toBe('live'));
+
+    const event = { alert: { id: 99, resolved: false } };
+    channelCallbacks.get(ALERTS_EVENT)(event);
+    expect(alertsStore.activeAlerts.length).toBe(1);
+
+    // Redeliver the same event
+    channelCallbacks.get(ALERTS_EVENT)(event);
+    expect(alertsStore.activeAlerts.length).toBe(1);
+  });
+});

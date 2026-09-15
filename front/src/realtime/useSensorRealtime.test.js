@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
 const connectionWatchers = new Set();
@@ -254,5 +254,103 @@ describe('sensor realtime recovery snapshot (graph-series adapter)', () => {
     fireAuthResync();
 
     expect(projection.readingsFor(7)).toHaveLength(0);
+  });
+});
+
+describe('W7: duplicate sensor event projection', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    storedToken = null;
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    echoMock.echo.channel.mockClear();
+    echoMock.echo.private.mockClear();
+    echoMock.echo.leaveChannel.mockClear();
+    echoMock.publicChannel.listen.mockClear();
+    echoMock.publicChannel.stopListening.mockClear();
+    echoMock.privateChannel.listen.mockClear();
+    echoMock.privateChannel.stopListening.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  it('sensor store mergeReading deduplicates the same reading id', async () => {
+    const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+    const projection = useSensorReadingsStore();
+
+    projection.mergeReading(7, { id: 42, value: 10, reading_time: '2026-01-01T00:00:01Z' });
+    expect(projection.readingsFor(7)).toHaveLength(1);
+
+    // Redeliver same id with a different value (simulates broadcast replay)
+    projection.mergeReading(7, { id: 42, value: 99, reading_time: '2026-01-01T00:00:01Z' });
+    // Last-write-wins by id: same length, value updated
+    expect(projection.readingsFor(7)).toHaveLength(1);
+    expect(projection.readingsFor(7)[0].value).toBe(99);
+  });
+
+  it('sensor store mergeReading accepts genuinely new readings', async () => {
+    const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+    const projection = useSensorReadingsStore();
+
+    projection.mergeReading(7, { id: 42, value: 10, reading_time: '2026-01-01T00:00:01Z' });
+    projection.mergeReading(7, { id: 43, value: 20, reading_time: '2026-01-01T00:00:02Z' });
+    expect(projection.readingsFor(7)).toHaveLength(2);
+  });
+});
+
+describe('W10-W11: sensor realtime logout clears projections / login leaves subscription clean', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    storedToken = null;
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    echoMock.echo.channel.mockClear();
+    echoMock.echo.private.mockClear();
+    echoMock.echo.leaveChannel.mockClear();
+    echoMock.publicChannel.listen.mockClear();
+    echoMock.publicChannel.stopListening.mockClear();
+    echoMock.privateChannel.listen.mockClear();
+    echoMock.privateChannel.stopListening.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  afterEach(async () => {
+    try {
+      const { useSensorRealtime } = await import('./useSensorRealtime');
+      const realtime = useSensorRealtime(7, vi.fn());
+      realtime.unsubscribeSensor();
+    } catch {}
+  });
+
+  it('logout clears the sensor reading projection', async () => {
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+    const projection = useSensorReadingsStore();
+
+    projection.mergeReading(7, { id: 1, value: 1, reading_time: '2026-01-01T00:00:00Z' });
+    expect(projection.readingsFor(7)).toHaveLength(1);
+
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+    fireAuthResync(); // auth resync clears
+
+    expect(projection.readingsFor(7)).toHaveLength(0);
+  });
+
+  it('login keeps the public channel ref-count clean and does not leak subscriptions', async () => {
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const { getChannelRefCount } = await import('./channelRegistry');
+
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+    expect(getChannelRefCount('sensor.7')).toBe(1);
+
+    // Login
+    storedToken = 'test-token';
+    fireAuthResync();
+
+    expect(getChannelRefCount('sensor.7')).toBe(0);
+    expect(getChannelRefCount('sensor.7', { privateChannel: true })).toBe(1);
+    // Public channel listen was called exactly once (on initial subscribe)
+    expect(echoMock.publicChannel.listen).toHaveBeenCalledTimes(1);
   });
 });

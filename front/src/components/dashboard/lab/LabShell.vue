@@ -65,7 +65,7 @@
                 ><I name="home" /><span>Inicio</span></RouterLink
             ><a v-if="route.name === 'dashboard'" href="#my-charts"><I name="chart" /><span>Gráficas</span></a
             ><RouterLink v-else to="/dashboard"><I name="chart" /><span>Gráficas</span></RouterLink
-            ><RouterLink v-if="auth.isAuthenticated" to="/alerts"
+            ><RouterLink v-if="auth.isAuthenticated && auth.can('alert.view')" to="/alerts"
                 ><I name="bell" /><span>Alertas</span></RouterLink
             ><RouterLink :to="auth.isAuthenticated ? '/profile' : '/login'"
                 ><I :name="auth.isAuthenticated ? 'user' : 'lock'" /><span>{{
@@ -97,9 +97,9 @@ const links = computed(() => [
     { to: "/dashboard", label: "Dashboard", icon: "home" },
     ...(auth.isAuthenticated
         ? [
-              { to: "/devices", label: "Dispositivos", icon: "device" },
-              { to: "/sensors", label: "Sensores", icon: "sensor" },
-              { to: "/alerts", label: "Alertas", icon: "bell" },
+              ...(auth.can('device.view') ? [{ to: "/devices", label: "Dispositivos", icon: "device" }] : []),
+              ...(auth.can('sensor.view') ? [{ to: "/sensors", label: "Sensores", icon: "sensor" }] : []),
+              ...(auth.can('alert.view') ? [{ to: "/alerts", label: "Alertas", icon: "bell" }] : []),
               { to: "/metrics", label: "Métricas", icon: "chart" },
           ]
         : []),

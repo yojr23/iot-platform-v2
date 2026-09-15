@@ -35,7 +35,7 @@
             {{ realtimeStatusLabel }}
           </span>
 
-          <RouterLink v-if="authStore.isAuthenticated" class="btn btn-outline-secondary btn-sm position-relative" to="/alerts">
+          <RouterLink v-if="authStore.isAuthenticated && authStore.can('alert.view')" class="btn btn-outline-secondary btn-sm position-relative" to="/alerts">
             Alertas
             <span
               v-if="alertsStore.unresolvedCount > 0"
@@ -80,11 +80,13 @@ const router = useRouter();
 const authStore = useAuthStore();
 const alertsStore = useAlertsStore();
 
-const laboratoryItems = [
-  { label: 'Sensores', to: '/sensors' },
-  { label: 'Dispositivos', to: '/devices' },
-  { label: 'Alertas', to: '/alerts' }
-];
+const laboratoryItems = computed(() => {
+  const items = [];
+  if (authStore.can('sensor.view')) items.push({ label: 'Sensores', to: '/sensors' });
+  if (authStore.can('device.view')) items.push({ label: 'Dispositivos', to: '/devices' });
+  if (authStore.can('alert.view')) items.push({ label: 'Alertas', to: '/alerts' });
+  return items;
+});
 
 const authenticatedItems = [
   { label: 'Métricas', to: '/metrics' }
@@ -105,7 +107,7 @@ const navItems = computed(() => {
 
   return [
     ...publicItems,
-    ...laboratoryItems,
+    ...laboratoryItems.value,
     ...authenticatedItems,
     ...(authStore.can('user.view') ? adminItems : [])
   ];

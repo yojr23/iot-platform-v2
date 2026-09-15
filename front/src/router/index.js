@@ -144,7 +144,7 @@ const router = createRouter({
           name: 'sensor-types',
           component: () => import('@/views/CatalogAdminView.vue'),
           props: { type: 'sensor-types' },
-          meta: { requiresAuth: true, requiresPermission: 'sensor.view' }
+          meta: { requiresAuth: true, requiresPermission: 'device.view' }
         },
         {
           path: 'device-types',
