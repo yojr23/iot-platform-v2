@@ -11,6 +11,10 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
+        if (! app()->environment('local', 'testing')) {
+            return;
+        }
+
         $superadminRole = Role::where('code', 'superadmin')->first();
         $adminRole = Role::where('code', 'admin')->first();
         $userRole = Role::where('code', 'user')->first();

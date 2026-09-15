@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isCleanResult, isPageCorrect } from './result-policy.mjs';
+import { isCleanResult, isPageCorrect, isPassingAuditResult } from './result-policy.mjs';
 
 const healthyRun = {
   exitCode: 0,
@@ -78,5 +78,25 @@ describe('page identity assertions', () => {
       route: '/devices',
       finalUrl: 'http://127.0.0.1:5173/devices/1'
     })).toBe(true);
+  });
+});
+
+describe('responsive matrix gate', () => {
+  it('rejects a technically clean row redirected away from its requested page', () => {
+    expect(isPassingAuditResult({
+      ...healthyRun,
+      route: '/alert-rules',
+      finalUrl: 'http://127.0.0.1:5173/login?redirect=/alert-rules',
+      heading: 'Iniciar sesión'
+    }, { expectedMarker: 'Reglas de alerta' })).toBe(false);
+  });
+
+  it('requires the retained route URL and page heading marker as well as clean diagnostics', () => {
+    expect(isPassingAuditResult({
+      ...healthyRun,
+      route: '/alert-rules',
+      finalUrl: 'http://127.0.0.1:5173/alert-rules',
+      heading: 'Reglas de alerta'
+    }, { expectedMarker: 'Reglas de alerta' })).toBe(true);
   });
 });

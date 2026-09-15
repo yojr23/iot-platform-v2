@@ -241,7 +241,7 @@ class DeviceApiController extends Controller
             return (new DeviceResource($device))
                 ->additional([
                     'message' => 'Dispositivo creado correctamente.',
-                    'api_key' => $device->getPlaintextKey(),
+                    'api_key' => $device->pullPlaintextApiKey(),
                 ])
                 ->response()
                 ->setStatusCode(201);

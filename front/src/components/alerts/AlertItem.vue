@@ -1,25 +1,25 @@
 <template>
   <tr>
-    <td>
+    <td data-label="Alerta">
       <div class="fw-semibold">{{ alert.alert_rule?.message || alert.alert_rule?.name || `Alerta ${alert.id}` }}</div>
       <div class="small text-muted">
         {{ alert.sensor?.name || 'Sensor no disponible' }} · {{ alert.device?.name || 'Dispositivo no disponible' }}
       </div>
     </td>
-    <td>
+    <td data-label="Severidad">
       <span class="badge" :class="severityClass">
         {{ severityLabel(alert.alert_rule?.severity) }}
       </span>
     </td>
-    <td>{{ formatNumber(alert.reading_value || alert.sensor_reading?.value) }} {{ alert.sensor?.unit || '' }}</td>
-    <td>
+    <td data-label="Valor">{{ formatNumber(alert.reading_value || alert.sensor_reading?.value) }} {{ alert.sensor?.unit || '' }}</td>
+    <td data-label="Estado">
       <span class="badge" :class="alert.resolved ? 'text-bg-secondary' : 'text-bg-danger'">
         {{ alert.resolved ? 'Resuelta' : 'Activa' }}
       </span>
       <div v-if="alert.acknowledged_by" class="small text-muted mt-1">Por: {{ alert.acknowledged_by }}</div>
     </td>
-    <td>{{ formatDate(alert.created_at) }}</td>
-    <td class="text-end">
+    <td data-label="Fecha">{{ formatDate(alert.created_at) }}</td>
+    <td data-label="Acciones" class="text-end">
       <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de alerta">
         <RouterLink class="btn btn-outline-primary lab-action" :to="`/alerts/${alert.id}`"><I name="eye" />Ver</RouterLink>
         <button

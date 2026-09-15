@@ -17,7 +17,7 @@ class DeviceApiKeyVisibilityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_sees_api_key_on_device_show(): void
+    public function test_admin_sees_credential_metadata_but_not_the_plaintext_key_on_device_show(): void
     {
         $device = Device::factory()->create();
         $admin = User::factory()->create(['is_admin' => true]);
@@ -25,8 +25,8 @@ class DeviceApiKeyVisibilityTest extends TestCase
         $response = $this->actingAs($admin)->getJson("/api/devices/{$device->id}");
 
         $response->assertOk()
-            ->assertJsonPath('api_key', $device->api_key);
-        $this->assertNotEmpty($response->json('api_key'));
+            ->assertJsonPath('api_key_prefix', $device->api_key_prefix)
+            ->assertJsonMissingPath('api_key');
     }
 
     public function test_non_admin_does_not_see_api_key_on_device_show(): void

@@ -1,51 +1,51 @@
 # Task 10 / Gate 9: data-driven mocked responsive Chromium matrix.
-# Format: route|role|viewport|mode|interact|name
+# Format: route|role|viewport|mode|interact|name|expectedMarker
 # These browser rows use fixtures.mjs. They prove UI behavior only; they are not live-network
 # or WebSocket evidence. Representative 320/390/768/1440 screenshots are retained by name.
 
 # Guest public boundary, normal/populated and long states, exact required widths.
-/dashboard|guest|320x700|normal|responsive-layout|t10-dashboard-guest-320
-/dashboard|guest|360x800|normal|responsive-layout|t10-dashboard-guest-360
-/dashboard|guest|390x844|normal|responsive-layout|t10-dashboard-guest-390
-/dashboard|guest|768x1024|normal|responsive-layout|t10-dashboard-guest-768
-/dashboard|guest|1024x768|normal|responsive-layout|t10-dashboard-guest-1024
-/dashboard|guest|1280x800|normal|responsive-layout|t10-dashboard-guest-1280
-/dashboard|guest|1440x900|normal|responsive-layout|t10-dashboard-guest-1440
-/dashboard|guest|320x700|empty|responsive-layout|t10-dashboard-guest-empty-320
-/dashboard|guest|320x700|long|responsive-layout|t10-dashboard-guest-long-320
+/dashboard|guest|320x700|normal|responsive-layout|t10-dashboard-guest-320|Mi tablero
+/dashboard|guest|360x800|normal|responsive-layout|t10-dashboard-guest-360|Mi tablero
+/dashboard|guest|390x844|normal|responsive-layout|t10-dashboard-guest-390|Mi tablero
+/dashboard|guest|768x1024|normal|responsive-layout|t10-dashboard-guest-768|Mi tablero
+/dashboard|guest|1024x768|normal|responsive-layout|t10-dashboard-guest-1024|Mi tablero
+/dashboard|guest|1280x800|normal|responsive-layout|t10-dashboard-guest-1280|Mi tablero
+/dashboard|guest|1440x900|normal|responsive-layout|t10-dashboard-guest-1440|Mi tablero
+/dashboard|guest|320x700|empty|responsive-layout|t10-dashboard-guest-empty-320|Mi tablero
+/dashboard|guest|320x700|long|responsive-layout|t10-dashboard-guest-long-320|Mi tablero
 
 # Authenticated dashboard: lifecycle, single mobile expanded signal, populated Chart.js.
-/dashboard|admin|320x700|normal|dashboard-lifecycle|t10-dashboard-admin-lifecycle-320
-/dashboard|user|320x700|normal|responsive-layout|t10-dashboard-user-320
-/dashboard|user|390x844|normal|responsive-layout|t10-dashboard-user-390
-/dashboard|user|768x1024|normal|responsive-layout|t10-dashboard-user-768
-/dashboard|admin|1440x900|normal|responsive-layout|t10-dashboard-admin-1440
+/dashboard|admin|320x700|normal|dashboard-lifecycle|t10-dashboard-admin-lifecycle-320|Mi tablero
+/dashboard|user|320x700|normal|responsive-layout|t10-dashboard-user-320|Mi tablero
+/dashboard|user|390x844|normal|responsive-layout|t10-dashboard-user-390|Mi tablero
+/dashboard|user|768x1024|normal|responsive-layout|t10-dashboard-user-768|Mi tablero
+/dashboard|admin|1440x900|normal|responsive-layout|t10-dashboard-admin-1440|Mi tablero
 
 # Auth boundary: administrator logout followed by mocked standard-user login, at mobile and desktop widths.
-/dashboard|admin|390x844|normal|auth-transition|t10-dashboard-auth-transition-390
-/dashboard|admin|1440x900|normal|auth-transition|t10-dashboard-auth-transition-1440
+/dashboard|admin|390x844|normal|auth-transition|t10-dashboard-auth-transition-390|Mi tablero
+/dashboard|admin|1440x900|normal|auth-transition|t10-dashboard-auth-transition-1440|Mi tablero
 
 # Resources: empty, normal, dense/long. Tables must remain contained inside their own scrollers.
-/devices|admin|320x700|empty|responsive-layout|t10-devices-empty-320
-/devices|admin|320x700|dense|responsive-layout|t10-devices-dense-320
-/devices|admin|390x844|long|responsive-layout|t10-devices-long-390
-/devices|admin|768x1024|normal|responsive-layout|t10-devices-768
-/devices|admin|1440x900|normal|responsive-layout|t10-devices-1440
-/sensors|admin|320x700|long|responsive-layout|t10-sensors-long-320
-/sensors|admin|390x844|normal|responsive-layout|t10-sensors-390
-/sensors|admin|768x1024|dense|responsive-layout|t10-sensors-dense-768
-/alert-rules|admin|320x700|dense|responsive-layout|t10-alert-rules-dense-320
-/alert-rules|admin|390x844|long|responsive-layout|t10-alert-rules-long-390
+/devices|admin|320x700|empty|responsive-layout|t10-devices-empty-320|Dispositivos
+/devices|admin|320x700|dense|responsive-layout|t10-devices-dense-320|Dispositivos
+/devices|admin|390x844|long|responsive-layout|t10-devices-long-390|Dispositivos
+/devices|admin|768x1024|normal|responsive-layout|t10-devices-768|Dispositivos
+/devices|admin|1440x900|normal|responsive-layout|t10-devices-1440|Dispositivos
+/sensors|admin|320x700|long|responsive-layout|t10-sensors-long-320|Sensores
+/sensors|admin|390x844|normal|responsive-layout|t10-sensors-390|Sensores
+/sensors|admin|768x1024|dense|responsive-layout|t10-sensors-dense-768|Sensores
+/alert-rules|admin|320x700|dense|responsive-layout|t10-alert-rules-dense-320|Reglas de alerta
+/alert-rules|admin|390x844|long|responsive-layout|t10-alert-rules-long-390|Reglas de alerta
 
 # Modal focus trap/Escape/focus restoration remains a separate interaction proof.
-/devices|admin|390x844|normal|device-modal|t10-device-modal-390
-/alert-rules|admin|390x844|normal|alert-rule-modal|t10-alert-rule-modal-390
+/devices|admin|390x844|normal|device-modal|t10-device-modal-390|Dispositivos
+/alert-rules|admin|390x844|normal|alert-rule-modal|t10-alert-rule-modal-390|Reglas de alerta
 
 # Metrics must stack through every required breakpoint.
-/metrics|admin|320x700|normal|responsive-layout|t10-metrics-320
-/metrics|admin|360x800|normal|responsive-layout|t10-metrics-360
-/metrics|admin|390x844|normal|responsive-layout|t10-metrics-390
-/metrics|admin|768x1024|normal|responsive-layout|t10-metrics-768
-/metrics|admin|1024x768|normal|responsive-layout|t10-metrics-1024
-/metrics|admin|1280x800|normal|responsive-layout|t10-metrics-1280
-/metrics|admin|1440x900|normal|responsive-layout|t10-metrics-1440
+/metrics|admin|320x700|normal|responsive-layout|t10-metrics-320|Métricas
+/metrics|admin|360x800|normal|responsive-layout|t10-metrics-360|Métricas
+/metrics|admin|390x844|normal|responsive-layout|t10-metrics-390|Métricas
+/metrics|admin|768x1024|normal|responsive-layout|t10-metrics-768|Métricas
+/metrics|admin|1024x768|normal|responsive-layout|t10-metrics-1024|Métricas
+/metrics|admin|1280x800|normal|responsive-layout|t10-metrics-1280|Métricas
+/metrics|admin|1440x900|normal|responsive-layout|t10-metrics-1440|Métricas

@@ -119,22 +119,20 @@ class AlertService
 
         foreach ($triggeredRules as $alertRule) {
             DB::transaction(function () use ($reading, $alertRule, $sensor, &$alertsCreated): void {
-                // Check inside the transaction to prevent race condition with concurrent readings.
-                // The unique constraint on (sensor_reading_id, alert_rule_id) is the DB backstop.
-                $alreadyExists = Alert::where('sensor_reading_id', $reading->id)
-                    ->where('alert_rule_id', $alertRule->id)
-                    ->lockForUpdate()
-                    ->exists();
-
-                if ($alreadyExists) {
-                    return;
-                }
-
-                $alert = Alert::create([
+                // `createOrFirst` makes the unique index the synchronization authority. A
+                // competing insert is resolved to the already-created row; no gap lock on a
+                // missing row can leave a duplicate-creation race open. The outbox remains in
+                // this same outer transaction when a new alert is actually created.
+                $alert = Alert::query()->createOrFirst([
                     'sensor_reading_id' => $reading->id,
                     'alert_rule_id' => $alertRule->id,
+                ], [
                     'resolved' => false,
                 ]);
+
+                if (! $alert->wasRecentlyCreated) {
+                    return;
+                }
 
                 $this->recorder->record('alert.triggered', 'alert', $alert->id, [
                     'alert_id' => $alert->id,

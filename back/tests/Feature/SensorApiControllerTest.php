@@ -25,7 +25,7 @@ class SensorApiControllerTest extends TestCase
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
         $this->assertTrue((bool) $sensor->device()->first()->is_active);
 
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 21.5,
@@ -34,6 +34,23 @@ class SensorApiControllerTest extends TestCase
 
         $response->assertStatus(401)
             ->assertJsonPath('error', 'Unauthorized');
+
+        $this->assertDatabaseCount('sensor_readings', 0);
+    }
+
+    public function test_store_reading_rejects_the_global_key_when_legacy_fallback_is_disabled(): void
+    {
+        $device = Device::factory()->create(['status' => true, 'is_active' => true]);
+        $sensor = Sensor::factory()->create(['device_id' => $device->id]);
+        config([
+            'app.api_key' => 'legacy-global-key',
+            'app.iot_legacy_global_key_fallback_enabled' => false,
+        ]);
+
+        $this->postJson("/api/sensors/{$sensor->id}/readings", [
+            'value' => 21.5,
+            'api_key' => 'legacy-global-key',
+        ])->assertUnauthorized();
 
         $this->assertDatabaseCount('sensor_readings', 0);
     }
@@ -47,7 +64,7 @@ class SensorApiControllerTest extends TestCase
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
         $this->assertFalse((bool) $sensor->device()->first()->is_active);
 
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 25.3,
@@ -68,7 +85,7 @@ class SensorApiControllerTest extends TestCase
         ]);
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
 
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 15.6,
@@ -90,7 +107,7 @@ class SensorApiControllerTest extends TestCase
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
         $this->assertTrue((bool) $sensor->device()->first()->is_active);
 
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 42.75,
@@ -160,7 +177,7 @@ class SensorApiControllerTest extends TestCase
         Redis::swap($redis);
 
         try {
-            config(['app.api_key' => 'valid-key']);
+            config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
             $this->postJson("/api/sensors/{$sensor->id}/readings", [
                 'value' => 42.75,

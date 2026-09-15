@@ -60,7 +60,7 @@ class AlertEmailAsyncDeliveryTest extends TestCase
         SystemSetting::set('mail_to', 'alerts@example.test');
 
         $sensor = $this->makeDangerRuleSensor();
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 80,

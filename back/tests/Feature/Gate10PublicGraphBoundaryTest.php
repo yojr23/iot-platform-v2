@@ -144,7 +144,7 @@ class Gate10PublicGraphBoundaryTest extends TestCase
     {
         $device = Device::factory()->create(['status' => true, 'is_active' => true]);
         $sensor = $this->restrictedSensor(['device_id' => $device->id]);
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 33.3,

@@ -13,7 +13,7 @@
             <th>Valor</th>
             <th>Estado</th>
             <th>Fecha</th>
-            <th class="text-end">Accion</th>
+            <th class="text-end">Acciones</th>
           </tr>
         </thead>
         <tbody>

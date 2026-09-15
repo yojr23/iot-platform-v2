@@ -9,6 +9,7 @@ use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Models\SensorType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class SensorReadingTriggeredRulesTest extends TestCase
@@ -129,6 +130,39 @@ class SensorReadingTriggeredRulesTest extends TestCase
                 ->where('alert_rule_id', $rule->id)
                 ->count()
         );
+    }
+
+    public function test_check_for_alert_relies_on_the_unique_constraint_instead_of_a_gap_lock(): void
+    {
+        $sensor = Sensor::factory()->create();
+        $rule = AlertRule::create([
+            'sensor_type_id' => $sensor->sensor_type_id,
+            'device_id' => $sensor->device_id,
+            'sensor_id' => $sensor->id,
+            'min_value' => null,
+            'max_value' => 20,
+            'severity' => 'warning',
+            'message' => 'Límite máximo',
+            'name' => 'Atomic alert creation',
+        ]);
+        $reading = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 25,
+        ]);
+        $queries = [];
+
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+
+        $reading->checkForAlert();
+        $reading->checkForAlert();
+
+        $this->assertSame(1, Alert::query()
+            ->where('sensor_reading_id', $reading->id)
+            ->where('alert_rule_id', $rule->id)
+            ->count());
+        $this->assertDoesNotMatchRegularExpression('/for update/i', implode("\n", $queries));
     }
 
     public function test_threshold_edges_are_inclusive_for_alert_trigger(): void

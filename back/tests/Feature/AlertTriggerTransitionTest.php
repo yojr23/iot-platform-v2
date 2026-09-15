@@ -65,6 +65,31 @@ class AlertTriggerTransitionTest extends TestCase
             ->count());
     }
 
+    public function test_evaluating_a_reading_with_a_resolved_alert_does_not_create_a_duplicate_or_outbox_event(): void
+    {
+        $sensor = $this->makeThresholdRuleSensor();
+        $reading = SensorReading::withoutEvents(fn () => SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 80,
+        ]));
+        $rule = AlertRule::query()->where('sensor_type_id', $sensor->sensor_type_id)->sole();
+        $alert = Alert::create([
+            'sensor_reading_id' => $reading->id,
+            'alert_rule_id' => $rule->id,
+            'resolved' => true,
+        ]);
+
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
+
+        $this->assertSame(1, Alert::query()
+            ->where('sensor_reading_id', $reading->id)
+            ->where('alert_rule_id', $alert->alert_rule_id)
+            ->count());
+        $this->assertSame(0, DomainEventOutbox::query()
+            ->where('event_type', 'alert.triggered')
+            ->count());
+    }
+
     public function test_alert_triggered_outbox_captures_the_complete_broadcast_snapshot_at_creation(): void
     {
         $lab = Lab::factory()->create(['name' => 'Laboratorio original']);

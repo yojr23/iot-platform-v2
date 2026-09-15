@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Device;
 use App\Models\RawSensorEvent;
 use App\Models\Sensor;
+use App\Services\SensorMappingService;
 use App\Services\Ingestion\RawReadingNormalizer;
 use App\Services\Ingestion\SensorReadingService;
 use App\Services\Ingestion\RawStreamConsumer;
@@ -57,7 +58,10 @@ class RawStreamConsumerTest extends TestCase
     {
         return new RawStreamConsumer(
             $this->conn,
-            new RawReadingNormalizer(app(SensorReadingService::class)),
+            new RawReadingNormalizer(
+                app(SensorReadingService::class),
+                app(SensorMappingService::class),
+            ),
             $this->stream,
             $this->group,
             $this->dlq,
@@ -68,7 +72,10 @@ class RawStreamConsumerTest extends TestCase
     {
         $device = Device::factory()->create(['serial_number' => $serial]);
 
-        return Sensor::factory()->create(['device_id' => $device->id, 'name' => $sensorName]);
+        $sensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => $sensorName]);
+        app(SensorMappingService::class)->mapSensor($device, $sensor, 'test', $sensorName);
+
+        return $sensor;
     }
 
     private function xadd(int $eventId): void

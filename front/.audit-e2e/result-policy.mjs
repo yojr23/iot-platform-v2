@@ -37,3 +37,7 @@ export function isPageCorrect(result, { expectedMarker } = {}) {
 
   return true;
 }
+
+export function isPassingAuditResult(result, { expectedMarker } = {}) {
+  return isCleanResult(result) && isPageCorrect(result, { expectedMarker });
+}

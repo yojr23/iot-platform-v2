@@ -17,7 +17,7 @@ class PublicSurfaceClassificationTest extends TestCase
 
     public function test_iot_sensor_inventory_requires_device_key(): void
     {
-        config(['app.api_key' => 'valid-ingestion-key']);
+        config(['app.api_key' => 'valid-ingestion-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->getJson('/api/iot/sensors');
 
@@ -27,7 +27,7 @@ class PublicSurfaceClassificationTest extends TestCase
 
     public function test_iot_sensor_inventory_rejects_wrong_device_key(): void
     {
-        config(['app.api_key' => 'valid-ingestion-key']);
+        config(['app.api_key' => 'valid-ingestion-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->withHeaders([
             'X-Device-Key' => 'wrong-key',
@@ -39,7 +39,7 @@ class PublicSurfaceClassificationTest extends TestCase
 
     public function test_iot_sensor_inventory_accepts_valid_device_key(): void
     {
-        config(['app.api_key' => 'valid-ingestion-key']);
+        config(['app.api_key' => 'valid-ingestion-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         Sensor::factory()->count(2)->create();
 

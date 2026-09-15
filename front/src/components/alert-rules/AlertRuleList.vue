@@ -18,23 +18,23 @@
         </thead>
         <tbody>
           <tr v-for="rule in rules" :key="rule.id">
-            <td class="fw-semibold">{{ rule.name || `Regla ${rule.id}` }}</td>
-            <td>
+            <td data-label="Nombre" class="fw-semibold">{{ rule.name || `Regla ${rule.id}` }}</td>
+            <td data-label="Alcance">
               <div>{{ rule.sensor?.name || rule.device?.name || rule.sensor_type?.name || 'Global' }}</div>
               <div class="small text-muted">{{ rule.sensor_type?.unit || rule.sensor_type?.name || '-' }}</div>
             </td>
-            <td>
+            <td data-label="Severidad">
               <span class="badge" :class="severityClass(rule.severity)">
                 {{ severityLabel(rule.severity) }}
               </span>
             </td>
-            <td>
+            <td data-label="Umbrales">
               <span v-if="rule.min_value !== null">Min {{ formatNumber(rule.min_value) }}</span>
               <span v-if="rule.min_value !== null && rule.max_value !== null"> · </span>
               <span v-if="rule.max_value !== null">Max {{ formatNumber(rule.max_value) }}</span>
             </td>
-            <td>{{ rule.message }}</td>
-            <td class="text-end">
+            <td data-label="Mensaje">{{ rule.message }}</td>
+            <td data-label="Acciones" class="text-end">
               <div class="btn-group btn-group-sm">
                 <button class="btn btn-outline-primary lab-action" type="button" @click="$emit('edit', rule)"><I name="edit" />Editar</button>
                 <button class="btn btn-outline-danger lab-action" type="button" :disabled="deletingId === rule.id" @click="$emit('delete', rule)">

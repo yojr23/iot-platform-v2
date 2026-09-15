@@ -4,7 +4,9 @@ namespace App\Services\Ingestion;
 
 use App\Models\Device;
 use App\Models\RawSensorEvent;
-use App\Models\Sensor;
+use App\Services\SensorMappingService;
+use Carbon\Carbon;
+use DateTimeInterface;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -13,7 +15,7 @@ use RuntimeException;
  * PLAN.md Stage 3.3 — normalizes a raw receipt (`RawSensorEvent.payload`) into `SensorReading`
  * rows.
  *
- * Existing code reused: `Sensor::readings()->create()` — the exact same reading-creation call
+ * Existing code reused: `SensorReadingService::createReading()` — the exact same creation owner
  * `SensorApiController::store()` already uses, so creating a reading here fires the existing
  * `SensorReadingObserver` -> `AlertService::createAlertsForReading()` chain unchanged. This class
  * never evaluates alert rules itself (G0D row B1: AlertService stays the sole rule-evaluation
@@ -22,17 +24,15 @@ use RuntimeException;
  * (async raw ingestion -> readings) that had no reading-creation path before Stage 3.
  * Compatibility window: n/a.
  *
- * ponytail: node_id/sensor-key -> Device/Sensor resolution is an exact (case-insensitive) match
- * against the existing `devices.serial_number` and `sensors.name` columns. There is no
- * node/channel mapping table anywhere in this codebase to reuse or extend. Ceiling: a renamed
- * sensor or an aliased payload key silently skips that one reading (logged), it does not fail the
- * whole receipt. Add a real mapping table if/when key aliasing or ambiguous names become a real
- * problem.
+ * Device identity still comes from `node_id`, while measurement identity is resolved only through
+ * `SensorMappingService`. This makes aliases and historic key handovers explicit instead of
+ * silently coupling raw payload keys to mutable sensor names.
  */
 class RawReadingNormalizer
 {
     public function __construct(
         private SensorReadingService $readingService,
+        private SensorMappingService $mappingService,
     ) {
     }
 
@@ -71,28 +71,30 @@ class RawReadingNormalizer
 
         $sensorsPayload = (array) data_get($event->payload, 'sensors', []);
         $readingTime = data_get($event->payload, 'timestamp') ?? $event->received_at ?? now();
-
-        $groupedSensors = $device->sensors()
-            // sensor_type_id needed downstream by AlertService::applicableRules (reused in-memory).
-            ->get(['id', 'device_id', 'name', 'sensor_type_id'])
-            ->groupBy(fn (Sensor $sensor): string => $this->canonicalSensorName($sensor->name));
-
-        $ambiguousNames = $groupedSensors
-            ->filter(fn ($sensors): bool => $sensors->count() > 1)
-            ->keys();
-
-        if ($ambiguousNames->isNotEmpty()) {
-            throw new RuntimeException(
-                'RawReadingNormalizer: ambiguous sensor names for device ['.$device->id.']: '.$ambiguousNames->implode(', ')
-            );
-        }
-
-        $sensorsByName = $groupedSensors->map(fn ($sensors): Sensor => $sensors->first());
+        $source = $event->source ?: 'ingestion_service';
+        $externalKeys = array_values(array_unique(array_map(
+            fn ($key): string => $this->canonicalSensorName((string) $key),
+            array_keys($sensorsPayload),
+        )));
+        $sensorsByExternalKey = $this->mappingService->findSensorsByExternalKeys(
+            $device,
+            $source,
+            $externalKeys,
+            $this->lookupTime($readingTime),
+        );
 
         $created = 0;
         $skipped = [];
+        $processedSourceKeys = [];
 
         foreach ($sensorsPayload as $key => $entry) {
+            $sourceKey = $this->canonicalSensorName((string) $key);
+
+            if (isset($processedSourceKeys[$sourceKey])) {
+                continue;
+            }
+
+            $processedSourceKeys[$sourceKey] = true;
             $value = data_get($entry, 'value');
 
             if (! is_numeric($value)) {
@@ -106,7 +108,7 @@ class RawReadingNormalizer
                 continue;
             }
 
-            $sensor = $sensorsByName->get($this->canonicalSensorName((string) $key));
+            $sensor = $sensorsByExternalKey->get($sourceKey);
 
             if (! $sensor) {
                 $skipped[] = (string) $key;
@@ -119,7 +121,11 @@ class RawReadingNormalizer
                 continue;
             }
 
-            $this->readingService->createReading($sensor, (float) $value, $readingTime);
+            $this->readingService->createReading($sensor, (float) $value, $readingTime, [
+                'raw_sensor_event_id' => $event->id,
+                'source_key' => $sourceKey,
+                'normalizer_version' => 'v1',
+            ]);
 
             $created++;
         }
@@ -142,5 +148,16 @@ class RawReadingNormalizer
     private function canonicalSensorName(string $name): string
     {
         return Str::lower(trim($name));
+    }
+
+    private function lookupTime(DateTimeInterface|string $readingTime): DateTimeInterface
+    {
+        $appTimezone = config('app.timezone');
+
+        if ($readingTime instanceof DateTimeInterface) {
+            return Carbon::instance($readingTime)->setTimezone($appTimezone);
+        }
+
+        return Carbon::parse($readingTime, $appTimezone)->setTimezone($appTimezone);
     }
 }

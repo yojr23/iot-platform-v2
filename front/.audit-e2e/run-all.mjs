@@ -1,5 +1,5 @@
 // Stage 0 (PLAN.md 0.2 G0B) — reproducible-from-a-fresh-clone matrix runner.
-// Reads matrix.txt (route|role|viewport|mode|interact|name) and runs run.mjs for each line,
+// Reads matrix.txt (route|role|viewport|mode|interact|name|expectedMarker) and runs run.mjs for each line,
 // in-process (imports run.mjs's logic would require refactoring it into a function; instead we
 // spawn `node run.mjs` per row, same as a fresh clone / CI would). Writes a consolidated
 // results/summary.json alongside the existing per-run JSON files.
@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isCleanResult } from './result-policy.mjs';
+import { buildMatrixSummaryRecord, isPassingMatrixRecord, parseMatrixRow } from './matrix-summary.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const filter = process.argv.find((a) => a.startsWith('--filter='))?.slice('--filter='.length);
@@ -31,7 +31,8 @@ const lines = fs
 const summary = [];
 
 for (const line of lines) {
-  const [route, role, viewport, mode, interact, name] = line.split('|');
+  const matrix = parseMatrixRow(line);
+  const { route, role, viewport, mode, interact, name } = matrix;
   console.log(`\n=== ${name} (${route} ${role} ${viewport} mode=${mode} interact=${interact}) ===`);
 
   const result = spawnSync(
@@ -57,28 +58,14 @@ for (const line of lines) {
     console.error(result.stdout, result.stderr);
   }
 
-  summary.push({
-    name,
-    route,
-    role,
-    viewport,
-    mode,
-    interact,
-    exitCode: result.status,
-    navError: parsed ? parsed.navError : 'PARSE_FAILURE',
-    hasOverflow: parsed ? parsed.overflow?.hasOverflow ?? null : null,
-    consoleErrors: parsed ? parsed.consoleErrors?.length ?? null : null,
-    pageErrors: parsed ? parsed.pageErrors?.length ?? null : null,
-    failedRequests: parsed ? parsed.failedRequests?.length ?? null : null,
-    interaction: parsed ? parsed.interaction : null
-  });
+  summary.push(buildMatrixSummaryRecord({ row: matrix, exitCode: result.status, parsed }));
 }
 
 fs.mkdirSync(path.join(__dirname, 'results'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'results', summaryName), JSON.stringify(summary, null, 2));
 
-const clean = summary.filter(isCleanResult);
-console.log(`\n${clean.length}/${summary.length} runs clean (no nav or interaction error, no failed interaction assertion, no doc overflow, no console/page errors, no failed requests).`);
+const clean = summary.filter(isPassingMatrixRecord);
+console.log(`\n${clean.length}/${summary.length} runs pass (clean diagnostics plus final URL and expected page marker).`);
 console.log(`Full results: front/.audit-e2e/results/${summaryName} (per-run JSON/PNG also written there).`);
 
 if (clean.length !== summary.length) process.exitCode = 1;

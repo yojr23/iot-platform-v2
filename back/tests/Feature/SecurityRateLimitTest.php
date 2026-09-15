@@ -24,7 +24,7 @@ class SecurityRateLimitTest extends TestCase
     {
         $this->setShortApiWriteLimiter();
 
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $sensor = Sensor::factory()->create([
             'device_id' => \App\Models\Device::factory()->create([

@@ -7,6 +7,8 @@ use App\Models\DeviceSensorMapping;
 use App\Models\Sensor;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class SensorMappingService
 {
@@ -20,20 +22,66 @@ class SensorMappingService
         ?DateTimeInterface $at = null,
     ): ?Sensor {
         $at ??= now();
+        $externalKey = $this->canonicalExternalKey($externalKey);
 
-        $mapping = DeviceSensorMapping::where('device_id', $device->id)
+        $mapping = DeviceSensorMapping::query()
+            ->with('sensor')
+            ->where('device_id', $device->id)
             ->where('source', $source)
             ->where('external_key', $externalKey)
-            ->where('is_active', true)
             ->where(function ($q) use ($at) {
                 $q->whereNull('valid_from')->orWhere('valid_from', '<=', $at);
             })
             ->where(function ($q) use ($at) {
                 $q->whereNull('valid_until')->orWhere('valid_until', '>', $at);
             })
+            ->orderByDesc('valid_from')
+            ->orderByDesc('id')
             ->first();
 
         return $mapping?->sensor;
+    }
+
+    /**
+     * Resolve a batch of external keys at one event instant.
+     *
+     * `is_active` describes the current operational interval only. Historical lookups must use
+     * the half-open validity window, otherwise a handover makes old receipts unresolvable.
+     *
+     * @param  list<string>  $externalKeys
+     * @return Collection<string, Sensor>
+     */
+    public function findSensorsByExternalKeys(
+        Device $device,
+        string $source,
+        array $externalKeys,
+        DateTimeInterface $at,
+    ): Collection {
+        if ($externalKeys === []) {
+            return collect();
+        }
+
+        $externalKeys = array_values(array_unique(array_map(
+            fn (string $externalKey): string => $this->canonicalExternalKey($externalKey),
+            $externalKeys,
+        )));
+
+        return DeviceSensorMapping::query()
+            ->with('sensor')
+            ->where('device_id', $device->id)
+            ->where('source', $source)
+            ->whereIn('external_key', $externalKeys)
+            ->where(function ($q) use ($at) {
+                $q->whereNull('valid_from')->orWhere('valid_from', '<=', $at);
+            })
+            ->where(function ($q) use ($at) {
+                $q->whereNull('valid_until')->orWhere('valid_until', '>', $at);
+            })
+            ->orderByDesc('valid_from')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('external_key')
+            ->mapWithKeys(fn (DeviceSensorMapping $mapping): array => [$mapping->external_key => $mapping->sensor]);
     }
 
     /**
@@ -41,7 +89,7 @@ class SensorMappingService
      *
      * Deactivates any existing active mapping for the same (device, source, external_key)
      * by closing its validity window, then inserts a new open-ended interval.
-     * Rejects overlapping intervals within the same transaction.
+     * The current interval is closed before its replacement is inserted.
      */
     public function mapSensor(
         Device $device,
@@ -52,6 +100,7 @@ class SensorMappingService
     ): DeviceSensorMapping {
         return DB::transaction(function () use ($device, $sensor, $source, $externalKey, $metadata) {
             $now = now();
+            $externalKey = $this->canonicalExternalKey($externalKey);
 
             // Close any currently active mapping for this key
             DeviceSensorMapping::where('device_id', $device->id)
@@ -98,5 +147,10 @@ class SensorMappingService
             ->where('is_active', true)
             ->with('device')
             ->get();
+    }
+
+    private function canonicalExternalKey(string $externalKey): string
+    {
+        return Str::lower(trim($externalKey));
     }
 }

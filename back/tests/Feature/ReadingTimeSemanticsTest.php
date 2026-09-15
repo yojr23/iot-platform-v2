@@ -129,7 +129,7 @@ class ReadingTimeSemanticsTest extends TestCase
     {
         $device = Device::factory()->create(['status' => true, 'is_active' => true]);
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 10.0,
@@ -149,7 +149,7 @@ class ReadingTimeSemanticsTest extends TestCase
     {
         $device = Device::factory()->create(['status' => true, 'is_active' => true]);
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
-        config(['app.api_key' => 'valid-key']);
+        config(['app.api_key' => 'valid-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $response = $this->postJson("/api/sensors/{$sensor->id}/readings", [
             'value' => 10.0,

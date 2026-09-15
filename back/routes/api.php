@@ -141,7 +141,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
             ->middleware('permission:device.update')
             ->middleware('throttle:api-write');
         Route::post('/{device}/rotate-key', [DeviceApiController::class, 'rotateKey'])
-            ->middleware('permission:device.update')
+            ->middleware('permission:device.api_key.rotate')
             ->middleware('throttle:api-write');
     });
 

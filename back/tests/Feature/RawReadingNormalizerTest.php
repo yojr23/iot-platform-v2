@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Device;
+use App\Models\DeviceSensorMapping;
 use App\Models\RawSensorEvent;
 use App\Models\Sensor;
 use App\Models\SensorReading;
@@ -48,8 +49,22 @@ class RawReadingNormalizerTest extends TestCase
             'device_id' => $device->id,
             'name' => 'temperature',
         ]);
+        $this->mapPayloadKey($device, $sensor, 'temperature');
 
         return [$device, $sensor];
+    }
+
+    private function mapPayloadKey(Device $device, Sensor $sensor, string $externalKey): void
+    {
+        DeviceSensorMapping::create([
+            'device_id' => $device->id,
+            'sensor_id' => $sensor->id,
+            'source' => 'ingestion_service',
+            'external_key' => $externalKey,
+            'is_active' => true,
+            'valid_from' => CarbonImmutable::parse('2000-01-01T00:00:00Z'),
+            'valid_until' => null,
+        ]);
     }
 
     private function assertReadingRoundTripsToExpectedInstant(Sensor $sensor, string $label): void
@@ -165,6 +180,7 @@ class RawReadingNormalizerTest extends TestCase
             'device_id' => $device->id,
             'name' => 'HÚMEDAD',
         ]);
+        $this->mapPayloadKey($device, $sensor, 'húmedad');
         $event = RawSensorEvent::factory()->create([
             'node_id' => 'unicode-node',
             'payload' => ['sensors' => ['húmedad' => ['value' => 73.5]]],
@@ -186,6 +202,8 @@ class RawReadingNormalizerTest extends TestCase
         ]);
         $temperatureSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'temperature']);
         $phSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'ph']);
+        $this->mapPayloadKey($device, $temperatureSensor, 'temperature');
+        $this->mapPayloadKey($device, $phSensor, 'ph');
 
         $event = RawSensorEvent::factory()->create([
             'node_id' => 'node-exact-mapping',
@@ -205,6 +223,154 @@ class RawReadingNormalizerTest extends TestCase
         $this->assertDatabaseHas('sensor_readings', ['sensor_id' => $phSensor->id, 'value' => 7.1]);
     }
 
+    public function test_sensor_resolution_uses_the_temporal_mapping_and_records_raw_provenance(): void
+    {
+        $device = Device::factory()->create([
+            'serial_number' => 'node-temporal-mapping',
+            'status' => true,
+            'is_active' => true,
+        ]);
+        $sensor = Sensor::factory()->create([
+            'device_id' => $device->id,
+            'name' => 'internal-temperature-name',
+        ]);
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'source' => 'ingestion_service',
+            'payload' => [
+                'timestamp' => '2026-09-15T12:00:00Z',
+                'sensors' => ['temperature' => ['value' => 21.5]],
+            ],
+        ]);
+        DeviceSensorMapping::create([
+            'device_id' => $device->id,
+            'sensor_id' => $sensor->id,
+            'source' => 'ingestion_service',
+            'external_key' => 'temperature',
+            'is_active' => true,
+            'valid_from' => '2026-09-15T11:00:00Z',
+            'valid_until' => null,
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertSame(['created' => 1, 'skipped' => []], $result);
+        $reading = SensorReading::query()->where('sensor_id', $sensor->id)->sole();
+        $this->assertDatabaseHas('reading_projections', [
+            'raw_sensor_event_id' => $event->id,
+            'sensor_reading_id' => $reading->id,
+            'source_key' => 'temperature',
+            'normalizer_version' => 'v1',
+        ]);
+    }
+
+    public function test_sensor_resolution_uses_the_inactive_mapping_valid_at_the_event_time(): void
+    {
+        $device = Device::factory()->create(['serial_number' => 'node-historical-mapping']);
+        $historicalSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'old-internal-name']);
+        $currentSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'current-internal-name']);
+
+        DeviceSensorMapping::create([
+            'device_id' => $device->id,
+            'sensor_id' => $historicalSensor->id,
+            'source' => 'ingestion_service',
+            'external_key' => 'temperature',
+            'is_active' => false,
+            'valid_from' => '2026-09-15T10:00:00Z',
+            'valid_until' => '2026-09-15T12:00:00Z',
+        ]);
+        DeviceSensorMapping::create([
+            'device_id' => $device->id,
+            'sensor_id' => $currentSensor->id,
+            'source' => 'ingestion_service',
+            'external_key' => 'temperature',
+            'is_active' => true,
+            'valid_from' => '2026-09-15T12:00:00Z',
+            'valid_until' => null,
+        ]);
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'source' => 'ingestion_service',
+            'payload' => [
+                'timestamp' => '2026-09-15T11:59:59Z',
+                'sensors' => ['temperature' => ['value' => 21.5]],
+            ],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertSame(['created' => 1, 'skipped' => []], $result);
+        $this->assertDatabaseHas('sensor_readings', ['sensor_id' => $historicalSensor->id, 'value' => 21.5]);
+        $this->assertDatabaseMissing('sensor_readings', ['sensor_id' => $currentSensor->id, 'value' => 21.5]);
+    }
+
+    public function test_rfc3339_z_timestamp_resolves_the_mapping_active_at_the_bogota_wall_clock_handoff(): void
+    {
+        $device = Device::factory()->create(['serial_number' => 'node-bogota-handoff']);
+        $historicalSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'old-temperature']);
+        $futureSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'future-temperature']);
+
+        DeviceSensorMapping::create([
+            'device_id' => $device->id,
+            'sensor_id' => $historicalSensor->id,
+            'source' => 'ingestion_service',
+            'external_key' => 'temperature',
+            'is_active' => false,
+            'valid_from' => '2026-09-15 00:00:00',
+            'valid_until' => '2026-09-15 10:00:00',
+        ]);
+        DeviceSensorMapping::create([
+            'device_id' => $device->id,
+            'sensor_id' => $futureSensor->id,
+            'source' => 'ingestion_service',
+            'external_key' => 'temperature',
+            'is_active' => true,
+            'valid_from' => '2026-09-15 10:00:00',
+            'valid_until' => null,
+        ]);
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'source' => 'ingestion_service',
+            'payload' => [
+                // 12:00Z is 07:00 in APP_TIMEZONE (America/Bogota), before the 10:00 handoff.
+                'timestamp' => '2026-09-15T12:00:00Z',
+                'sensors' => ['temperature' => ['value' => 21.5]],
+            ],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertSame(['created' => 1, 'skipped' => []], $result);
+        $this->assertDatabaseHas('sensor_readings', ['sensor_id' => $historicalSensor->id, 'value' => 21.5]);
+        $this->assertDatabaseMissing('sensor_readings', ['sensor_id' => $futureSensor->id, 'value' => 21.5]);
+    }
+
+    public function test_duplicate_canonical_payload_keys_use_only_the_first_value_and_projection(): void
+    {
+        [$device, $sensor] = $this->deviceAndSensor('node-duplicate-canonical-key');
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => $device->serial_number,
+            'payload' => [
+                'sensors' => [
+                    'Temp' => ['value' => 21.5],
+                    'temp' => ['value' => 22.5],
+                ],
+            ],
+        ]);
+
+        $result = app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertSame(['created' => 1, 'skipped' => []], $result);
+        $reading = SensorReading::query()->where('sensor_id', $sensor->id)->sole();
+        $this->assertSame(21.5, (float) $reading->value);
+        $this->assertDatabaseCount('reading_projections', 1);
+        $this->assertDatabaseHas('reading_projections', [
+            'raw_sensor_event_id' => $event->id,
+            'sensor_reading_id' => $reading->id,
+            'source_key' => 'temp',
+        ]);
+    }
+
     public function test_sensor_resolution_query_count_does_not_scale_with_payload_size(): void
     {
         Queue::fake();
@@ -215,7 +381,8 @@ class RawReadingNormalizerTest extends TestCase
             'is_active' => true,
         ]);
         foreach (range(1, 20) as $i) {
-            Sensor::factory()->create(['device_id' => $device->id, 'name' => "sensor-{$i}"]);
+            $sensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => "sensor-{$i}"]);
+            $this->mapPayloadKey($device, $sensor, "sensor-{$i}");
         }
 
         $singleKeyEvent = RawSensorEvent::factory()->create([
@@ -248,25 +415,26 @@ class RawReadingNormalizerTest extends TestCase
         $this->assertSame(1, $manyKeysSensorSelects);
     }
 
-    public function test_ambiguous_sensor_names_throw(): void
+    public function test_explicit_mapping_resolves_a_key_even_when_sensor_names_are_ambiguous(): void
     {
         $device = Device::factory()->create([
             'serial_number' => 'node-ambiguous',
             'status' => true,
             'is_active' => true,
         ]);
-        Sensor::factory()->create(['device_id' => $device->id, 'name' => 'Temp']);
+        $mappedSensor = Sensor::factory()->create(['device_id' => $device->id, 'name' => 'Temp']);
         Sensor::factory()->create(['device_id' => $device->id, 'name' => 'TEMP']);
+        $this->mapPayloadKey($device, $mappedSensor, 'temp');
 
         $event = RawSensorEvent::factory()->create([
             'node_id' => 'node-ambiguous',
             'payload' => ['sensors' => ['temp' => ['value' => 21.5]]],
         ]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('ambiguous sensor names');
+        $result = app(RawReadingNormalizer::class)->normalize($event);
 
-        app(RawReadingNormalizer::class)->normalize($event);
+        $this->assertSame(['created' => 1, 'skipped' => []], $result);
+        $this->assertDatabaseHas('sensor_readings', ['sensor_id' => $mappedSensor->id, 'value' => 21.5]);
     }
 
     public function test_qc_invalid_payload_is_retained_but_creates_no_readings(): void

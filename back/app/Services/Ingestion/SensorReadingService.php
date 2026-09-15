@@ -4,6 +4,7 @@ namespace App\Services\Ingestion;
 
 use App\Models\Sensor;
 use App\Models\SensorReading;
+use App\Services\ReadingProvenanceService;
 use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
@@ -14,10 +15,19 @@ class SensorReadingService
     public function __construct(
         private DomainEventRecorder $recorder,
         private SensorReadingProjectionService $projection,
+        private ReadingProvenanceService $provenance,
     ) {
     }
 
-    public function createReading(Sensor $sensor, float $value, DateTimeInterface|string|null $readingTime = null): SensorReading
+    /**
+     * @param  array{raw_sensor_event_id?: int|null, source_key?: string, normalizer_version?: string}|null  $provenance
+     */
+    public function createReading(
+        Sensor $sensor,
+        float $value,
+        DateTimeInterface|string|null $readingTime = null,
+        ?array $provenance = null,
+    ): SensorReading
     {
         Log::info('SensorReadingService:createReading entry', [
             'sensor_id' => $sensor->id,
@@ -26,7 +36,7 @@ class SensorReadingService
 
         $startTime = microtime(true);
 
-        $result = DB::transaction(function () use ($sensor, $value, $readingTime): SensorReading {
+        $result = DB::transaction(function () use ($sensor, $value, $readingTime, $provenance): SensorReading {
             // Attach the already-resolved sensor BEFORE save() so the synchronous `created`
             // observer chain (AlertService::triggeredRulesForReading) reuses it instead of
             // re-querying `sensors` per reading — keeps sensor resolution O(1) per receipt.
@@ -36,6 +46,13 @@ class SensorReadingService
             ]);
             $reading->setRelation('sensor', $sensor);
             $reading->save();
+
+            $this->provenance->createProjection(
+                $reading,
+                $provenance['raw_sensor_event_id'] ?? null,
+                $provenance['source_key'] ?? 'direct-api',
+                $provenance['normalizer_version'] ?? 'v1',
+            );
 
             $this->recorder->record(
                 eventType: 'sensor.reading.created',

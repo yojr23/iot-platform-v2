@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -41,20 +42,28 @@ class DeviceSensorMapping extends Model
     /**
      * Find a sensor mapping by device, source, and external key.
      */
-    public static function findByExternalKey(int $deviceId, string $source, string $externalKey): ?self
+    public static function findByExternalKey(
+        int $deviceId,
+        string $source,
+        string $externalKey,
+        ?DateTimeInterface $at = null,
+    ): ?self
     {
+        $at ??= now();
+
         return static::where('device_id', $deviceId)
             ->where('source', $source)
             ->where('external_key', $externalKey)
-            ->where('is_active', true)
-            ->where(function ($query) {
+            ->where(function ($query) use ($at) {
                 $query->whereNull('valid_from')
-                    ->orWhere('valid_from', '<=', now());
+                    ->orWhere('valid_from', '<=', $at);
             })
-            ->where(function ($query) {
+            ->where(function ($query) use ($at) {
                 $query->whereNull('valid_until')
-                    ->orWhere('valid_until', '>=', now());
+                    ->orWhere('valid_until', '>', $at);
             })
+            ->orderByDesc('valid_from')
+            ->orderByDesc('id')
             ->first();
     }
 }

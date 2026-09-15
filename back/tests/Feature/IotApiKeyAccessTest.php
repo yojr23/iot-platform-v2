@@ -12,7 +12,7 @@ class IotApiKeyAccessTest extends TestCase
 
     public function test_iot_sensor_index_rejects_invalid_api_key(): void
     {
-        config(['app.api_key' => 'valid-ingestion-key']);
+        config(['app.api_key' => 'valid-ingestion-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         $this->withHeaders([
             'X-Device-Key' => 'invalid-key',
@@ -23,7 +23,7 @@ class IotApiKeyAccessTest extends TestCase
 
     public function test_iot_sensor_index_accepts_valid_api_key(): void
     {
-        config(['app.api_key' => 'valid-ingestion-key']);
+        config(['app.api_key' => 'valid-ingestion-key', 'app.iot_legacy_global_key_fallback_enabled' => true]);
 
         Sensor::factory()->count(2)->create();
 

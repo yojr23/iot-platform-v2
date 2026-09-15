@@ -98,14 +98,11 @@ class SensorApiController extends Controller
             ], 422);
         }
 
-        // Verificar API key:
-        // Hash-only per-device auth via Device::authenticate().
-        // Global key retained as legacy fallback during migration period.
+        // Hash-only per-device auth via Device::authenticate(). The global key is
+        // available only when an operator explicitly enables the temporary fallback.
         $providedApiKey = (string) $validated['api_key'];
         $matchesDeviceKey = $device->authenticate($providedApiKey);
-
-        $configuredApiKey = (string) config('app.api_key');
-        $matchesGlobalApiKey = $configuredApiKey !== '' && hash_equals($configuredApiKey, $providedApiKey);
+        $matchesGlobalApiKey = $this->matchesLegacyGlobalApiKey($providedApiKey);
 
         if (! $matchesDeviceKey && ! $matchesGlobalApiKey) {
             // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
@@ -501,8 +498,8 @@ class SensorApiController extends Controller
 
         // SEC-IOT-002: header-only credential. A query-string key leaks into access logs,
         // proxies and browser history; a body key is likewise disallowed here.
-        // Hash-only per-device auth: try device key first (from X-Device-Key header),
-        // fall back to global config key for legacy devices during migration.
+        // Hash-only per-device auth: try the header credential first. The global
+        // fallback is off by default and requires an explicit operator opt-in.
         $providedApiKey = (string) $request->header('X-Device-Key', '');
         if ($providedApiKey === '') {
             Log::warning('IoT sensor listing rejected: missing API key', [
@@ -520,8 +517,7 @@ class SensorApiController extends Controller
             ->where('api_key_hash', $providedHash)
             ->first();
 
-        $configuredApiKey = (string) config('app.api_key');
-        $matchesGlobalKey = $configuredApiKey !== '' && hash_equals($configuredApiKey, $providedApiKey);
+        $matchesGlobalKey = $this->matchesLegacyGlobalApiKey($providedApiKey);
 
         if (! $deviceMatch && ! $matchesGlobalKey) {
             // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
@@ -533,9 +529,14 @@ class SensorApiController extends Controller
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        // Device-facing provisioning bootstrap: returns the full flat inventory (no
-        // browser pagination envelope) so edge devices get their whole sensor list.
-        $sensors = Sensor::with(['sensorType', 'device.lab', 'latestReading'])->get();
+        // A device credential may provision only its own sensors. The explicitly
+        // enabled global compatibility credential retains the legacy full inventory.
+        $sensorQuery = Sensor::with(['sensorType', 'device.lab', 'latestReading']);
+        if ($deviceMatch) {
+            $sensorQuery->where('device_id', $deviceMatch->id);
+        }
+
+        $sensors = $sensorQuery->get();
 
         return response()->json(SensorResource::collection($sensors)->resolve($request));
     }
@@ -833,6 +834,19 @@ class SensorApiController extends Controller
         }
 
         return substr($apiKey, 0, 3).str_repeat('*', max(strlen($apiKey) - 6, 1)).substr($apiKey, -3);
+    }
+
+    private function matchesLegacyGlobalApiKey(string $providedApiKey): bool
+    {
+        // Strictly require the boolean config value. A non-empty string must never
+        // silently enable this temporary, isolation-bypassing compatibility path.
+        if (config('app.iot_legacy_global_key_fallback_enabled', false) !== true) {
+            return false;
+        }
+
+        $configuredApiKey = (string) config('app.api_key');
+
+        return $configuredApiKey !== '' && hash_equals($configuredApiKey, $providedApiKey);
     }
 
     /**

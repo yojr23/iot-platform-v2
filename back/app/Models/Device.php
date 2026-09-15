@@ -9,6 +9,12 @@ class Device extends Model
 {
     use HasFactory;
 
+    /**
+     * The creation credential exists only long enough for the create response.
+     * It is a declared property, never an Eloquent attribute.
+     */
+    private ?string $plaintextApiKey = null;
+
     protected $fillable = [
         'name', 'serial_number', 'device_type_id', 'lab_id',
         'status', 'is_active', 'ip_address', 'mac_address', 'last_communication',
@@ -40,17 +46,19 @@ class Device extends Model
             $device->api_key_hash = hash('sha256', $plaintextKey);
             $device->api_key_prefix = substr($plaintextKey, 0, 8);
             $device->api_key_last_rotated_at = now();
-            $device->_plaintextKey = $plaintextKey;
+            $device->plaintextApiKey = $plaintextKey;
         });
     }
 
     /**
-     * Return the plaintext key generated during the most recent create/rotate operation.
-     * Available only on the model instance immediately after creation or rotation.
+     * Return and clear the creation credential, allowing a single exposure only.
      */
-    public function getPlaintextKey(): ?string
+    public function pullPlaintextApiKey(): ?string
     {
-        return $this->_plaintextKey ?? null;
+        $plaintextKey = $this->plaintextApiKey;
+        $this->plaintextApiKey = null;
+
+        return $plaintextKey;
     }
 
     public function deviceType()

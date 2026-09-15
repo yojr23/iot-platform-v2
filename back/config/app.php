@@ -124,6 +124,10 @@ return [
 
     'api_key' => env('API_KEY'),
 
+    // Deprecated compatibility only: a global key bypasses per-device isolation.
+    // Keep disabled unless an operator is actively migrating legacy devices.
+    'iot_legacy_global_key_fallback_enabled' => env('IOT_LEGACY_GLOBAL_KEY_FALLBACK_ENABLED', false),
+
     'ingestion_service_token' => env('INGESTION_SERVICE_TOKEN'),
 
     'ingestion_raw_events_stream' => env('INGESTION_RAW_EVENTS_STREAM', 'iot.raw-events'),
