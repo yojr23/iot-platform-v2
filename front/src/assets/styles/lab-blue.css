@@ -1201,12 +1201,12 @@
         display: none;
     }
     .lab-reading-row {
-        margin: 19px 0;
+        margin: 16px 0;
         gap: 10px;
         justify-content: space-between;
     }
     .lab-reading {
-        font-size: 34px;
+        font-size: 36px;
         letter-spacing: -1.8px;
         gap: 5px;
     }
@@ -1242,7 +1242,8 @@
         padding: 4px;
     }
     .lab-main-chart .sensor-chart {
-        height: 200px;
+        height: 220px;
+        min-height: 200px;
     }
     .lab-main-chart .sensor-chart-stats {
         padding-top: 14px;
@@ -1272,8 +1273,8 @@
         padding: 16px 9px 9px;
     }
     .lab-list-select {
-        min-height: 52px;
-        padding: 8px 9px;
+        min-height: 44px;
+        padding: 7px 9px;
     }
     .lab-list-select strong {
         font-size: 12px;
@@ -1410,8 +1411,43 @@
     .lab-skip:focus {
         left: 10px;
     }
+    .content-panel .table-responsive { overflow: visible; }
+    .content-panel table { border: 0; }
+    .content-panel thead { display: none; }
+    .content-panel tbody tr {
+        display: grid;
+        gap: 6px;
+        padding: 12px;
+        margin-bottom: 10px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #f8fafc;
+    }
+    .content-panel td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0;
+        border: 0;
+        font-size: 13px;
+    }
+    .content-panel td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #64748b;
+        font-size: 11px;
+        text-transform: uppercase;
+        flex-shrink: 0;
+        margin-right: 8px;
+    }
+    .content-panel td:last-child {
+        justify-content: flex-end;
+        margin-top: 4px;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 8px;
+    }
 }
-@media (max-width: 359px) {
+@media (max-width: 360px) {
     .lab-content {
         padding: 16px 10px;
     }
@@ -1470,12 +1506,6 @@
   .lab-spark > svg { height: 28px; }
   .lab-events { padding: 14px; }
   .lab-app td { padding: 9px; }
-}
-@media (max-width: 767px) {
-  .lab-reading-row { margin: 16px 0; }
-  .lab-reading { font-size: 36px; }
-  .lab-main-chart .sensor-chart { height: 220px; min-height: 200px; }
-  .lab-list-select { min-height: 44px; padding-top: 7px; padding-bottom: 7px; }
 }
 .lab-events .lab-alert-compact-list { display: none; }
 @media (max-width: 360px) {

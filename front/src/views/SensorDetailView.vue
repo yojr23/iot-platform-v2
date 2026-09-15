@@ -167,8 +167,10 @@ async function exportReadings() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `sensor_${props.id}_readings.json`;
+    document.body.appendChild(link);
     link.click();
-    window.URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => window.URL.revokeObjectURL(url), 100);
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron exportar las lecturas.');
   } finally {

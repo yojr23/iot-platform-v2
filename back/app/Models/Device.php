@@ -40,7 +40,17 @@ class Device extends Model
             $device->api_key_hash = hash('sha256', $plaintextKey);
             $device->api_key_prefix = substr($plaintextKey, 0, 8);
             $device->api_key_last_rotated_at = now();
+            $device->_plaintextKey = $plaintextKey;
         });
+    }
+
+    /**
+     * Return the plaintext key generated during the most recent create/rotate operation.
+     * Available only on the model instance immediately after creation or rotation.
+     */
+    public function getPlaintextKey(): ?string
+    {
+        return $this->_plaintextKey ?? null;
     }
 
     public function deviceType()

@@ -5,56 +5,85 @@ namespace App\Services;
 use App\Models\Device;
 use App\Models\DeviceSensorMapping;
 use App\Models\Sensor;
+use DateTimeInterface;
+use Illuminate\Support\Facades\DB;
 
 class SensorMappingService
 {
     /**
-     * Find a sensor by device, source, and external key.
+     * Find a sensor mapping by device, source, and external key at a given time.
      */
-    public function findSensorByExternalKey(Device $device, string $source, string $externalKey): ?Sensor
-    {
-        $mapping = DeviceSensorMapping::findByExternalKey($device->id, $source, $externalKey);
+    public function findSensorByExternalKey(
+        Device $device,
+        string $source,
+        string $externalKey,
+        ?DateTimeInterface $at = null,
+    ): ?Sensor {
+        $at ??= now();
+
+        $mapping = DeviceSensorMapping::where('device_id', $device->id)
+            ->where('source', $source)
+            ->where('external_key', $externalKey)
+            ->where('is_active', true)
+            ->where(function ($q) use ($at) {
+                $q->whereNull('valid_from')->orWhere('valid_from', '<=', $at);
+            })
+            ->where(function ($q) use ($at) {
+                $q->whereNull('valid_until')->orWhere('valid_until', '>', $at);
+            })
+            ->first();
 
         return $mapping?->sensor;
     }
 
     /**
-     * Create or update a sensor mapping.
+     * Create a new temporal mapping interval.
+     *
+     * Deactivates any existing active mapping for the same (device, source, external_key)
+     * by closing its validity window, then inserts a new open-ended interval.
+     * Rejects overlapping intervals within the same transaction.
      */
     public function mapSensor(
         Device $device,
         Sensor $sensor,
         string $source,
         string $externalKey,
-        ?array $metadata = null
+        ?array $metadata = null,
     ): DeviceSensorMapping {
-        return DeviceSensorMapping::updateOrCreate(
-            [
+        return DB::transaction(function () use ($device, $sensor, $source, $externalKey, $metadata) {
+            $now = now();
+
+            // Close any currently active mapping for this key
+            DeviceSensorMapping::where('device_id', $device->id)
+                ->where('source', $source)
+                ->where('external_key', $externalKey)
+                ->where('is_active', true)
+                ->update([
+                    'is_active' => false,
+                    'valid_until' => $now,
+                ]);
+
+            return DeviceSensorMapping::create([
                 'device_id' => $device->id,
+                'sensor_id' => $sensor->id,
                 'source' => $source,
                 'external_key' => $externalKey,
-            ],
-            [
-                'sensor_id' => $sensor->id,
-                'metadata' => $metadata,
                 'is_active' => true,
-            ]
-        );
+                'valid_from' => $now,
+                'valid_until' => null,
+                'metadata' => $metadata,
+            ]);
+        });
     }
 
-    /**
-     * Deactivate a sensor mapping.
-     */
     public function deactivateMapping(DeviceSensorMapping $mapping): bool
     {
-        return $mapping->update(['is_active' => false]);
+        return $mapping->update([
+            'is_active' => false,
+            'valid_until' => now(),
+        ]);
     }
 
-    /**
-     * Get all active mappings for a device.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, DeviceSensorMapping>
-     */
     public function getActiveMappingsForDevice(Device $device)
     {
         return DeviceSensorMapping::where('device_id', $device->id)
@@ -63,11 +92,6 @@ class SensorMappingService
             ->get();
     }
 
-    /**
-     * Get all active mappings for a sensor.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, DeviceSensorMapping>
-     */
     public function getActiveMappingsForSensor(Sensor $sensor)
     {
         return DeviceSensorMapping::where('sensor_id', $sensor->id)

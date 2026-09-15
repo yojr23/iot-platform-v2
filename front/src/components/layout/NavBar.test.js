@@ -83,4 +83,29 @@ describe('NavBar guest vs authenticated alert badge refresh', () => {
 
     unmount();
   });
+
+  it('M01: profile link is visible for authenticated users without d-none hidden classes', async () => {
+    const { el, unmount } = await mountNavBar({ authenticated: true });
+
+    // RouterLink mock renders <a><slot /></a>, so find by user name text
+    const links = Array.from(el.querySelectorAll('a'));
+    const profileLink = links.find((a) => a.textContent.trim() === 'Test User');
+    expect(profileLink).not.toBeNull();
+    expect(profileLink.className).not.toContain('d-none');
+    expect(profileLink.className).not.toContain('d-md-inline');
+
+    unmount();
+  });
+
+  it('M01: navbar toggler has required aria attributes', async () => {
+    const { el, unmount } = await mountNavBar({ authenticated: true });
+
+    const toggler = el.querySelector('.navbar-toggler');
+    expect(toggler).not.toBeNull();
+    expect(toggler.getAttribute('aria-controls')).toBe('mainNavbar');
+    expect(toggler.getAttribute('aria-expanded')).toBe('false');
+    expect(toggler.getAttribute('aria-label')).toBeTruthy();
+
+    unmount();
+  });
 });

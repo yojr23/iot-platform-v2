@@ -19,23 +19,23 @@
         </thead>
         <tbody>
           <tr v-for="sensor in sensors" :key="sensor.id">
-            <td class="fw-semibold">{{ sensor.name || `Sensor ${sensor.id}` }}</td>
-            <td>{{ sensor.sensor_type?.name || '-' }}</td>
-            <td>{{ sensor.device?.name || '-' }}</td>
-            <td>{{ sensor.device?.lab?.name || '-' }}</td>
-            <td>
+            <td data-label="Nombre" class="fw-semibold">{{ sensor.name || `Sensor ${sensor.id}` }}</td>
+            <td data-label="Tipo">{{ sensor.sensor_type?.name || '-' }}</td>
+            <td data-label="Dispositivo">{{ sensor.device?.name || '-' }}</td>
+            <td data-label="Laboratorio">{{ sensor.device?.lab?.name || '-' }}</td>
+            <td data-label="Estado">
               <span class="badge" :class="sensor.status ? 'text-bg-success' : 'text-bg-secondary'">
                 {{ statusLabel(sensor.status) }}
               </span>
             </td>
-            <td>
+            <td data-label="Ultima lectura">
               <span v-if="latestReadingFor(sensor)">
                 {{ formatNumber(latestReadingFor(sensor).value) }} {{ sensor.unit || '' }}
                 <span class="text-muted small d-block">{{ formatDate(latestReadingFor(sensor).reading_time) }}</span>
               </span>
               <span v-else class="text-muted">-</span>
             </td>
-            <td class="text-end">
+            <td data-label="Acciones" class="text-end">
               <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de sensor">
                 <RouterLink class="btn btn-outline-primary lab-action" :to="`/sensors/${sensor.id}`"><I name="eye" />Ver</RouterLink>
                 <button

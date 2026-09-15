@@ -68,7 +68,13 @@ class User extends Authenticatable implements MustVerifyEmail
             }
 
             $roleCode = $user->is_admin ? 'admin' : 'user';
-            $user->role_id = Role::query()->where('code', $roleCode)->value('id');
+            $roleId = Role::query()->where('code', $roleCode)->value('id');
+
+            if ($roleId === null) {
+                throw new \RuntimeException("Role '{$roleCode}' not found. Run the RolePermissionSeeder.");
+            }
+
+            $user->role_id = $roleId;
         });
 
         static::updating(function (self $user): void {

@@ -56,4 +56,31 @@ trait UsesRawRedisCommands
 
         return $this->raw($connection, $args);
     }
+
+    /**
+     * Normalize Redis XREAD/XREADGROUP flat entry arrays into [id, [field => value]] pairs.
+     */
+    protected static function normalizeStreamEntries(array $entries): array
+    {
+        $out = [];
+
+        foreach ($entries as $entry) {
+            [$id, $flat] = $entry;
+
+            if ($id === null) {
+                continue;
+            }
+
+            $fields = [];
+            $flat = is_array($flat) ? $flat : [];
+
+            for ($i = 0, $len = count($flat); $i < $len; $i += 2) {
+                $fields[$flat[$i]] = $flat[$i + 1] ?? null;
+            }
+
+            $out[] = [$id, $fields];
+        }
+
+        return $out;
+    }
 }

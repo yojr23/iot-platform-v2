@@ -287,10 +287,6 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::post('/', [ApiAlertRuleController::class, 'store'])
             ->middleware('permission:alert_rule.create')
             ->middleware('throttle:api-write');
-        Route::post('/store', [ApiAlertRuleController::class, 'store'])
-            ->middleware('permission:alert_rule.create')
-            ->middleware('throttle:api-write')
-            ->name('api.alert-rules.store');
         Route::get('/{alertRule}', [ApiAlertRuleController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/{alertRule}', [ApiAlertRuleController::class, 'update'])
             ->middleware('permission:alert_rule.update')

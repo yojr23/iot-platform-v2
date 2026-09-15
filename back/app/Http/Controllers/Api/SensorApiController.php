@@ -439,8 +439,7 @@ class SensorApiController extends Controller
         try {
             $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) {
                 $query->where('reading_time', '<=', now())
-                    ->orderBy('reading_time', 'desc')
-                    ->limit(100);
+                    ->orderBy('reading_time', 'desc');
             }])->get();
 
             Log::info('All sensor readings requested', [
@@ -514,12 +513,12 @@ class SensorApiController extends Controller
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        // Try per-device auth: X-Device-Key may carry a device-specific key
-        // (matched against any active device hash). Fall back to global key.
+        // Try per-device auth: hash the provided key and look up directly in DB.
+        $providedHash = hash('sha256', $providedApiKey);
         $deviceMatch = Device::where('is_active', true)
             ->where('status', true)
-            ->get()
-            ->first(fn (Device $d) => $d->authenticate($providedApiKey));
+            ->where('api_key_hash', $providedHash)
+            ->first();
 
         $configuredApiKey = (string) config('app.api_key');
         $matchesGlobalKey = $configuredApiKey !== '' && hash_equals($configuredApiKey, $providedApiKey);

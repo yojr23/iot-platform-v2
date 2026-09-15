@@ -239,7 +239,10 @@ class DeviceApiController extends Controller
             ]);
 
             return (new DeviceResource($device))
-                ->additional(['message' => 'Dispositivo creado correctamente.'])
+                ->additional([
+                    'message' => 'Dispositivo creado correctamente.',
+                    'api_key' => $device->getPlaintextKey(),
+                ])
                 ->response()
                 ->setStatusCode(201);
         } catch (QueryException $e) {

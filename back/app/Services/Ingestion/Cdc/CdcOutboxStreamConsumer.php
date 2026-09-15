@@ -190,26 +190,7 @@ class CdcOutboxStreamConsumer
      */
     private function normalizeEntries(array $entries): array
     {
-        $out = [];
-
-        foreach ($entries as $entry) {
-            [$id, $flat] = $entry;
-
-            if ($id === null) {
-                continue;
-            }
-
-            $fields = [];
-            $flat = is_array($flat) ? $flat : [];
-
-            for ($i = 0; $i < count($flat); $i += 2) {
-                $fields[$flat[$i]] = $flat[$i + 1] ?? null;
-            }
-
-            $out[] = [$id, $fields];
-        }
-
-        return $out;
+        return self::normalizeStreamEntries($entries);
     }
 
     /**

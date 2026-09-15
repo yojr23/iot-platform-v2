@@ -138,26 +138,7 @@ class DomainEventBroadcastConsumer
      */
     private function normalizeEntries(array $entries): array
     {
-        $out = [];
-
-        foreach ($entries as $entry) {
-            [$id, $flat] = $entry;
-
-            if ($id === null) {
-                continue;
-            }
-
-            $fields = [];
-            $flat = is_array($flat) ? $flat : [];
-
-            for ($i = 0; $i < count($flat); $i += 2) {
-                $fields[$flat[$i]] = $flat[$i + 1] ?? null;
-            }
-
-            $out[] = [$id, $fields];
-        }
-
-        return $out;
+        return self::normalizeStreamEntries($entries);
     }
 
     /**
@@ -194,9 +175,14 @@ class DomainEventBroadcastConsumer
         }
 
         try {
-            // Step 1: claim delivery atomically (mark delivered_at under lock).
-            // Broadcast I/O is intentionally outside the lock — a slow Pusher
-            // connection must not hold a DB row lock.
+            // Step 1: broadcast first (read-only, no DB lock held).
+            // If this throws, the message stays unacked for retry — no data loss.
+            $this->broadcastFact($outbox);
+            EventPipelineMetricsService::increment('domain_broadcast_success');
+
+            // Step 2: claim delivery atomically (mark delivered_at under lock) then XACK.
+            // The XACK must follow the broadcast so that a broadcast failure leaves the
+            // message pending for reprocessing (at-least-once delivery).
             $outcome = DB::transaction(function () use ($outbox): string {
                 $locked = DomainEventOutbox::query()->lockForUpdate()->find($outbox->id);
 
@@ -210,12 +196,6 @@ class DomainEventBroadcastConsumer
             });
 
             $this->ack($id);
-
-            if ($outcome === 'delivered') {
-                // Step 2: broadcast outside the lock — best-effort; outbox row is already marked.
-                $this->broadcastFact($outbox);
-                EventPipelineMetricsService::increment('domain_broadcast_success');
-            }
 
             return 'acked';
         } catch (Throwable $e) {
@@ -238,7 +218,7 @@ class DomainEventBroadcastConsumer
             }
 
             // Leave unacked: reclaimed again once claim-idle elapses (bounded backoff), same as
-            // RawStreamConsumer.
+            // RawStreamConsumer. On reclaim, delivered_at is null so broadcast will be retried.
             return 'pending';
         }
     }

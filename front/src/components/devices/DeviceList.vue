@@ -21,20 +21,20 @@
         </thead>
         <tbody>
           <tr v-for="device in devices" :key="device.id">
-            <td>
+            <td data-label="Dispositivo">
               <div class="fw-semibold">{{ device.name || `Dispositivo ${device.id}` }}</div>
               <div class="small text-muted">{{ device.serial_number || device.ip_address || '-' }}</div>
             </td>
-            <td>
+            <td data-label="Ubicacion">
               <div>{{ device.location || '-' }}</div>
               <div v-if="device.description" class="small text-muted text-truncate" style="max-width: 180px" :title="device.description">{{ device.description }}</div>
             </td>
-            <td>{{ device.device_type?.name || '-' }}</td>
-            <td>{{ device.lab?.name || '-' }}</td>
-            <td><span class="badge text-bg-light border">{{ device.firmware_version || '-' }}</span></td>
-            <td>{{ device.sensors?.length || 0 }}</td>
-            <td>{{ formatDate(device.last_seen || device.last_communication) }}</td>
-            <td>
+            <td data-label="Tipo">{{ device.device_type?.name || '-' }}</td>
+            <td data-label="Laboratorio">{{ device.lab?.name || '-' }}</td>
+            <td data-label="Firmware"><span class="badge text-bg-light border">{{ device.firmware_version || '-' }}</span></td>
+            <td data-label="Sensores">{{ device.sensors?.length || 0 }}</td>
+            <td data-label="Ultima comunicacion">{{ formatDate(device.last_seen || device.last_communication) }}</td>
+            <td data-label="Estado">
               <button
                 v-if="authStore.can('device.update')"
                 class="btn btn-sm lab-status-control"
@@ -48,7 +48,7 @@
               </button>
               <DeviceStatusBadge v-else :active="Boolean(device.status && device.is_active)" />
             </td>
-            <td class="text-end">
+            <td data-label="Acciones" class="text-end">
               <div class="btn-group btn-group-sm" role="group" aria-label="Acciones de dispositivo">
                 <RouterLink class="btn btn-outline-primary lab-action" :to="`/devices/${device.id}`"><I name="eye" />Ver</RouterLink>
                 <button

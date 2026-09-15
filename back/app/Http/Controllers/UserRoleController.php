@@ -59,6 +59,8 @@ class UserRoleController extends Controller
             }
         }
 
+        $oldRoleCode = $user->role?->code;
+
         DB::transaction(function () use ($user, $targetRole): void {
             $user->role_id = $targetRole->id;
             $user->is_admin = in_array($targetRole->code, ['admin', 'superadmin'], true);
@@ -77,7 +79,7 @@ class UserRoleController extends Controller
             'request_id' => $request->header('X-Request-Id', uniqid()),
             'user_id' => auth()->id(),
             'target_user_id' => $user->id,
-            'old_role' => $user->fresh()->role?->code,
+            'old_role' => $oldRoleCode,
             'new_role' => $targetRole->code,
             'success' => true,
             'duration_ms' => $durationMs,
