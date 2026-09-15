@@ -98,6 +98,17 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * Check if the user has an admin or superadmin role.
+     * Single authority for admin checks — replaces the legacy is_admin column.
+     */
+    public function isAdmin(): bool
+    {
+        return $this->relationLoaded('role')
+            ? in_array($this->role?->code, ['admin', 'superadmin'], true)
+            : $this->hasAnyRole(['admin', 'superadmin']);
+    }
+
     public function dashboardPreference()
     {
         return $this->hasOne(DashboardPreference::class);

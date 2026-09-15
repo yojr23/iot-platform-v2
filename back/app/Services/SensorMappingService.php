@@ -102,6 +102,15 @@ class SensorMappingService
             $now = now();
             $externalKey = $this->canonicalExternalKey($externalKey);
 
+            // P1: lock existing mappings for this identity to serialize concurrent writers.
+            // Without this, two concurrent mapSensor() calls can both read "no active mapping"
+            // and both insert, producing two open intervals for the same key.
+            DeviceSensorMapping::where('device_id', $device->id)
+                ->where('source', $source)
+                ->where('external_key', $externalKey)
+                ->lockForUpdate()
+                ->get();
+
             // Close any currently active mapping for this key
             DeviceSensorMapping::where('device_id', $device->id)
                 ->where('source', $source)

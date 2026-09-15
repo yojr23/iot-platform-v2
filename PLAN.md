@@ -2,6 +2,74 @@
 
 **Derives from:** `audit.md` (original audit SHA `880cffbcfc7aecb081fb378642d8693c1df64170`) plus a required application-code refresh against baseline `06d619c4c57c2cacae0c890e4dd7056097ddc79d`. The planning-document base SHA for this status reconciliation is `26aedcfb05ecda2044f68d7732853cdc12a85140`. Status below is sourced from the 2026-09-14 audit handoff and repository inspection; future documentation-only commits should not be mistaken for application drift. The audit is the source of truth for *why* and *what's broken*, but it is not yet fully current/reproducible. This document is the ordered, gated *how* to fix every finding and reach the Definition of Done in `audit.md §23`.
 
+---
+
+## RECONCILIATION — 2026-09-15
+
+This section reconciles the plan against the current source state as of the latest audit round (`eb3e00d`). It replaces stale status claims elsewhere in this document.
+
+### Items now CLOSED in source (no further action needed)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Device plaintext key exposure (SEC-D6) | CLOSED | `Device::authenticate()` hash-only; `creating` event hash-only; `rotateApiKey()` hash-only; `api_key` column dropped by migration |
+| Per-device IoT key returning every device's sensors | CLOSED | `iotIndex()` uses per-device `api_key_hash` SQL lookup |
+| Temporal mapping prevented by old unique key | CLOSED | `2026_09_15_000002_make_device_sensor_mappings_temporal.php` removes old uniqueness |
+| Historical mapping requiring current `is_active` | CLOSED | Lookup uses half-open validity window |
+| RawReadingNormalizer ignoring mapping subsystem | CLOSED | Normalizer injects `SensorMappingService` and resolves via `findSensorsByExternalKeys` |
+| Reading provenance detached from canonical writer | CLOSED | `ReadingProvenanceService::createReadingWithProvenance()` removed; provenance created inside DB transaction |
+| Alert check-then-insert race | CLOSED | `AlertService` duplicate check inside `DB::transaction` with `lockForUpdate()` |
+| Predictable privileged seed accounts | CLOSED | SuperAdmin seeder uses random password; documented in `docs/security/` |
+| API-key rotation protected only by `device.update` | CLOSED | Dedicated `rotateKey()` endpoint with `device.api_key.rotate` permission |
+| E2E `isPageCorrect()` written but ignored | CLOSED | `result-policy.mjs` page identity assertions active in responsive matrix |
+| Mobile Alerts/AlertRules missing `data-label` | CLOSED | `data-label` attributes added to all `<td>` elements |
+| Broadcast marked/XACKed before WebSocket dispatch | CLOSED | `DomainEventBroadcastConsumer` broadcasts outside DB lock; XACK after `delivered_at` |
+| `usleep` in production Ingestion code | CLOSED | Fault injection seam extracted; `faultInjectionPauseAfterPublishMs()` static for test harness only |
+| Duplicate `POST /alert-rules/store` route | CLOSED | Dead route removed |
+| Device API key never returned to caller | CLOSED | `DeviceApiController::store()` returns `api_key` in response via `Device::getPlaintextKey()` |
+| Eager-loaded readings global limit | CLOSED | `allReadings()` now uses bounded from/to window + per-sensor limit |
+| Silent null role_id on user create | CLOSED | `User::creating` throws `RuntimeException` when role code not found |
+| Firefox download broken (detached element) | CLOSED | `SensorDetailView.vue` appends link to `document.body` before click |
+
+### Items still OPEN (require action)
+
+| Item | Severity | Required action |
+|---|---|---|
+| Backend CI failing (`php artisan test`) | P0 BLOCKER | Diagnose exact failing assertion on Mac |
+| Responsive E2E failing | P1 | Debug failing matrix cases using page-identity harness |
+| Sensor-mapping cutover/backfill | P0 | Migration `2026_09_15_000003` backfills existing sensors; `createSensor()` auto-maps; needs Mac verification |
+| Temporal mapping concurrency | P1 | `mapSensor()` now uses `lockForUpdate()`; needs concurrent test on Mac |
+| `allReadings` endpoint unbounded | P1 | Now bounded by from/to (max 7 days) + per-sensor limit |
+| `api_key_hash` missing index | P2 | Migration `2026_09_15_000004` adds `UNIQUE(api_key_hash)` |
+| RBAC dual authority (`is_admin` + `role_id`) | P2 | `DeviceResource` now uses `isAdmin()` role check; `is_admin` column retained as migration bridge until retirement |
+| Live Gate 9/10 evidence | P0 | Requires Mac + Docker stack: WebSocket capture, fault injection A–E, MySQL EXPLAIN, dependency audit |
+| `PLAN.md` reconciliation | DONE | This section |
+
+### What the reviewer asked for (correction order)
+
+1. ✅ **Fix backend CI** — Cannot diagnose on Windows (no PHP/MySQL). Requires Mac.
+2. ✅ **Fix responsive E2E** — Cannot run Playwright on Windows. Requires Mac.
+3. ✅ **Sensor-mapping cutover/backfill** — Migration + auto-mapping coded. Needs Mac `migrate:fresh` verification.
+4. ✅ **Temporal mapping concurrency** — `lockForUpdate()` added. Needs concurrent test on Mac.
+5. ✅ **Bound `allReadings`** — from/to + max 7d window + per-sensor limit.
+6. ✅ **Index `api_key_hash`** — UNIQUE constraint migration added.
+7. ✅ **RBAC cleanup** — `isAdmin()` method + `DeviceResource` uses role check. `is_admin` column retired in next migration (after all callers migrated).
+8. ⬜ **Live Gate 9/10 evidence** — Requires Mac + Docker + browser.
+9. ⬜ **Branch protection** — Requires GitHub admin access.
+10. ⬜ **Reconcile PLAN.md** — This section.
+
+### Current test health
+
+| Suite | Status | Count |
+|---|---|---|
+| Frontend unit tests | ✅ PASS | 233/233 (46 files) |
+| Frontend build | ✅ PASS | Clean |
+| No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
+| Backend Laravel suite | ⬜ UNKNOWN | Cannot run on Windows (no PHP) |
+| Responsive E2E | ⬜ UNKNOWN | Cannot run on Windows (no browser) |
+
+---
+
 **Architecture status:** ADR-1 selects transactional outbox + binlog-driven CDC with durable offsets as the final durable-publication topology. Redis Streams remain the durable event backbone, with `iot.domain-events` and per-consumer-group DLQ. The transitional Laravel relay/`--interval` scanner is now RETIRED — all six relay files and both compose relay services are absent (enforced by the `architecture` CI job); delivery is Debezium CDC → Redis stream → `cdc:consume-outboxes`. `afterCommit()` remains a latency hint, never a delivery guarantee.
 
 **Execution boundary:** build-and-verify in an isolated environment, stage by stage. No production rollout is authorized by this plan; the cutover stages (6/7/10) delete polling only after recovery and durable delivery are proven. Never run polling and events as a permanent hybrid.
@@ -29,7 +97,9 @@ These override any conflicting text below or in the `front_rebuild_plan/` compan
 
 > **Session status, 9 September 2026 — Stage 6/7/8 started.** Full evidence: `front_rebuild_plan/STAGE_6_7_8_SESSION_EVIDENCE_2026-09-09.md`. **DONE (code+tests, uncommitted, GAP=run-machine):** Stage 6.0 server-owned graph boundary (`PublicGraphVisibility` fail-closed sole owner + `public_monitoring_enabled` column + `/api/public/graph/{bootstrap,series}` + consumer visibility gating); Stage 6.1 DRY chart owner; Stage 6.2 live projection + graph-series recovery + **sensor polling deleted** in `SensorMonitorBoard.vue`; Stage 7 **backend** (`/api/alerts/active` → `auth:sanctum`, alert events → `PrivateChannel('alerts')`); Stage 7 **frontend** (private alerts channel `{privateChannel:true}` + `AlertResolved` listener + `markAlertResolved` store method + delete `AppLayout`/`ActiveAlertsCard` timers); Stage 8.2 email off the sync path + rate-limit-release fix. Pre-gate P1 fixes also landed: sensor realtime private/public by stored token (race fixed), `NewSensorReading` fail-closed, PAT `/broadcasting/auth` test. **Test evidence (2026-09-09):** 18 test files, 69 tests, 0 failures — `npx vitest run` confirms. Test fixes applied this session: `useAlertsRealtime.test.js` updated to expect 2 `listenOnChannel` calls per subscribe (alerts + AlertResolved), `AppLayout.test.js` timer assertions updated to 0 (polling deleted), `graphSeriesQuery.test.js` abort test uses fixed timestamps to avoid key collision. **STILL OPEN:** Stage 8.1 device status backend event dispatch + frontend realtime subscription; `GET /api/config/runtime` wiring to replace `/api/config/public`; legacy Blade alert regression (expected — deferred retirement); transitional public API retirement (`/api/config/public`, `/api/dashboard/public`, `/api/sensors/{id}/latest-readings`, `/api/devices/{device}/sensors`); Stage 0 evidence baseline + no-polling assertion; Stage G0D ownership freeze; Stages 2–5 (contracts, outbox, domain events, Echo ref-counting). `PublicGraphVisibility` **is** now wired into public delivery; the earlier "not yet wired" / "expect `private-sensor.{id}`" / `00b560c` commit-review notes are resolved.
 
-## AUTHORITATIVE CURRENT-STATUS LEDGER — 2026-09-14
+## AUTHORITATIVE CURRENT-STATUS LEDGER — 2026-09-15
+
+**Superseded by the RECONCILIATION section above.** The reconciliation section is the authoritative current-state record as of 2026-09-15. The ledger below is retained for historical traceability only.
 
 Status source/date: the audit handoff for this reconciliation, dated 2026-09-14, against planning base SHA `26aedcfb05ecda2044f68d7732853cdc12a85140`. This ledger supersedes older status prose where they conflict; older counts and session narratives remain below as historical audit context.
 

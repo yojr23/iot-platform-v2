@@ -14,7 +14,8 @@ class DeviceResource extends JsonResource
     {
         // SEC-BOLA-002: ip_address/mac_address/serial_number are internal network
         // topology, not needed by the standard authenticated UI — admin-only.
-        $isAdmin = (bool) ($request->user()?->is_admin);
+        // Uses role-based check (not the legacy is_admin column) as the single authority.
+        $isAdmin = (bool) ($request->user()?->isAdmin());
 
         return [
             'id' => $this->id,

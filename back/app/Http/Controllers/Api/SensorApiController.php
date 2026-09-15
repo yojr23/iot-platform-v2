@@ -10,6 +10,7 @@ use App\Services\Ingestion\SensorReadingService;
 use App\Services\Ingestion\SensorReadingProjectionService;
 use App\Services\Monitoring\PublicGraphSeriesService;
 use App\Services\Monitoring\RuleToGraphZones;
+use App\Services\SensorMappingService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -30,6 +31,7 @@ class SensorApiController extends Controller
     public function __construct(
         private SensorReadingService $readingService,
         private SensorReadingProjectionService $readingProjection,
+        private SensorMappingService $mappingService,
     ) {
     }
 
@@ -429,14 +431,27 @@ class SensorApiController extends Controller
         }
     }
 
-    public function allReadings()
+    public function allReadings(Request $request)
     {
         $startTime = microtime(true);
 
         try {
-            $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) {
-                $query->where('reading_time', '<=', now())
-                    ->orderBy('reading_time', 'desc');
+            // P1: bound the query window. Without from/to, default to last 24h.
+            // Hard max is 7 days to prevent accidental full-table scans.
+            $maxWindow = now()->subDays(7);
+            $from = $request->input('from')
+                ? Carbon::parse($request->input('from'))->max($maxWindow)
+                : now()->subDay();
+            $to = $request->input('to')
+                ? Carbon::parse($request->input('to'))
+                : now();
+            $limit = min((int) $request->input('limit', 1000), 5000);
+
+            $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) use ($from, $to, $limit) {
+                $query->where('reading_time', '>=', $from)
+                    ->where('reading_time', '<=', $to)
+                    ->orderBy('reading_time', 'desc')
+                    ->limit($limit);
             }])->get();
 
             Log::info('All sensor readings requested', [
@@ -445,6 +460,8 @@ class SensorApiController extends Controller
             ]);
 
             return response()->json([
+                'from' => $from->toIso8601String(),
+                'to' => $to->toIso8601String(),
                 'sensors' => $sensors->map(function ($sensor) {
                     return [
                         'id' => $sensor->id,
@@ -615,6 +632,15 @@ class SensorApiController extends Controller
         try {
             $sensor = Sensor::create($validated + ['status' => true]);
             $sensor->load(['sensorType', 'device.lab']);
+
+            // P0: auto-create the canonical mapping so the new normalizer can resolve
+            // this sensor immediately after creation (no separate operator step needed).
+            $this->mappingService->mapSensor(
+                $device,
+                $sensor,
+                'ingestion_service',
+                $sensor->name,
+            );
 
             return (new SensorResource($sensor))
                 ->additional(['message' => 'Sensor creado correctamente.'])
