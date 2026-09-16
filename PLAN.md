@@ -4,9 +4,65 @@
 
 ---
 
-## RECONCILIATION — 2026-09-16
+## RECONCILIATION — 2026-09-16 (Mac verification session)
 
-This section reconciles the plan against committed `refraccion` HEAD `ff8c42989e561d614cdac3d5d37126191c5924a1` plus the NavBar retirement currently in this working tree. It replaces stale status claims elsewhere in this document. Backend, responsive-browser, Docker, and Mac-only claims retain their reported status until independently rerun.
+This section reconciles the plan against `refraccion` after the Mac verification/hardening
+session. The validated application baseline is the tip of the fixes described below (commits
+`c6daf18` → `fb1c6fc` on top of `ce5f132`). This supersedes the earlier Windows reconciliation
+that was pinned to `ff8c429`; the NavBar retirement it referenced is committed at `ce5f132`.
+
+**Headline: the two RED Gate 10 CI jobs are now GREEN, verified locally on macOS.** The backend
+suite was not "13 failing" — the migration chain died before any test ran (446/452 failed at
+`ce5f132`). After fixing the chain, 13 genuinely-masked failures surfaced and were all resolved.
+
+### CI jobs — verified on this machine (SQLite + Redis 6399, PHP 8.5 locally / 8.2 on CI)
+
+| Gate 10 job | At ce5f132 | Now |
+|---|---|---|
+| Backend PHP + SQLite + Redis | ❌ FAIL (446 failed) | ✅ PASS (476 tests, 0 failed, 1826 assertions) |
+| Frontend unit + build + no-polling | ✅ PASS | ✅ PASS (247 tests, build clean, no-polling gate) |
+| Architecture static | ✅ PASS | ✅ PASS |
+| Ingestion pytest | ✅ PASS | ✅ PASS (29) |
+| Responsive mocked Playwright | ❌ FAIL (33/35) | ✅ PASS (35/35) |
+| MySQL `migrate:fresh` (M9, real MySQL 8.4) | not run | ✅ PASS |
+
+Note: on local PHP 8.5 every passing test is tagged "deprecated" purely from the
+`PDO::MYSQL_ATTR_SSL_CA` notice — not a failure (CI's PHP 8.2 is clean). Count real failures by
+grepping `⨯`/`FAILED`.
+
+### Root causes fixed this session (code)
+
+- **Migration `000008`** dropped `api_key` while the `devices_api_key_unique` index still
+  referenced it — SQLite refuses; this killed `RefreshDatabase` and cascaded to the whole suite.
+  Now drops the index first (idempotent guard). Portable SQLite + MySQL.
+- **Migration `000003` backfill** used MySQL-only `INSERT IGNORE ... NOW()` → portable
+  query-builder inserts + fail-closed collision preflight for ambiguous
+  `(device_id, source, canonical external_key)` identities.
+- **Migration `000002`** dropped the FK-backed unique index before any other device_id-leftmost
+  index existed — MySQL error 1553 (invisible to SQLite). Now builds the replacement temporal
+  index first, then drops, then renames. Verified on MySQL 8.4 **and** SQLite.
+- **`CdcOutboxStreamConsumer`** had `?callable` as a promoted property type — a PHP fatal on all
+  versions. Changed to `?\Closure`.
+- **Timezone consistency**: `DeviceSensorMapping.valid_from/valid_until` now use Attributes that
+  normalize to app tz (the default `datetime` cast dropped the `Z` offset), and
+  `SensorMappingService` normalizes the lookup `$at` in both lookup methods. Temporal sensor
+  resolution no longer silently skips.
+- **`/config/runtime`** un-gated from admin-only `system_setting.view`; it returns only sanitized
+  `{alert_sound_enabled, app_url}` and the alerts store loads it for every authenticated user.
+
+### Test debt corrected (assertions never ran before the chain was fixed)
+
+- alert-rules security tests → real `POST /api/alert-rules` (not `/store`).
+- role-management tests → `role_code` (RBAC), superadmin actor where required.
+- export tests → admin user (`sensor_reading.export` is admin-only).
+- api_key leak tests → assert exact `"api_key"` key (plaintext column dropped).
+- DLQ replay → order-insensitive field compare (Lua cjson tables are unordered).
+- Responsive audit `adminRoutes` → only `/config*` + `/users` are admin-only; `/alert-rules`,
+  `/labs`, `/sensor-types`, `/device-types` are readable by standard users per the RBAC model
+  (backend gates catalog **writes** behind `system_setting.update`). RBAC redirect for the real
+  admin routes verified.
+
+### Previous reconciliation retained below for history
 
 ### Items now CLOSED in source (no further action needed)
 
@@ -35,28 +91,28 @@ This section reconciles the plan against committed `refraccion` HEAD `ff8c42989e
 
 | Item | Severity | Status | Required action |
 |---|---|---|---|
-| Backend CI failing (`php artisan test`) | P0 BLOCKER | ❌ FAIL | PHP not on Windows PATH; diagnose on Mac |
-| Responsive E2E failing | P1 | ❌ FAIL | Cannot debug on Windows; requires Mac |
-| Sensor-mapping cutover/backfill | P0 | ⚠️ CODED_NOT_VERIFIED | Migration `2026_09_15_000003` backfills; `createSensor()` auto-maps; needs Mac verification |
-| Temporal mapping concurrency | P1 | ⚠️ CODED_NOT_VERIFIED | `mapSensor()` uses `lockForUpdate()`; needs concurrent test on Mac |
-| `allReadings` endpoint unbounded | P1 | ⚠️ CODED_NOT_VERIFIED | Bounded by from/to (max 7 days) + per-sensor limit; needs runtime verification |
-| `api_key_hash` missing index | P2 | ⚠️ CODED_NOT_VERIFIED | Migration adds `UNIQUE(api_key_hash)`; needs migration run on Mac |
-| RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `DeviceResource` uses `isAdmin()`; `is_admin` retained as migration bridge; needs runtime verification |
-| Live Gate 9/10 evidence | P0 | ⬜ OPEN | Requires Mac + Docker stack: WebSocket capture, fault injection A–E, MySQL EXPLAIN, dependency audit |
-| `PLAN.md` reconciliation | IN PROGRESS | ⚠️ | Refresh the source SHA after the pending NavBar retirement is committed |
+| Backend CI failing (`php artisan test`) | P0 BLOCKER | ✅ FIXED | 476 tests pass on SQLite+Redis (commit `c6daf18`). |
+| Responsive E2E failing | P1 | ✅ FIXED | 35/35 mocked matrix pass; audit admin-route list corrected (commit `c6daf18`). |
+| Sensor-mapping cutover/backfill | P0 | ✅ VERIFIED | `migrate:fresh` passes on MySQL 8.4 + SQLite; backfill has fail-closed collision preflight. |
+| Temporal mapping concurrency | P1 | ⚠️ PARTIALLY VERIFIED | `mapSensor()` locks the identity rows; still needs a genuine concurrent-connection MySQL race test (M6). |
+| `allReadings` endpoint unbounded | P1 | ⚠️ PARTIALLY FIXED / OPEN | Has a 7-day window + per-sensor limit, but the real bound is `sensors × per_sensor_limit` (no global budget), and `Carbon::parse()` on bad dates can 500 instead of 422. Still needs M7. |
+| `api_key_hash` missing index | P2 | ✅ VERIFIED | `UNIQUE(api_key_hash)` applied cleanly in `migrate:fresh` on MySQL 8.4. |
+| RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `is_admin` retained as migration bridge; caller migration + removal still pending (M8). |
+| Live Gate 9/10 evidence | P0 | ⬜ OPEN | Full Docker stack: WebSocket capture, fault matrix A–E, MySQL EXPLAIN, dependency audit (M10–M17). |
+| MySQL upgrade/backfill path | P1 | ⬜ OPEN | `migrate:fresh` proven; upgrade from a pre-temporal fixture still to run (M9). |
 
 ### What the reviewer asked for (correction order)
 
-1. ❌ **Fix backend CI** — Cannot diagnose on Windows (no PHP/MySQL). Requires Mac.
-2. ❌ **Fix responsive E2E** — Cannot run Playwright on Windows. Requires Mac.
-3. ⚠️ **Sensor-mapping cutover/backfill** — Migration + auto-mapping coded. Needs Mac `migrate:fresh` verification. CODED_NOT_VERIFIED.
-4. ⚠️ **Temporal mapping concurrency** — `lockForUpdate()` added. Needs concurrent test on Mac. CODED_NOT_VERIFIED.
-5. ⚠️ **Bound `allReadings`** — from/to + max 7d window + per-sensor limit. CODED_NOT_VERIFIED.
-6. ⚠️ **Index `api_key_hash`** — UNIQUE constraint migration added. CODED_NOT_VERIFIED.
-7. ⚠️ **RBAC cleanup** — `isAdmin()` method + `DeviceResource` uses role check. `is_admin` column retired in next migration (after all callers migrated). CODED_NOT_VERIFIED.
-8. ⬜ **Live Gate 9/10 evidence** — Requires Mac + Docker + browser.
-9. ⬜ **Branch protection** — Requires GitHub admin access.
-10. ⬜ **Reconcile PLAN.md** — This section.
+1. ✅ **Fix backend CI** — DONE. Root cause was a migration cascade, not 13 isolated tests. 476 pass.
+2. ✅ **Fix responsive E2E** — DONE. 35/35; audit's admin-route list corrected to match RBAC.
+3. ✅ **Sensor-mapping cutover/backfill** — `migrate:fresh` verified on MySQL 8.4 + SQLite; fail-closed collision preflight added.
+4. ⚠️ **Temporal mapping concurrency** — identity-row locking in place; genuine concurrent MySQL race test still pending (M6).
+5. ⚠️ **Bound `allReadings`** — PARTIALLY FIXED / OPEN. Still `sensors × limit`, no global budget; `Carbon::parse` can 500 not 422 (M7).
+6. ✅ **Index `api_key_hash`** — UNIQUE applied cleanly on MySQL 8.4.
+7. ⚠️ **RBAC cleanup** — `is_admin` bridge retained; caller migration + removal pending (M8).
+8. ⬜ **Live Gate 9/10 evidence** — Docker stack: WebSocket capture, fault matrix, EXPLAIN, audit (M10–M17).
+9. ⬜ **Branch protection** — Requires GitHub admin access (M19).
+10. 🔄 **Reconcile PLAN.md** — This section, updated to the Mac-verified baseline.
 
 ### Current test health
 
@@ -67,8 +123,9 @@ This section reconciles the plan against committed `refraccion` HEAD `ff8c42989e
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
 | Architecture CI | ✅ PASS | CI verified |
 | Ingestion Python | ✅ PASS | CI verified |
-| Backend Laravel suite | ❌ FAIL | PHP not on Windows PATH; requires Mac |
-| Responsive E2E | ❌ FAIL | Cannot debug Playwright on Windows; requires Mac |
+| Backend Laravel suite | ✅ PASS | 476 tests, 0 failed, 1826 assertions (SQLite + Redis 6399), Mac 2026-09-16 |
+| Responsive E2E | ✅ PASS | 35/35 mocked responsive matrix, Mac 2026-09-16 |
+| MySQL `migrate:fresh` | ✅ PASS | All migrations DONE on real MySQL 8.4 (Docker), Mac 2026-09-16 |
 
 ### Windows-only audit corrections (local working tree, 2026-09-16)
 
