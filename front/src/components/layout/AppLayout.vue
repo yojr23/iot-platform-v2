@@ -1,7 +1,7 @@
 <template>
   <LabShell v-if="usesLabShell">
     <slot />
-    <AlertToast v-if="authStore.isAuthenticated" />
+    <AlertToast v-if="canViewAlerts" />
   </LabShell>
   <div v-else class="app-shell">
     <NavBar />
@@ -12,7 +12,7 @@
       </div>
     </main>
 
-    <AlertToast v-if="authStore.isAuthenticated" />
+    <AlertToast v-if="canViewAlerts" />
 
     <footer class="app-footer border-top py-3">
       <div class="container-fluid px-3 px-lg-4 small text-muted">
@@ -49,6 +49,12 @@ const alertsStore = useAlertsStore();
 const deviceStatusesStore = useDeviceStatusesStore();
 const { subscribeAlerts, unsubscribeAlerts } = useAlertsRealtime();
 const { subscribeDeviceStatus, unsubscribeDeviceStatus } = useDeviceStatusRealtime();
+const canViewAlerts = computed(() => (
+  authStore.isAuthenticated && authStore.can('alert.view')
+));
+const canViewDevices = computed(() => (
+  authStore.isAuthenticated && authStore.can('device.view')
+));
 let startingGlobalAlerts = false;
 let globalAlertsSubscribed = false;
 let globalAlertsStartupGeneration = 0;
@@ -68,15 +74,17 @@ async function startGlobalAlerts() {
   startingGlobalAlerts = true;
 
   try {
-    await alertsStore.loadRuntimeConfig();
-    if (startupGeneration !== globalAlertsStartupGeneration || !authStore.isAuthenticated) {
+    if (authStore.can('system_setting.view')) {
+      await alertsStore.loadRuntimeConfig();
+    }
+    if (startupGeneration !== globalAlertsStartupGeneration || !canViewAlerts.value) {
       return;
     }
 
     unlockAlertSound();
 
     const subscribed = subscribeAlerts();
-    if (startupGeneration !== globalAlertsStartupGeneration || !authStore.isAuthenticated) {
+    if (startupGeneration !== globalAlertsStartupGeneration || !canViewAlerts.value) {
       if (subscribed) {
         unsubscribeAlerts();
       }
@@ -110,16 +118,19 @@ function stopGlobalDeviceStatus() {
 }
 
 watch(
-  () => authStore.isAuthenticated,
-  (isAuthenticated) => {
-    if (isAuthenticated) {
+  [canViewAlerts, canViewDevices],
+  ([alertsAuthorized, devicesAuthorized]) => {
+    if (alertsAuthorized) {
       startGlobalAlerts();
-      subscribeDeviceStatus();
-      return;
+    } else {
+      stopGlobalAlerts();
     }
 
-    stopGlobalAlerts();
-    stopGlobalDeviceStatus();
+    if (devicesAuthorized) {
+      subscribeDeviceStatus();
+    } else {
+      stopGlobalDeviceStatus();
+    }
   },
   { immediate: true }
 );

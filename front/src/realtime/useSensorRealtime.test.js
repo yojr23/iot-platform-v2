@@ -321,19 +321,25 @@ describe('W10-W11: sensor realtime logout clears projections / login leaves subs
     } catch {}
   });
 
-  it('logout clears the sensor reading projection', async () => {
+  it('authenticated logout clears the projection and swaps the private channel for the public channel', async () => {
+    storedToken = 'test-token';
     const { useSensorRealtime } = await import('./useSensorRealtime');
     const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+    const { getChannelRefCount } = await import('./channelRegistry');
     const projection = useSensorReadingsStore();
-
-    projection.mergeReading(7, { id: 1, value: 1, reading_time: '2026-01-01T00:00:00Z' });
-    expect(projection.readingsFor(7)).toHaveLength(1);
 
     const realtime = useSensorRealtime(7, vi.fn());
     realtime.subscribeSensor();
-    fireAuthResync(); // auth resync clears
+    projection.mergeReading(7, { id: 1, value: 1, reading_time: '2026-01-01T00:00:00Z' });
+    expect(getChannelRefCount('sensor.7', { privateChannel: true })).toBe(1);
+    expect(projection.readingsFor(7)).toHaveLength(1);
+
+    storedToken = null;
+    fireAuthResync();
 
     expect(projection.readingsFor(7)).toHaveLength(0);
+    expect(getChannelRefCount('sensor.7', { privateChannel: true })).toBe(0);
+    expect(getChannelRefCount('sensor.7')).toBe(1);
   });
 
   it('login keeps the public channel ref-count clean and does not leak subscriptions', async () => {

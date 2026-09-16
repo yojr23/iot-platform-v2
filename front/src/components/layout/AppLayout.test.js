@@ -8,6 +8,8 @@ vi.mock('vue-router', () => ({
 
 const subscribeAlerts = vi.fn(() => true);
 const unsubscribeAlerts = vi.fn();
+const subscribeDeviceStatus = vi.fn(() => true);
+const unsubscribeDeviceStatus = vi.fn();
 const getRuntimeConfig = vi.fn(() => Promise.resolve({ data: {} }));
 const getPublicConfig = vi.fn(() => Promise.resolve({ data: {} }));
 const getActiveAlerts = vi.fn(() => Promise.resolve({ data: { alerts: [], count: 0 } }));
@@ -17,6 +19,9 @@ vi.mock('@/components/alerts/AlertToast.vue', () => ({ default: { template: '<di
 
 vi.mock('@/realtime/useAlertsRealtime', () => ({
   useAlertsRealtime: () => ({ subscribeAlerts, unsubscribeAlerts }),
+}));
+vi.mock('@/realtime/useDeviceStatusRealtime', () => ({
+  useDeviceStatusRealtime: () => ({ subscribeDeviceStatus, unsubscribeDeviceStatus }),
 }));
 
 vi.mock('@/utils/sound', () => ({
@@ -70,6 +75,19 @@ async function mountAppLayout() {
   };
 }
 
+async function authenticate({ permissions = [] } = {}) {
+  const { useAuthStore } = await import('@/stores/auth');
+  const authStore = useAuthStore();
+  authStore.token = 'test-token';
+  authStore.user = {
+    id: 1,
+    name: 'Test User',
+    role: { code: 'user', level: 1 },
+    permissions,
+  };
+  return authStore;
+}
+
 describe('AppLayout guest vs authenticated alert initialization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -95,11 +113,8 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     unmount();
   });
 
-  it('performs the existing alert initialization for an authenticated mount', async () => {
-    const { useAuthStore } = await import('@/stores/auth');
-    const authStore = useAuthStore();
-    authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User' };
+  it('starts only the authorized alert and device projections for an authenticated mount', async () => {
+    await authenticate({ permissions: ['alert.view', 'device.view', 'system_setting.view'] });
 
     const { el, unmount } = await mountAppLayout();
 
@@ -108,7 +123,63 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     expect(getPublicConfig).not.toHaveBeenCalled();
     expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(subscribeAlerts).toHaveBeenCalledTimes(1);
+    expect(subscribeDeviceStatus).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
+
+    unmount();
+  });
+
+  it('does not start or render projections that the authenticated user cannot view', async () => {
+    await authenticate();
+
+    const { el, unmount } = await mountAppLayout();
+
+    expect(el.querySelector('[data-testid="alert-toast-host"]')).toBeNull();
+    expect(getRuntimeConfig).not.toHaveBeenCalled();
+    expect(subscribeAlerts).not.toHaveBeenCalled();
+    expect(subscribeDeviceStatus).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('starts each projection once when its permission is granted after login', async () => {
+    const authStore = await authenticate();
+    const { unmount } = await mountAppLayout();
+
+    authStore.user.permissions = ['alert.view', 'device.view'];
+    await nextTick();
+    await flush();
+    await flush();
+
+    expect(getRuntimeConfig).not.toHaveBeenCalled();
+    expect(subscribeAlerts).toHaveBeenCalledTimes(1);
+    expect(subscribeDeviceStatus).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('stops and clears each projection when its permission is revoked during a session', async () => {
+    const authStore = await authenticate({ permissions: ['alert.view', 'device.view'] });
+    const { useAlertsStore } = await import('@/stores/alerts');
+    const { useDeviceStatusesStore } = await import('@/stores/deviceStatuses');
+    const alertsStore = useAlertsStore();
+    const deviceStatusesStore = useDeviceStatusesStore();
+    const { el, unmount } = await mountAppLayout();
+
+    alertsStore.items = [{ id: 10 }];
+    alertsStore.activeAlerts = [{ id: 10 }];
+    alertsStore.unresolvedCount = 1;
+    deviceStatusesStore.applyStatusEvent({ device_id: 7, event_sequence: 1, status: true, is_active: true });
+    authStore.user.permissions = [];
+    await nextTick();
+    await flush();
+
+    expect(unsubscribeAlerts).toHaveBeenCalledTimes(1);
+    expect(unsubscribeDeviceStatus).toHaveBeenCalledTimes(1);
+    expect(alertsStore.items).toEqual([]);
+    expect(alertsStore.activeAlerts).toEqual([]);
+    expect(deviceStatusesStore.statusFor(7)).toBeNull();
+    expect(el.querySelector('[data-testid="alert-toast-host"]')).toBeNull();
 
     unmount();
   });
@@ -123,7 +194,12 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     expect(vi.getTimerCount()).toBe(0);
 
     authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User' };
+    authStore.user = {
+      id: 1,
+      name: 'Test User',
+      role: { code: 'user', level: 1 },
+      permissions: ['alert.view', 'device.view', 'system_setting.view'],
+    };
     await nextTick();
     await flush();
     await flush();
@@ -169,10 +245,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
 
   it('does not start the alert polling timer when realtime subscription is unavailable', async () => {
     subscribeAlerts.mockReturnValueOnce(false);
-    const { useAuthStore } = await import('@/stores/auth');
-    const authStore = useAuthStore();
-    authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User' };
+    await authenticate({ permissions: ['alert.view', 'system_setting.view'] });
 
     const { unmount } = await mountAppLayout();
 
@@ -197,7 +270,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     const { unmount } = await mountAppLayout();
 
     authStore.token = 'first-token';
-    authStore.user = { id: 1, name: 'First User' };
+    authStore.user = { id: 1, name: 'First User', role: { code: 'user' }, permissions: ['alert.view', 'system_setting.view'] };
     await nextTick();
     await flush();
 
@@ -206,7 +279,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     await flush();
 
     authStore.token = 'second-token';
-    authStore.user = { id: 2, name: 'Second User' };
+    authStore.user = { id: 2, name: 'Second User', role: { code: 'user' }, permissions: ['alert.view', 'system_setting.view'] };
     await nextTick();
     await flush();
 

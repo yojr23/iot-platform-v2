@@ -19,7 +19,7 @@ vi.mock('@/api/alerts', () => ({
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function mountNavBar({ authenticated = false, admin = false } = {}) {
+async function mountNavBar({ authenticated = false, admin = false, permissions = [] } = {}) {
   const { default: NavBar } = await import('./NavBar.vue');
   const el = document.createElement('div');
   const app = createApp(NavBar);
@@ -28,7 +28,7 @@ async function mountNavBar({ authenticated = false, admin = false } = {}) {
     const { useAuthStore } = await import('@/stores/auth');
     const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User', role: { code: admin ? 'superadmin' : 'user', level: admin ? 3 : 1 }, permissions: admin ? ['system_setting.view', 'system_setting.update'] : [] };
+    authStore.user = { id: 1, name: 'Test User', role: { code: admin ? 'superadmin' : 'user', level: admin ? 3 : 1 }, permissions: admin ? ['system_setting.view', 'system_setting.update'] : permissions };
   }
   app.mount(el);
   await nextTick();
@@ -53,12 +53,35 @@ describe('NavBar guest vs authenticated alert badge refresh', () => {
     unmount();
   });
 
-  it('fetches unresolved alerts for an authenticated mount', async () => {
+  it('does not fetch unresolved alerts for an authenticated user without alert.view', async () => {
     const { el, unmount } = await mountNavBar({ authenticated: true });
+
+    expect(fetchUnresolved).not.toHaveBeenCalled();
+    expect(fetchActiveAlerts).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('Sin conexion');
+
+    unmount();
+  });
+
+  it('fetches the alert badge only for an authenticated alert viewer', async () => {
+    const { el, unmount } = await mountNavBar({ authenticated: true, permissions: ['alert.view'] });
 
     expect(fetchUnresolved).toHaveBeenCalledTimes(1);
     expect(fetchActiveAlerts).not.toHaveBeenCalled();
-    expect(el.textContent).toContain('Sin conexion');
+    expect(el.textContent).toContain('Alertas');
+
+    unmount();
+  });
+
+  it.each([
+    ['device.view', 'Dispositivos', ['Sensores', 'Alertas']],
+    ['sensor.view', 'Sensores', ['Dispositivos', 'Alertas']],
+    ['alert.view', 'Alertas', ['Dispositivos', 'Sensores']],
+  ])('renders only the permitted laboratory link for %s', async (permission, visibleLabel, hiddenLabels) => {
+    const { el, unmount } = await mountNavBar({ authenticated: true, permissions: [permission] });
+
+    expect(el.textContent).toContain(visibleLabel);
+    hiddenLabels.forEach((label) => expect(el.textContent).not.toContain(label));
 
     unmount();
   });

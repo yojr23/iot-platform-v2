@@ -147,7 +147,7 @@ const realtimeStatusClass = computed(() => {
 
 // Guest graph mode: no alert API calls at all (mirrors AppLayout.vue's guard).
 async function refreshAlertBadge() {
-  if (!authStore.isAuthenticated) {
+  if (!authStore.isAuthenticated || !authStore.can('alert.view')) {
     return;
   }
 

@@ -4,9 +4,9 @@
 
 ---
 
-## RECONCILIATION — 2026-09-15
+## RECONCILIATION — 2026-09-16
 
-This section reconciles the plan against the current source state as of the latest audit round (`85b70dc`). It replaces stale status claims elsewhere in this document.
+This section reconciles the plan against audited `refraccion` HEAD `8b3d4e49f94f033c2fda86967a60ae415e1f987a` and the Windows-only corrections currently in this working tree. It replaces stale status claims elsewhere in this document. Backend, responsive-browser, Docker, and Mac-only claims retain their reported status until independently rerun.
 
 ### Items now CLOSED in source (no further action needed)
 
@@ -18,7 +18,7 @@ This section reconciles the plan against the current source state as of the late
 | Historical mapping requiring current `is_active` | CLOSED | Lookup uses half-open validity window |
 | RawReadingNormalizer ignoring mapping subsystem | CLOSED | Normalizer injects `SensorMappingService` and resolves via `findSensorsByExternalKeys` |
 | Reading provenance detached from canonical writer | CLOSED | `ReadingProvenanceService::createReadingWithProvenance()` removed; provenance created inside DB transaction |
-| Alert check-then-insert race | CLOSED | `AlertService` duplicate check inside `DB::transaction` with `lockForUpdate()` |
+| Alert check-then-insert race | CLOSED | `AlertService` uses the unique constraint via `createOrFirst()` inside the outbox transaction |
 | Predictable privileged seed accounts | CLOSED | SuperAdmin seeder uses random password; documented in `docs/security/` |
 | API-key rotation protected only by `device.update` | CLOSED | Dedicated `rotateKey()` endpoint with `device.api_key.rotate` permission |
 | E2E `isPageCorrect()` written but ignored | CLOSED | `result-policy.mjs` page identity assertions active in responsive matrix |
@@ -26,7 +26,7 @@ This section reconciles the plan against the current source state as of the late
 | Broadcast marked/XACKed before WebSocket dispatch | CLOSED | `DomainEventBroadcastConsumer` broadcasts outside DB lock; XACK after `delivered_at` |
 | `usleep` in production Ingestion code | CLOSED | Fault injection seam extracted; `faultInjectionPauseAfterPublishMs()` static for test harness only |
 | Duplicate `POST /alert-rules/store` route | CLOSED | Dead route removed |
-| Device API key never returned to caller | CLOSED | `DeviceApiController::store()` returns `api_key` in response via `Device::getPlaintextKey()` |
+| Device API key never returned to caller | CLOSED | `DeviceApiController::store()` returns `api_key` once via `Device::pullPlaintextApiKey()` |
 | Eager-loaded readings global limit | CLOSED | `allReadings()` now uses bounded from/to window + per-sensor limit |
 | Silent null role_id on user create | CLOSED | `User::creating` throws `RuntimeException` when role code not found |
 | Firefox download broken (detached element) | CLOSED | `SensorDetailView.vue` appends link to `document.body` before click |
@@ -43,7 +43,7 @@ This section reconciles the plan against the current source state as of the late
 | `api_key_hash` missing index | P2 | ⚠️ CODED_NOT_VERIFIED | Migration adds `UNIQUE(api_key_hash)`; needs migration run on Mac |
 | RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `DeviceResource` uses `isAdmin()`; `is_admin` retained as migration bridge; needs runtime verification |
 | Live Gate 9/10 evidence | P0 | ⬜ OPEN | Requires Mac + Docker stack: WebSocket capture, fault injection A–E, MySQL EXPLAIN, dependency audit |
-| `PLAN.md` reconciliation | DONE | ✅ | This section |
+| `PLAN.md` reconciliation | IN PROGRESS | ⚠️ | Refresh the audited SHA after these uncommitted Windows changes are committed |
 
 ### What the reviewer asked for (correction order)
 
@@ -62,13 +62,24 @@ This section reconciles the plan against the current source state as of the late
 
 | Suite | Status | Count |
 |---|---|---|
-| Frontend unit tests | ✅ PASS | 249/249 (46 files) |
+| Frontend unit tests | ✅ PASS | 256/256 (46 files), locally rerun on Windows 2026-09-16 |
 | Frontend build | ✅ PASS | Clean |
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
 | Architecture CI | ✅ PASS | CI verified |
 | Ingestion Python | ✅ PASS | CI verified |
 | Backend Laravel suite | ❌ FAIL | PHP not on Windows PATH; requires Mac |
 | Responsive E2E | ❌ FAIL | Cannot debug Playwright on Windows; requires Mac |
+
+### Windows-only audit corrections (local working tree, 2026-09-16)
+
+| Finding | Status | Evidence |
+|---|---|---|
+| Alerts and device-status lifecycle ignored RBAC capability changes | CLOSED locally | `AppLayout.vue` derives `alert.view` and `device.view`; grant starts and revocation stops plus clears each projection |
+| Alert toast mounted for every authenticated user | CLOSED locally | `AlertToast` now requires `alert.view` |
+| Alert badge fetched for users lacking `alert.view` | CLOSED locally | `NavBar.refreshAlertBadge()` returns before the API request without that capability |
+| Alert sound runtime config crossed `system_setting.view` boundary | CLOSED locally | Runtime config is fetched only for `system_setting.view`; alert subscription remains allowed with `alert.view` |
+| Sensor logout unit scenario modeled a guest resync | CLOSED locally | Test now exercises authenticated private-channel to guest public-channel transition and projection clear |
+| Windows frontend verification | PASS | `npx.cmd vitest run`: 46 files, 256 tests, 0 failures |
 
 ---
 
