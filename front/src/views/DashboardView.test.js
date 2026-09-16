@@ -72,16 +72,27 @@ vi.mock('@/components/dashboard/RecentReadingsTable.vue', () => ({
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const mountedApps = [];
 
-async function mountDashboardView({ authenticated = false } = {}) {
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function mountDashboardView({ authenticated = false, permissions = [] } = {}) {
   const { default: DashboardView } = await import('./DashboardView.vue');
+  const { useAuthStore } = await import('@/stores/auth');
   const el = document.createElement('div');
   const app = createApp(DashboardView);
-  app.use(createPinia());
+  const pinia = createPinia();
+  app.use(pinia);
+  const authStore = useAuthStore(pinia);
   if (authenticated) {
-    const { useAuthStore } = await import('@/stores/auth');
-    const authStore = useAuthStore();
     authStore.token = 'test-token';
-    authStore.user = { id: 1, name: 'Test User' };
+    authStore.user = { id: 1, name: 'Test User', role: { code: 'user' }, permissions };
   }
   app.mount(el);
   mountedApps.push(app);
@@ -90,6 +101,7 @@ async function mountDashboardView({ authenticated = false } = {}) {
   await nextTick();
   return {
     el,
+    authStore,
     unmount: () => {
       app.unmount();
       const appIndex = mountedApps.indexOf(app);
@@ -140,7 +152,10 @@ describe('DashboardView guest alert containment', () => {
   });
 
   it('passes the authenticated graph catalog including a restricted sensor to the actual board prop', async () => {
-    const { el, unmount } = await mountDashboardView({ authenticated: true });
+    const { el, unmount } = await mountDashboardView({
+      authenticated: true,
+      permissions: ['sensor.view'],
+    });
 
     expect(getDashboardMetrics).not.toHaveBeenCalled();
     expect(getGraphBootstrap).toHaveBeenCalledOnce();
@@ -153,6 +168,41 @@ describe('DashboardView guest alert containment', () => {
         sensors: [expect.objectContaining({ id: 17, name: 'Restricted sensor' })]
       })
     ]));
+
+    unmount();
+  });
+
+  it('aborts an in-flight authenticated catalog request on logout and ignores its stale result', async () => {
+    const catalog = deferred();
+    let catalogSignal;
+    getAuthenticatedGraphCatalog.mockImplementationOnce(({ signal }) => {
+      catalogSignal = signal;
+      return catalog.promise;
+    });
+
+    const { el, authStore, unmount } = await mountDashboardView({
+      authenticated: true,
+      permissions: ['sensor.view'],
+    });
+
+    expect(getAuthenticatedGraphCatalog).toHaveBeenCalledOnce();
+    expect(catalogSignal?.aborted).toBe(false);
+
+    authStore.clearAuth();
+    await nextTick();
+    await flush();
+
+    expect(catalogSignal?.aborted).toBe(true);
+
+    catalog.resolve({
+      data: {
+        devices: [{ id: 99, name: 'Stale restricted device', sensors: [] }],
+      },
+    });
+    await flush();
+    await nextTick();
+
+    expect(el.querySelector('[data-testid="sensor-monitor-board"]')?.dataset.deviceIds).not.toContain('99');
 
     unmount();
   });

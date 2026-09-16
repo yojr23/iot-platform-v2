@@ -49,10 +49,27 @@ grepping `⨯`/`FAILED`.
 run is green. Windows is not a Gate 9/Gate 10 certification environment.
 
 **Mac certification remains OPEN:** device provisioning atomicity; sensor plus mapping
-atomicity; mapping concurrency; allReadings scalability/bounds; MySQL fresh/upgrade migration;
-MQTT-to-browser E2E; Redis and Debezium recovery; XAUTOCLAIM/reclaim; poison-to-DLQ; WebSocket
-disconnect/reconnect; real-browser no-polling capture longer than 35 seconds; desktop/mobile QA;
-database performance; and security/dependency audit.
+atomicity; mapping concurrency; allReadings scalability/bounds; MQTT-to-browser E2E; Redis and
+Debezium recovery; XAUTOCLAIM/reclaim; poison-to-DLQ; WebSocket disconnect/reconnect;
+real-browser no-polling capture longer than 35 seconds; desktop/mobile QA; database performance;
+and security/dependency audit.
+
+**MySQL migration evidence:** `migrate:fresh` and the populated legacy upgrade path passed in a
+previous Mac run. They are not open defects; rerun both against the final candidate only if
+database or application migration-path code changes.
+
+**Authorization findings requiring Mac ownership:**
+
+1. **Authenticated graph catalog RBAC is unresolved.** `DashboardView` requests
+   `/dashboard/graph-catalog` for every authenticated user, while the route presently requires
+   authentication but no resource/telemetry capability and the controller enumerates all graph
+   devices and sensors. Decide and test the server contract on Mac: either authenticated users
+   may receive this metadata, or it requires an explicit capability. A frontend condition is
+   defense in depth only and cannot close this finding.
+2. **Private sensor WebSocket RBAC needs live confirmation.** Source delegates
+   `private-sensor.{id}` authorization to `ResourceAccessService::canViewSensor()`, but final
+   certification must exercise allowed and denied users through the real broadcaster/browser
+   flow, including revocation. This is not certifiable from Windows mocks.
 
 **Gate 9: OPEN. Gate 10: OPEN. PLAN: OPEN.** Final closure is reserved for the Mac-certified
 application SHA and a subsequent green documentation-only closure commit.
@@ -145,13 +162,13 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 |---|---|---|---|
 | Backend CI historical regression (`php artisan test`) | P0 BLOCKER | RESOLVED AT BASELINE | The current baseline `719a3f` has a green backend CI job; retain the earlier failure only as historical context. |
 | Responsive E2E failing | P1 | ✅ FIXED | 35/35 mocked matrix pass; audit admin-route list corrected (commit `c6daf18`). |
-| Sensor-mapping cutover/backfill | P0 | ✅ VERIFIED | `migrate:fresh` passes on MySQL 8.4 + SQLite; backfill has fail-closed collision preflight. |
+| Sensor-mapping cutover/backfill | P0 | PASS PREVIOUSLY | `migrate:fresh` passed on MySQL 8.4 + SQLite; rerun on the final candidate only if database or migration-path code changes. |
 | Temporal mapping concurrency | P1 | ⚠️ PARTIALLY VERIFIED | `mapSensor()` locks the identity rows; still needs a genuine concurrent-connection MySQL race test (M6). |
 | `allReadings` endpoint unbounded | P1 | ⚠️ PARTIALLY FIXED / OPEN | Has a 7-day window + per-sensor limit, but the real bound is `sensors × per_sensor_limit` (no global budget), and `Carbon::parse()` on bad dates can 500 instead of 422. Still needs M7. |
 | `api_key_hash` missing index | P2 | ✅ VERIFIED | `UNIQUE(api_key_hash)` applied cleanly in `migrate:fresh` on MySQL 8.4. |
 | RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `is_admin` retained as migration bridge; caller migration + removal still pending (M8). |
 | Live Gate 9/10 evidence | P0 | OPEN | Core event-processing Docker stack verified; Redis restart, Debezium restart, poison-to-DLQ, browser reconnect, real 35-second no-polling capture, MySQL EXPLAIN, and dependency audit remain open. |
-| MySQL upgrade/backfill path | P1 | PASS WITH EVIDENCE | M9 ran `migrate --force` over a populated legacy fixture and backfilled canonical mappings without data loss. |
+| MySQL upgrade/backfill path | P1 | PASS PREVIOUSLY | M9 ran `migrate --force` over a populated legacy fixture and backfilled canonical mappings without data loss; rerun on the final candidate only if database or migration-path code changes. |
 
 ### What the reviewer asked for (correction order)
 
@@ -182,13 +199,13 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Responsive E2E | ✅ PASS | 35/35 mocked responsive matrix, Mac 2026-09-16 |
 | MySQL `migrate:fresh` | ✅ PASS | All migrations DONE on real MySQL 8.4 (Docker), Mac 2026-09-16 |
 
-### Windows-only audit corrections (local working tree, 2026-09-16)
+### Windows source corrections (committed history, 2026-09-16)
 
 | Finding | Status | Evidence |
 |---|---|---|
 | Alerts and device-status lifecycle ignored RBAC capability changes | CLOSED IN SOURCE | `AppLayout.vue` derives `alert.view` and `device.view`; grant starts and revocation stops plus clears each projection |
 | Alert toast mounted for every authenticated user | CLOSED IN SOURCE | `AlertToast` now requires `alert.view` |
-| Alert badge fetched for users lacking `alert.view` | CLOSED IN SOURCE | `ff8c429` gates the request on `alert.view`; NavBar is retired in the pending working tree change |
+| Alert badge fetched for users lacking `alert.view` | CLOSED IN SOURCE | `ff8c429` gates the request on `alert.view`; the legacy NavBar and its duplicate alert hydration were retired in `ce5f132` |
 | Alert sound runtime config crossed `system_setting.view` boundary | CLOSED IN SOURCE | Sanitized runtime config loads for every `alert.view` user before alert subscription; `system_setting.view` remains an editing permission. |
 | Sensor logout unit scenario modeled a guest resync | CLOSED IN SOURCE | Test exercises authenticated private-channel to guest public-channel transition and projection clear |
 | Legacy NavBar fallback and duplicate alert snapshot owner | CLOSED IN SOURCE | All AppLayout children use LabShell; `NavBar.vue` and its separate `fetchUnresolved()` hydration are retired in `ce5f132`. |
