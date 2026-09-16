@@ -2010,10 +2010,10 @@
     "semantic_hash": "8169a04331a94bee54bb67d3895ef4c0"
   },
   "front/src/api/devices.js": {
-    "mtime": 1789156378.2856638,
-    "seen": 1789157893.3845482,
-    "ast_hash": "05cf210224e38fd1dddce28e9b7dc4f2",
-    "semantic_hash": "05cf210224e38fd1dddce28e9b7dc4f2"
+    "mtime": 1789597465.3284397,
+    "seen": 1789598903.6397333,
+    "ast_hash": "7c662e6afdb1a6dd5c7749a61af6d16f",
+    "semantic_hash": "7c662e6afdb1a6dd5c7749a61af6d16f"
   },
   "front/src/api/graph.js": {
     "mtime": 1789391122.4427145,
@@ -2274,16 +2274,16 @@
     "semantic_hash": "f60a4cbd1073836463307364669fcc07"
   },
   "front/src/components/layout/AppLayout.test.js": {
-    "mtime": 1789577719.9875236,
-    "seen": 1789586284.5175407,
-    "ast_hash": "b00e3bb16089b648e425b9d1dc41b5b1",
-    "semantic_hash": "b00e3bb16089b648e425b9d1dc41b5b1"
+    "mtime": 1789587579.4333727,
+    "seen": 1789598903.639792,
+    "ast_hash": "279da94d38afd1653977f8232b4869d1",
+    "semantic_hash": "279da94d38afd1653977f8232b4869d1"
   },
   "front/src/components/layout/AppLayout.vue": {
-    "mtime": 1789577712.564485,
-    "seen": 1789586284.5175428,
-    "ast_hash": "10aa711f7ddc039726eca3958ffc3254",
-    "semantic_hash": "10aa711f7ddc039726eca3958ffc3254"
+    "mtime": 1789587617.9275904,
+    "seen": 1789598903.639793,
+    "ast_hash": "860879de682a8a0ae940bb276dc85012",
+    "semantic_hash": "860879de682a8a0ae940bb276dc85012"
   },
   "front/src/components/resource-actions.test.js": {
     "mtime": 1789141354.6176124,
@@ -2400,16 +2400,16 @@
     "semantic_hash": "ad5ee67380e9d8311cc2e22da494b976"
   },
   "front/src/realtime/useDeviceStatusRealtime.js": {
-    "mtime": 1789055875.3106656,
-    "seen": 1789157893.3846095,
-    "ast_hash": "27ae158d5976f97aaf31b75869d95850",
-    "semantic_hash": "27ae158d5976f97aaf31b75869d95850"
+    "mtime": 1789595869.9288049,
+    "seen": 1789598903.6398141,
+    "ast_hash": "95b957587b002a95dabb68f84a4c0cbb",
+    "semantic_hash": "95b957587b002a95dabb68f84a4c0cbb"
   },
   "front/src/realtime/useDeviceStatusRealtime.test.js": {
-    "mtime": 1789055876.532667,
-    "seen": 1789157893.3846107,
-    "ast_hash": "d19875e31e37002ec577f5b5d3ed7a32",
-    "semantic_hash": "d19875e31e37002ec577f5b5d3ed7a32"
+    "mtime": 1789596006.9679184,
+    "seen": 1789598903.639815,
+    "ast_hash": "9f8fd7f93475061d2211e304479e1020",
+    "semantic_hash": "9f8fd7f93475061d2211e304479e1020"
   },
   "front/src/realtime/useSensorRealtime.js": {
     "mtime": 1789067307.7416656,
@@ -2454,10 +2454,10 @@
     "semantic_hash": "d08be143425ae0e9d330495408795509"
   },
   "front/src/stores/deviceStatuses.js": {
-    "mtime": 1789056095.4035923,
-    "seen": 1789157893.3846166,
-    "ast_hash": "e1dff7c55386440ca053cbb85ff163ad",
-    "semantic_hash": "e1dff7c55386440ca053cbb85ff163ad"
+    "mtime": 1789595808.1558697,
+    "seen": 1789598903.639824,
+    "ast_hash": "e8564dd76f52a09b4ddf9e52afacbfad",
+    "semantic_hash": "e8564dd76f52a09b4ddf9e52afacbfad"
   },
   "front/src/stores/deviceStatuses.test.js": {
     "mtime": 1789056101.5730183,
@@ -2562,10 +2562,10 @@
     "semantic_hash": "cb33fdc5b99b71ebd10c56b124c1601b"
   },
   "front/src/views/DashboardView.test.js": {
-    "mtime": 1789392508.279868,
-    "seen": 1789478785.4648337,
-    "ast_hash": "601e27320b718d43b9b249b490517b1d",
-    "semantic_hash": "601e27320b718d43b9b249b490517b1d"
+    "mtime": 1789594427.0581717,
+    "seen": 1789598903.6398458,
+    "ast_hash": "ad9d93d7d03ff9ecefc75b26491a6ccf",
+    "semantic_hash": "ad9d93d7d03ff9ecefc75b26491a6ccf"
   },
   "front/src/views/DashboardView.vue": {
     "mtime": 1789392384.9206946,
@@ -2574,28 +2574,28 @@
     "semantic_hash": "3f178b4d31f55c4ae9afff7241fb4610"
   },
   "front/src/views/DeviceDetailView.test.js": {
-    "mtime": 1789049334.523735,
-    "seen": 1789157893.3846323,
-    "ast_hash": "5689a3e717b36079ed5a937de4e71050",
-    "semantic_hash": "5689a3e717b36079ed5a937de4e71050"
+    "mtime": 1789597582.1139956,
+    "seen": 1789598903.6398478,
+    "ast_hash": "66272708e55c1f3b5144786298aae68e",
+    "semantic_hash": "66272708e55c1f3b5144786298aae68e"
   },
   "front/src/views/DeviceDetailView.vue": {
-    "mtime": 1789418410.898549,
-    "seen": 1789478785.4648366,
-    "ast_hash": "8aa9a9fd87b1c4d744e0623c01131ded",
-    "semantic_hash": "8aa9a9fd87b1c4d744e0623c01131ded"
+    "mtime": 1789597508.026142,
+    "seen": 1789598903.639849,
+    "ast_hash": "82053cd7797201f3ea4bcccea52528d1",
+    "semantic_hash": "82053cd7797201f3ea4bcccea52528d1"
   },
   "front/src/views/DevicesView.test.js": {
-    "mtime": 1789418451.633454,
-    "seen": 1789478785.4648376,
-    "ast_hash": "6deef904ef91ff5531e783049e8eccee",
-    "semantic_hash": "6deef904ef91ff5531e783049e8eccee"
+    "mtime": 1789597556.3799272,
+    "seen": 1789598903.63985,
+    "ast_hash": "784abdd5aa87aae388b0bf456e242d6f",
+    "semantic_hash": "784abdd5aa87aae388b0bf456e242d6f"
   },
   "front/src/views/DevicesView.vue": {
-    "mtime": 1789418381.9388325,
-    "seen": 1789478785.4648385,
-    "ast_hash": "f9475c7bbca7e184426eb16f0ebcb8a8",
-    "semantic_hash": "f9475c7bbca7e184426eb16f0ebcb8a8"
+    "mtime": 1789597507.7332394,
+    "seen": 1789598903.639851,
+    "ast_hash": "0133922941bbab25be77d101da4221e2",
+    "semantic_hash": "0133922941bbab25be77d101da4221e2"
   },
   "front/src/views/MetricsView.vue": {
     "mtime": 1789160860.3561566,
@@ -3324,10 +3324,10 @@
     "semantic_hash": "8b33b9c30adf82e14ecd123d1be6a26d"
   },
   "PLAN.md": {
-    "mtime": 1789585534.115637,
-    "seen": 1789586284.5177972,
-    "ast_hash": "5d6057a57a925caf48024e0ad2ca360c",
-    "semantic_hash": "5d6057a57a925caf48024e0ad2ca360c"
+    "mtime": 1789597754.7598581,
+    "seen": 1789598903.639904,
+    "ast_hash": "4b0a5dd9381b491148ad23543cb1565a",
+    "semantic_hash": "4b0a5dd9381b491148ad23543cb1565a"
   },
   "README.md": {
     "mtime": 1789158606.7140954,
@@ -3832,5 +3832,29 @@
     "seen": 1789586284.517799,
     "ast_hash": "8d5640301e3a88a80956ba38f1548716",
     "semantic_hash": "8d5640301e3a88a80956ba38f1548716"
+  },
+  "front/src/components/devices/DeviceApiKeyModal.test.js": {
+    "mtime": 1789597527.8668852,
+    "seen": 1789598903.6397836,
+    "ast_hash": "8c0b54bea74b558ee7a834a5e8bdba0b",
+    "semantic_hash": "8c0b54bea74b558ee7a834a5e8bdba0b"
+  },
+  "front/src/components/devices/DeviceApiKeyModal.vue": {
+    "mtime": 1789597464.7576723,
+    "seen": 1789598903.639785,
+    "ast_hash": "662e4bed6d59255d7d714e14630283c5",
+    "semantic_hash": "662e4bed6d59255d7d714e14630283c5"
+  },
+  "front/src/components/devices/DeviceRealtimeStatus.test.js": {
+    "mtime": 1789597420.604708,
+    "seen": 1789598903.6397884,
+    "ast_hash": "9473e8347794bd78fe6af20852c37fcf",
+    "semantic_hash": "9473e8347794bd78fe6af20852c37fcf"
+  },
+  "front/src/components/devices/DeviceRealtimeStatus.vue": {
+    "mtime": 1789597465.036283,
+    "seen": 1789598903.6397893,
+    "ast_hash": "46fd8f990b1dbdfd87cd9d7d063057eb",
+    "semantic_hash": "46fd8f990b1dbdfd87cd9d7d063057eb"
   }
 }
