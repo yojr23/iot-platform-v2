@@ -94,7 +94,9 @@ class Phase2ApiEndpointsTest extends TestCase
         $response = $this->actingAs($user)->getJson("/api/devices/{$device->id}");
 
         $response->assertOk();
-        $this->assertStringNotContainsString($device->api_key, $response->getContent());
+        // The plaintext api_key column no longer exists; the detail response must not expose a
+        // plaintext key field. Only hash/prefix metadata may appear.
+        $this->assertStringNotContainsString('"api_key"', $response->getContent());
     }
 
     public function test_alerts_index_unresolved_resolve_and_resolve_all_return_json(): void

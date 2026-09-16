@@ -103,8 +103,12 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     })->middleware('throttle:api-read');
 
     Route::get('/profile', [ApiProfileController::class, 'show'])->middleware('throttle:api-read');
+    // Sanitized runtime config (alert_sound_enabled, app_url) — consumed by the alerts store
+    // for every authenticated user, not just admins. No secrets are returned (see
+    // ConfigController::runtime), so auth:sanctum+verified from the enclosing group is the only
+    // gate; requiring admin-level system_setting.view here silently broke alert sound for
+    // non-admin users.
     Route::get('/config/runtime', [ApiConfigController::class, 'runtime'])
-        ->middleware('permission:system_setting.view')
         ->middleware('throttle:api-read');
     Route::get('/metrics', [ApiMetricsController::class, 'index'])->middleware('throttle:api-read');
 

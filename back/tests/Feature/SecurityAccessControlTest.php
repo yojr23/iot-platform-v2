@@ -64,7 +64,7 @@ class SecurityAccessControlTest extends TestCase
 
         $sensor = \App\Models\Sensor::factory()->create();
 
-        $response = $this->actingAs($user)->postJson('/api/alert-rules/store', [
+        $response = $this->actingAs($user)->postJson('/api/alert-rules', [
             'sensor_type_id' => $sensor->sensor_type_id,
             'device_id' => $sensor->device_id,
             'sensor_id' => $sensor->id,
@@ -83,7 +83,7 @@ class SecurityAccessControlTest extends TestCase
     {
         $sensor = \App\Models\Sensor::factory()->create();
 
-        $this->postJson('/api/alert-rules/store', [
+        $this->postJson('/api/alert-rules', [
             'sensor_type_id' => $sensor->sensor_type_id,
             'device_id' => $sensor->device_id,
             'sensor_id' => $sensor->id,

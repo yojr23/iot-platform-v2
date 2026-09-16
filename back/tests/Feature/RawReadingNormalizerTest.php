@@ -347,7 +347,17 @@ class RawReadingNormalizerTest extends TestCase
 
     public function test_duplicate_canonical_payload_keys_use_only_the_first_value_and_projection(): void
     {
-        [$device, $sensor] = $this->deviceAndSensor('node-duplicate-canonical-key');
+        $device = Device::factory()->create([
+            'serial_number' => 'node-duplicate-canonical-key',
+            'status' => true,
+            'is_active' => true,
+        ]);
+        $sensor = Sensor::factory()->create([
+            'device_id' => $device->id,
+            'name' => 'temp',
+        ]);
+        // Payload sends 'Temp'/'temp', both canonicalizing to 'temp' — map that exact key.
+        $this->mapPayloadKey($device, $sensor, 'temp');
         $event = RawSensorEvent::factory()->create([
             'node_id' => $device->serial_number,
             'payload' => [

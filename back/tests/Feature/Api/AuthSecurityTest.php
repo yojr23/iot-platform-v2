@@ -65,8 +65,11 @@ class AuthSecurityTest extends TestCase
 
     public function test_admin_downgrade_revokes_target_user_tokens(): void
     {
-        // Two admins so demoting one still satisfies the "at least one admin" guard.
+        // Superadmin actor: only a superadmin may change another admin's role (RBAC
+        // canManageRole/canAssignRole). The target is a regular admin being demoted to user.
         $actingAdmin = User::factory()->create(['is_admin' => true]);
+        $actingAdmin->role_id = \App\Models\Role::where('code', 'superadmin')->value('id');
+        $actingAdmin->saveQuietly();
         $targetAdmin = User::factory()->create(['is_admin' => true]);
 
         $targetToken = $targetAdmin->createToken('admin-client', ['*'])->plainTextToken;
@@ -81,7 +84,7 @@ class AuthSecurityTest extends TestCase
 
         $this->withToken($actingToken)
             ->patchJson("/api/users/{$targetAdmin->id}/role", [
-                'is_admin' => false,
+                'role_code' => 'user',
             ])
             ->assertOk();
 

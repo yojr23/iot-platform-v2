@@ -412,9 +412,17 @@ async function runAuthTransition() {
     };
   });
 
+  // Routes that require an admin-only permission and MUST redirect a standard user away.
+  // Only /config* (system_setting.view) and /users (user.view) require a permission that
+  // standard users lack. The following are intentionally NOT listed because they are gated by
+  // a permission standard users legitimately hold, matching the backend's read/write split:
+  //   /alert-rules            → alert_rule.view (users have it; nav link not rendered)
+  //   /labs, /sensor-types,   → device.view for read; the API gates writes behind
+  //   /device-types             system_setting.update (admin-only). A user reaching the read
+  //                             view is not a leak — mutations are rejected server-side.
   const adminRoutes = [
     '/config', '/config/general', '/config/alerts', '/config/email', '/config/diagnostics',
-    '/alert-rules', '/labs', '/sensor-types', '/device-types', '/users'
+    '/users'
   ];
   const adminNavigationLeakFree = await page.evaluate((routes) => {
     const hrefs = Array.from(document.querySelectorAll('a[href]')).map((link) => link.getAttribute('href'));

@@ -75,7 +75,7 @@ class CdcOutboxStreamConsumer
         private string $domainCdcStream,
         private string $group,
         private string $deadLetterStream,
-        private ?callable $faultInjectionHook = null,
+        private ?\Closure $faultInjectionHook = null,
     ) {
     }
 

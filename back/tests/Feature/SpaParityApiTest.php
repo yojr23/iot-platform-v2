@@ -159,7 +159,9 @@ class SpaParityApiTest extends TestCase
         Carbon::setTestNow('2026-05-13 12:00:00');
 
         try {
-            $user = User::factory()->create();
+            // Admin: this test also exercises the export endpoint, which is gated behind the
+            // admin-only sensor_reading.export permission (SEC-EXPORT-001).
+            $user = User::factory()->create(['is_admin' => true]);
             $sensor = Sensor::factory()->create();
 
             SensorReading::factory()->create([
@@ -197,23 +199,30 @@ class SpaParityApiTest extends TestCase
 
     public function test_admin_can_manage_user_roles_with_json_api(): void
     {
+        // Superadmin actor: assigning the admin role and managing admins requires superadmin
+        // (RBAC canAssignRole/canManageRole).
         $admin = User::factory()->create(['is_admin' => true]);
+        $admin->role_id = \App\Models\Role::where('code', 'superadmin')->value('id');
+        $admin->saveQuietly();
         $user = User::factory()->create(['is_admin' => false]);
 
         $this->actingAs($admin)->getJson('/api/users')
             ->assertOk()
             ->assertJsonFragment(['id' => $user->id]);
 
+        // Role changes go through role_code (RBAC), not the legacy is_admin boolean.
         $this->actingAs($admin)->patchJson("/api/users/{$user->id}/role", [
-            'is_admin' => true,
+            'role_code' => 'admin',
         ])->assertOk()
             ->assertJsonPath('data.id', $user->id)
-            ->assertJsonPath('data.is_admin', true);
+            ->assertJsonPath('data.is_admin', true)
+            ->assertJsonPath('data.role.code', 'admin');
 
+        // An unknown role code is rejected by validation.
         $this->actingAs($admin)->patchJson("/api/users/{$admin->id}/role", [
-            'is_admin' => false,
+            'role_code' => 'not-a-real-role',
         ])->assertStatus(422)
-            ->assertJsonValidationErrors('is_admin');
+            ->assertJsonValidationErrors('role_code');
     }
 
     public function test_profile_metrics_and_alert_detail_have_json_spa_endpoints(): void

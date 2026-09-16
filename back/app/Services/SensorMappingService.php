@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Device;
 use App\Models\DeviceSensorMapping;
 use App\Models\Sensor;
+use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
@@ -21,7 +22,7 @@ class SensorMappingService
         string $externalKey,
         ?DateTimeInterface $at = null,
     ): ?Sensor {
-        $at ??= now();
+        $at = $this->normalizeLookupTime($at);
         $externalKey = $this->canonicalExternalKey($externalKey);
 
         $mapping = DeviceSensorMapping::query()
@@ -60,6 +61,8 @@ class SensorMappingService
         if ($externalKeys === []) {
             return collect();
         }
+
+        $at = $this->normalizeLookupTime($at);
 
         $externalKeys = array_values(array_unique(array_map(
             fn (string $externalKey): string => $this->canonicalExternalKey($externalKey),
@@ -161,5 +164,20 @@ class SensorMappingService
     private function canonicalExternalKey(string $externalKey): string
     {
         return Str::lower(trim($externalKey));
+    }
+
+    /**
+     * Normalize a lookup instant into the app timezone so temporal comparisons line up with the
+     * stored valid_from/valid_until boundaries (DeviceSensorMapping stores those in app time).
+     * A null instant resolves to "now". A DateTimeInterface with an explicit offset (e.g. a UTC
+     * Carbon) is converted; a naive instant is assumed to already be app-local.
+     */
+    private function normalizeLookupTime(?DateTimeInterface $at): Carbon
+    {
+        $tz = config('app.timezone');
+
+        return ($at === null ? Carbon::now($tz) : Carbon::instance(
+            $at instanceof \DateTimeImmutable ? \DateTime::createFromInterface($at) : $at
+        ))->setTimezone($tz);
     }
 }

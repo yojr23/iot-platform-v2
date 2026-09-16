@@ -100,11 +100,18 @@ class DeadLetterCommandsTest extends TestCase
         $this->assertSame('replayed', $firstReplay['status']);
         $this->assertSame('already_replayed', $secondReplay['status']);
         $this->assertSame($firstReplay['replay_id'], $secondReplay['replay_id']);
-        $this->assertSame([
+        // Redis stream field order is not semantically meaningful, and the replay path
+        // reconstructs fields from a decoded JSON object (unordered in the Lua cjson table),
+        // so compare by key/value regardless of order.
+        $expected = [
             'event_id' => '42',
             'event_type' => 'raw.sensor.received',
             'event_version' => '1',
-        ], $this->streamFields($this->sourceStream, (string) $firstReplay['replay_id']));
+        ];
+        $actual = $this->streamFields($this->sourceStream, (string) $firstReplay['replay_id']);
+        ksort($expected);
+        ksort($actual);
+        $this->assertSame($expected, $actual);
     }
 
     public function test_replay_rejects_a_target_that_does_not_match_the_stored_source_stream(): void

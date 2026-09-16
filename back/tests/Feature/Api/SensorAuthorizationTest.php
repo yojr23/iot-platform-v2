@@ -117,7 +117,8 @@ class SensorAuthorizationTest extends TestCase
 
     public function test_verified_user_can_export_sensor_readings(): void
     {
-        $user = User::factory()->create();
+        // Export is gated behind the admin-only sensor_reading.export permission (SEC-EXPORT-001).
+        $user = User::factory()->create(['is_admin' => true]);
         $sensor = Sensor::factory()->create();
 
         // Export now requires a bounded date range (SEC-EXPORT-001).

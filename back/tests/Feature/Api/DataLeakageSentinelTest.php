@@ -35,7 +35,9 @@ class DataLeakageSentinelTest extends TestCase
         $device = Device::factory()->create();
 
         $this->assertArrayNotHasKey('api_key', $device->toArray());
-        $this->assertStringNotContainsString('api_key', json_encode($device));
+        // The plaintext api_key column was dropped; only hash/prefix metadata remain. Match the
+        // exact "api_key" JSON key so legitimate keys like "api_key_prefix" don't false-positive.
+        $this->assertStringNotContainsString('"api_key"', json_encode($device));
     }
 
     public function test_standard_user_device_detail_omits_network_topology(): void
