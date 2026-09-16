@@ -26,7 +26,14 @@ let activeRecovery = null;
 let snapshotInFlight = false;
 let recoveryRequested = false;
 let recoveryGeneration = 0;
+let projectionFresh = false;
 const MAX_RECOVERY_EVENTS = 100;
+
+function setStatus(store, status) {
+  store.setRealtimeStatus(status);
+  isConnected.value = Boolean(status.connected);
+  error.value = status.error || '';
+}
 
 function eventPayload(event) {
   return event?.data ?? event;
@@ -36,6 +43,13 @@ async function runSnapshot(store, generation) {
   snapshotInFlight = true;
   // One-shot, lifecycle-triggered (subscribe/reconnect/visibility) — never a periodic GET.
   recoveryBuffer.length = 0;
+  setStatus(store, {
+    enabled: true,
+    connected: isConnected.value,
+    mode: 'recovering',
+    channel: DEVICE_STATUS_CHANNEL,
+    error: null
+  });
 
   try {
     const devices = await fetchStatusSnapshot();
@@ -43,9 +57,29 @@ async function runSnapshot(store, generation) {
       return;
     }
     store.applySnapshot(devices, { authoritative: true });
+    projectionFresh = true;
+    setStatus(store, {
+      enabled: true,
+      connected: isConnected.value,
+      mode: isConnected.value ? 'live' : 'stale',
+      channel: DEVICE_STATUS_CHANNEL,
+      error: null
+    });
   } catch {
-    // Lean V1: snapshot failure leaves whatever realtime already produced in place; the
-    // channel stays subscribed so the next DeviceStatusUpdated still applies.
+    if (generation !== recoveryGeneration) {
+      return;
+    }
+
+    // Preserve live events buffered during the failed recovery (finally replays them), but make
+    // the uncertainty explicit: a connected socket alone cannot certify the projection fresh.
+    projectionFresh = false;
+    setStatus(store, {
+      enabled: true,
+      connected: isConnected.value,
+      mode: 'stale',
+      channel: DEVICE_STATUS_CHANNEL,
+      error: 'Error al recuperar el estado de dispositivos; estado posiblemente desactualizado.'
+    });
   } finally {
     if (generation === recoveryGeneration) {
       snapshotInFlight = false;
@@ -139,10 +173,27 @@ export function subscribeDeviceStatus() {
   }
 
   subscribed = true;
-  error.value = '';
 
   stopConnectionWatch = onConnectionStateChange((state) => {
-    isConnected.value = state === 'connected';
+    if (state === 'connected') {
+      setStatus(store, {
+        enabled: true,
+        connected: true,
+        mode: projectionFresh ? 'live' : 'stale',
+        channel: DEVICE_STATUS_CHANNEL,
+        error: null
+      });
+      return;
+    }
+
+    projectionFresh = false;
+    setStatus(store, {
+      enabled: true,
+      connected: false,
+      mode: 'disconnected',
+      channel: DEVICE_STATUS_CHANNEL,
+      error: 'Conexion en tiempo real de dispositivos interrumpida.'
+    });
   }, { immediate: true });
 
   // Subscribe FIRST (above), then fetch the snapshot — a live event during the fetch is
@@ -168,6 +219,7 @@ export function subscribeDeviceStatus() {
 }
 
 export function unsubscribeDeviceStatus() {
+  const store = useDeviceStatusesStore();
   releaseChannel?.();
   stopConnectionWatch?.();
   stopResync?.();
@@ -181,7 +233,14 @@ export function unsubscribeDeviceStatus() {
   snapshotInFlight = false;
   recoveryRequested = false;
   recoveryBuffer = [];
-  isConnected.value = false;
+  projectionFresh = false;
+  setStatus(store, {
+    enabled: false,
+    connected: false,
+    mode: 'disconnected',
+    channel: null,
+    error: null
+  });
 }
 
 export function useDeviceStatusRealtime() {

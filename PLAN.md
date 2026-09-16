@@ -58,6 +58,11 @@ and security/dependency audit.
 previous Mac run. They are not open defects; rerun both against the final candidate only if
 database or application migration-path code changes.
 
+**Dependency security finding:** the latest CI evidence reports `npm audit` findings of **3
+moderate and 2 high** vulnerabilities. This remains OPEN Mac/release security work: assess the
+dependency paths and compatible upgrades against the final candidate; do not run
+`npm audit fix --force` merely to suppress the count.
+
 **Authorization findings requiring Mac ownership:**
 
 1. **Authenticated graph catalog RBAC is unresolved.** `DashboardView` requests
@@ -190,7 +195,7 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 
 | Suite | Status | Count |
 |---|---|---|
-| Frontend unit tests | ✅ PASS | 248/248 (45 files), locally rerun on Windows 2026-09-16 after the runtime-config correction |
+| Frontend unit tests | ✅ PASS | 250/250 (45 files), locally rerun on Windows 2026-09-16 after device-status recovery freshness coverage |
 | Frontend build | ✅ PASS | Clean |
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
 | Architecture CI | ✅ PASS | CI verified |
@@ -209,7 +214,8 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Alert sound runtime config crossed `system_setting.view` boundary | CLOSED IN SOURCE | Sanitized runtime config loads for every `alert.view` user before alert subscription; `system_setting.view` remains an editing permission. |
 | Sensor logout unit scenario modeled a guest resync | CLOSED IN SOURCE | Test exercises authenticated private-channel to guest public-channel transition and projection clear |
 | Legacy NavBar fallback and duplicate alert snapshot owner | CLOSED IN SOURCE | All AppLayout children use LabShell; `NavBar.vue` and its separate `fetchUnresolved()` hydration are retired in `ce5f132`. |
-| Windows frontend verification | PASS | `npx.cmd vitest run`: 45 files, 248 tests, 0 failures after the runtime-config correction |
+| Connected device-status projection could remain stale after snapshot recovery failure | CLOSED IN SOURCE | `useDeviceStatusRealtime` now records recovering/stale/live freshness; failed recovery preserves buffered events, and later successful recovery restores live state. |
+| Windows frontend verification | PASS | `npx.cmd vitest run`: 45 files, 250 tests, 0 failures after device-status recovery freshness coverage |
 
 ---
 

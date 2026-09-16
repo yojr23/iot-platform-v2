@@ -6,7 +6,16 @@ import { defineStore } from 'pinia';
 // overlays instead of refetching device metadata after a status change.
 export const useDeviceStatusesStore = defineStore('deviceStatuses', {
   state: () => ({
-    byDevice: {} // deviceId -> { status, is_active, changed_at, event_sequence, source }
+    byDevice: {}, // deviceId -> { status, is_active, changed_at, event_sequence, source }
+    // Transport connectivity alone does not prove the projection is current. The realtime
+    // adapter owns these transitions around its lifecycle-triggered recovery snapshots.
+    realtimeStatus: {
+      enabled: false,
+      connected: false,
+      mode: 'disconnected',
+      channel: null,
+      error: null
+    }
   }),
 
   getters: {
@@ -14,6 +23,17 @@ export const useDeviceStatusesStore = defineStore('deviceStatuses', {
   },
 
   actions: {
+    setRealtimeStatus(status) {
+      this.realtimeStatus = {
+        enabled: false,
+        connected: false,
+        mode: 'disconnected',
+        channel: null,
+        error: null,
+        ...status
+      };
+    },
+
     // Returns true if applied, false if ignored (malformed payload, or a duplicate/
     // out-of-order event_sequence that must not regress the current entry).
     applyStatusEvent(payload) {
@@ -79,6 +99,13 @@ export const useDeviceStatusesStore = defineStore('deviceStatuses', {
 
     clear() {
       this.byDevice = {};
+      this.setRealtimeStatus({
+        enabled: false,
+        connected: false,
+        mode: 'disconnected',
+        channel: null,
+        error: null
+      });
     }
   }
 });

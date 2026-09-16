@@ -117,6 +117,7 @@ describe('device status realtime adapter', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(store.statusFor(1)).toMatchObject({ status: false, is_active: false, source: 'realtime' });
+    expect(store.realtimeStatus).toMatchObject({ connected: true, mode: 'live', error: null });
   });
 
   it('coalesces overlapping recovery requests and applies the newest authoritative recovery snapshot', async () => {
@@ -194,6 +195,55 @@ describe('device status realtime adapter', () => {
     });
   });
 
+  it('marks a connected projection stale when reconnect recovery fails, then returns it to live after a later recovery succeeds', async () => {
+    let rejectFailedRecovery;
+    getDeviceStatusSnapshot
+      .mockResolvedValueOnce({ data: { data: [], next_cursor: null } })
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        rejectFailedRecovery = reject;
+      }))
+      .mockResolvedValueOnce({ data: { data: [{ device_id: 6, status: true, is_active: true, event_sequence: 4 }], next_cursor: null } });
+
+    const { subscribeDeviceStatus, DEVICE_STATUS_EVENT } = await import('./useDeviceStatusRealtime');
+    const { useAuthStore } = await import('@/stores/auth');
+    const { useDeviceStatusesStore } = await import('@/stores/deviceStatuses');
+    authenticate(useAuthStore());
+    const store = useDeviceStatusesStore();
+
+    subscribeDeviceStatus();
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(store.realtimeStatus).toMatchObject({ connected: true, mode: 'live', error: null });
+
+    fireResync('reconnect');
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledTimes(2));
+
+    const listenCall = echoMock.privateChannel.listen.mock.calls.find(([event]) => event === DEVICE_STATUS_EVENT);
+    listenCall[1]({ device_id: 7, event_sequence: 9, status: false, is_active: false });
+    expect(store.statusFor(7)).toBeNull();
+
+    rejectFailedRecovery(new Error('snapshot unavailable'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.realtimeStatus).toMatchObject({
+      connected: true,
+      mode: 'stale',
+      error: expect.stringContaining('recuperar')
+    });
+    expect(store.statusFor(7)).toMatchObject({
+      event_sequence: 9,
+      status: false,
+      source: 'realtime'
+    });
+
+    fireResync('reconnect');
+    await vi.waitFor(() => expect(getDeviceStatusSnapshot).toHaveBeenCalledTimes(3));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.realtimeStatus).toMatchObject({ connected: true, mode: 'live', error: null });
+    expect(store.statusFor(6)).toMatchObject({ event_sequence: 4, source: 'recovery' });
+  });
+
   it('reads every cursor page before applying the authoritative recovery snapshot', async () => {
     getDeviceStatusSnapshot
       .mockResolvedValueOnce({ data: { data: [{ device_id: 1, status: true, is_active: true, event_sequence: 4 }], next_cursor: 1 } })
@@ -232,6 +282,7 @@ describe('device status realtime adapter', () => {
 
     expect(getChannelRefCount('device-status', { privateChannel: true })).toBe(0);
     expect(store.statusFor(3)).toBeNull();
+    expect(store.realtimeStatus).toMatchObject({ connected: false, mode: 'disconnected', error: null });
   });
 
   it('never starts a timer for the recovery snapshot', async () => {
