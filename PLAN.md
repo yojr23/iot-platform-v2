@@ -30,6 +30,17 @@ Note: on local PHP 8.5 every passing test is tagged "deprecated" purely from the
 `PDO::MYSQL_ATTR_SSL_CA` notice — not a failure (CI's PHP 8.2 is clean). Count real failures by
 grepping `⨯`/`FAILED`.
 
+### Current CI status (authoritative release gate)
+
+Remote CI evidence supplied for `origin/refraccion` at `1e59c50` reports frontend, responsive
+mocked E2E, ingestion, and architecture PASS, but Backend PHP + SQLite + Redis FAIL. The local
+checkout is one unpushed Graphiphy-artifact commit ahead (`1a59319`), and the Windows
+runtime-config correction is in the working tree; neither has an exact-SHA CI result yet.
+
+The Mac-local backend pass is useful prior evidence, not a closure for the later remote failure.
+Until the failing test and stack trace are reproduced, the backend release gate is RED / UNDER
+INVESTIGATION. Gate 9 and Gate 10 remain OPEN.
+
 ### Root causes fixed this session (code)
 
 - **Migration `000008`** dropped `api_key` while the `devices_api_key_unique` index still
@@ -62,9 +73,9 @@ grepping `⨯`/`FAILED`.
   (backend gates catalog **writes** behind `system_setting.update`). RBAC redirect for the real
   admin routes verified.
 
-### Live Docker-stack verification (M9–M12) — full evidence in `docs/GATE10_MAC_VERIFICATION_EVIDENCE_2026-09-16.md`
+### Core event-processing Docker-stack verification (M9–M12) — full evidence in `docs/GATE10_MAC_VERIFICATION_EVIDENCE_2026-09-16.md`
 
-With the complete Docker stack up (db, redis, back, front, debezium + 3 consumers; `ingestion`
+With the core event-processing Docker stack up (db, redis, back, front, debezium + 3 consumers; `ingestion`
 excluded as it needs an external MQTT broker — events injected via `POST /api/ingestion/events`):
 
 - **M9 upgrade path — PASS.** `php artisan migrate --force` (NOT fresh) over a DB with
@@ -116,17 +127,21 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 
 | Item | Severity | Status | Required action |
 |---|---|---|---|
-| Backend CI failing (`php artisan test`) | P0 BLOCKER | ✅ FIXED | 476 tests pass on SQLite+Redis (commit `c6daf18`). |
+| Backend CI failing (`php artisan test`) | P0 BLOCKER | RED / UNDER INVESTIGATION | Mac-local evidence passed, but the supplied exact remote CI record for `1e59c50` fails; reproduce and capture the failing test before closure. |
 | Responsive E2E failing | P1 | ✅ FIXED | 35/35 mocked matrix pass; audit admin-route list corrected (commit `c6daf18`). |
 | Sensor-mapping cutover/backfill | P0 | ✅ VERIFIED | `migrate:fresh` passes on MySQL 8.4 + SQLite; backfill has fail-closed collision preflight. |
 | Temporal mapping concurrency | P1 | ⚠️ PARTIALLY VERIFIED | `mapSensor()` locks the identity rows; still needs a genuine concurrent-connection MySQL race test (M6). |
 | `allReadings` endpoint unbounded | P1 | ⚠️ PARTIALLY FIXED / OPEN | Has a 7-day window + per-sensor limit, but the real bound is `sensors × per_sensor_limit` (no global budget), and `Carbon::parse()` on bad dates can 500 instead of 422. Still needs M7. |
 | `api_key_hash` missing index | P2 | ✅ VERIFIED | `UNIQUE(api_key_hash)` applied cleanly in `migrate:fresh` on MySQL 8.4. |
 | RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `is_admin` retained as migration bridge; caller migration + removal still pending (M8). |
-| Live Gate 9/10 evidence | P0 | ⬜ OPEN | Full Docker stack: WebSocket capture, fault matrix A–E, MySQL EXPLAIN, dependency audit (M10–M17). |
-| MySQL upgrade/backfill path | P1 | ⬜ OPEN | `migrate:fresh` proven; upgrade from a pre-temporal fixture still to run (M9). |
+| Live Gate 9/10 evidence | P0 | OPEN | Core event-processing Docker stack verified; Redis restart, Debezium restart, poison-to-DLQ, browser reconnect, real 35-second no-polling capture, MySQL EXPLAIN, and dependency audit remain open. |
+| MySQL upgrade/backfill path | P1 | PASS WITH EVIDENCE | M9 ran `migrate --force` over a populated legacy fixture and backfilled canonical mappings without data loss. |
 
 ### What the reviewer asked for (correction order)
+
+> Historical correction order only. The **Current CI status (authoritative release gate)** above
+> supersedes its backend-closure wording: remote `1e59c50` backend CI is RED / UNDER
+> INVESTIGATION until its failing test and stack trace are captured.
 
 1. ✅ **Fix backend CI** — DONE. Root cause was a migration cascade, not 13 isolated tests. 476 pass.
 2. ✅ **Fix responsive E2E** — DONE. 35/35; audit's admin-route list corrected to match RBAC.
@@ -143,12 +158,12 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 
 | Suite | Status | Count |
 |---|---|---|
-| Frontend unit tests | ✅ PASS | 247/247 (45 files), locally rerun on Windows 2026-09-16 after NavBar retirement |
+| Frontend unit tests | ✅ PASS | 248/248 (45 files), locally rerun on Windows 2026-09-16 after the runtime-config correction |
 | Frontend build | ✅ PASS | Clean |
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
 | Architecture CI | ✅ PASS | CI verified |
 | Ingestion Python | ✅ PASS | CI verified |
-| Backend Laravel suite | ✅ PASS | 476 tests, 0 failed, 1826 assertions (SQLite + Redis 6399), Mac 2026-09-16 |
+| Backend Laravel suite | RED / UNDER INVESTIGATION | Prior Mac run: 476 tests, 0 failed, 1826 assertions; supplied remote CI at `1e59c50` fails. Capture the current failing test and stack trace on Mac. |
 | Responsive E2E | ✅ PASS | 35/35 mocked responsive matrix, Mac 2026-09-16 |
 | MySQL `migrate:fresh` | ✅ PASS | All migrations DONE on real MySQL 8.4 (Docker), Mac 2026-09-16 |
 
@@ -159,10 +174,10 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Alerts and device-status lifecycle ignored RBAC capability changes | CLOSED IN SOURCE | `AppLayout.vue` derives `alert.view` and `device.view`; grant starts and revocation stops plus clears each projection |
 | Alert toast mounted for every authenticated user | CLOSED IN SOURCE | `AlertToast` now requires `alert.view` |
 | Alert badge fetched for users lacking `alert.view` | CLOSED IN SOURCE | `ff8c429` gates the request on `alert.view`; NavBar is retired in the pending working tree change |
-| Alert sound runtime config crossed `system_setting.view` boundary | CLOSED IN SOURCE | Runtime config is fetched only for `system_setting.view`; alert subscription remains allowed with `alert.view` |
+| Alert sound runtime config crossed `system_setting.view` boundary | CLOSED LOCALLY | Sanitized runtime config now loads for every `alert.view` user before alert subscription; `system_setting.view` remains an editing permission. |
 | Sensor logout unit scenario modeled a guest resync | CLOSED IN SOURCE | Test exercises authenticated private-channel to guest public-channel transition and projection clear |
-| Legacy NavBar fallback and duplicate alert snapshot owner | CLOSED LOCALLY | All AppLayout children use LabShell; `NavBar.vue` and its separate `fetchUnresolved()` hydration are retired pending commit |
-| Windows frontend verification | PASS | `npx.cmd vitest run`: 45 files, 247 tests, 0 failures after NavBar retirement |
+| Legacy NavBar fallback and duplicate alert snapshot owner | CLOSED IN SOURCE | All AppLayout children use LabShell; `NavBar.vue` and its separate `fetchUnresolved()` hydration are retired in `ce5f132`. |
+| Windows frontend verification | PASS | `npx.cmd vitest run`: 45 files, 248 tests, 0 failures after the runtime-config correction |
 
 ---
 

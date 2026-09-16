@@ -47,9 +47,9 @@ async function startGlobalAlerts() {
   startingGlobalAlerts = true;
 
   try {
-    if (authStore.can('system_setting.view')) {
-      await alertsStore.loadRuntimeConfig();
-    }
+    // /config/runtime is a sanitized, authenticated-user contract. Alert viewers need its
+    // sound preference; system_setting.view controls editing settings, not reading this value.
+    await alertsStore.loadRuntimeConfig();
     if (startupGeneration !== globalAlertsStartupGeneration || !canViewAlerts.value) {
       return;
     }

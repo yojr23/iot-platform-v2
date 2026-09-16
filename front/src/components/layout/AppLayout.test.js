@@ -146,6 +146,19 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     unmount();
   });
 
+  it('loads sanitized alert runtime config for a non-admin alert viewer and keeps realtime active if it fails', async () => {
+    getRuntimeConfig.mockRejectedValueOnce(new Error('runtime config unavailable'));
+    await authenticate({ permissions: ['alert.view'] });
+
+    const { unmount } = await mountAppLayout();
+
+    expect(getRuntimeConfig).toHaveBeenCalledTimes(1);
+    expect(subscribeAlerts).toHaveBeenCalledTimes(1);
+    expect(subscribeDeviceStatus).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
   it('starts each projection once when its permission is granted after login', async () => {
     const authStore = await authenticate();
     const { unmount } = await mountAppLayout();
@@ -155,7 +168,7 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     await flush();
     await flush();
 
-    expect(getRuntimeConfig).not.toHaveBeenCalled();
+    expect(getRuntimeConfig).toHaveBeenCalledTimes(1);
     expect(subscribeAlerts).toHaveBeenCalledTimes(1);
     expect(subscribeDeviceStatus).toHaveBeenCalledTimes(1);
 
