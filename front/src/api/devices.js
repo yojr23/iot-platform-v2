@@ -28,6 +28,10 @@ export function updateDeviceStatus(deviceId, payload) {
   return apiClient.post(`/devices/${deviceId}/status`, payload);
 }
 
+export function rotateDeviceKey(deviceId) {
+  return apiClient.post(`/devices/${deviceId}/rotate-key`);
+}
+
 export function getDeviceSensors(deviceId) {
   return apiClient.get(`/devices/${deviceId}/sensor-list`);
 }

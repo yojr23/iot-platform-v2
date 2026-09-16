@@ -6,6 +6,7 @@
         <p class="lab-resource-description">Consulta el estado de tus equipos y sus sensores asociados.</p>
       </div>
       <div class="lab-resource-actions">
+        <DeviceRealtimeStatus />
         <button v-if="authStore.can('device.create')" class="btn btn-primary" type="button" @click="openCreate">
           <I name="plus" />Nuevo dispositivo
         </button>
@@ -80,6 +81,12 @@
           </div>
         </form>
     </BaseModal>
+
+    <DeviceApiKeyModal
+      :show="Boolean(oneTimeApiKey)"
+      :api-key="oneTimeApiKey"
+      @close="clearOneTimeApiKey"
+    />
   </section>
 </template>
 
@@ -95,8 +102,10 @@ import BaseInput from '@/components/base/BaseInput.vue';
 import BaseModal from '@/components/base/BaseModal.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import I from '@/components/dashboard/lab/LabIcon.vue';
+import DeviceApiKeyModal from '@/components/devices/DeviceApiKeyModal.vue';
 import DeviceFilters from '@/components/devices/DeviceFilters.vue';
 import DeviceList from '@/components/devices/DeviceList.vue';
+import DeviceRealtimeStatus from '@/components/devices/DeviceRealtimeStatus.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 import { asArray, paginatedItems, validationMessage } from '@/utils/formatters';
@@ -121,6 +130,9 @@ const lastPage = ref(1);
 const loadingMore = ref(false);
 const hasMore = computed(() => page.value < lastPage.value);
 const DEVICES_PER_PAGE = 50;
+// Plaintext keys are intentionally component-local and are cleared as soon as their one-time
+// handoff modal closes. Never put them in a Pinia store or browser storage.
+const oneTimeApiKey = ref('');
 
 function defaultDeviceForm() {
   return {
@@ -267,6 +279,10 @@ function closeForm() {
   validationErrors.value = {};
 }
 
+function clearOneTimeApiKey() {
+  oneTimeApiKey.value = '';
+}
+
 function devicePayload() {
   return {
     ...deviceForm.value,
@@ -283,12 +299,18 @@ async function saveDevice() {
   validationErrors.value = {};
 
   try {
-    const response = editingDeviceId.value
+    const isEditing = Boolean(editingDeviceId.value);
+    const response = isEditing
       ? await updateDevice(editingDeviceId.value, devicePayload())
       : await createDevice(devicePayload());
 
+    // Laravel returns the plaintext API key only from creation. Capture it before reloading the
+    // list, but never attach it to device metadata or persisted application state.
+    const apiKey = isEditing ? '' : response.data?.api_key || '';
+
     success.value = response.data?.message || 'Dispositivo guardado.';
     closeForm();
+    oneTimeApiKey.value = apiKey;
     await load();
   } catch (requestError) {
     validationErrors.value = getValidationErrors(requestError);

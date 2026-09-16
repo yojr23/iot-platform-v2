@@ -49,25 +49,15 @@
               >
                 {{ effectiveDevice?.status && effectiveDevice?.is_active ? 'Desactivar' : 'Activar' }}
               </button>
+              <DeviceRealtimeStatus />
             </dd>
           </dl>
 
-          <div v-if="authStore.can('device.api_key.rotate') && device?.api_key" class="mt-3">
-            <label class="form-label d-block" for="device_api_key">Credencial de ingesta (API key)</label>
-            <div class="input-group input-group-sm">
-              <input
-                id="device_api_key"
-                class="form-control font-monospace"
-                :type="showApiKey ? 'text' : 'password'"
-                :value="device.api_key"
-                readonly
-              />
-              <button class="btn btn-outline-secondary" type="button" @click="showApiKey = !showApiKey">
-                {{ showApiKey ? 'Ocultar' : 'Mostrar' }}
-              </button>
-              <button class="btn btn-outline-secondary" type="button" @click="copyApiKey">Copiar</button>
-            </div>
-            <p v-if="apiKeyCopied" class="text-success small mb-0 mt-1">Copiado al portapapeles.</p>
+          <div v-if="authStore.can('device.api_key.rotate')" class="mt-3">
+            <button class="btn btn-outline-secondary" type="button" :disabled="rotatingApiKey" @click="rotateApiKey">
+              {{ rotatingApiKey ? 'Rotando clave...' : 'Rotar clave de API' }}
+            </button>
+            <p class="text-muted small mb-0 mt-2">La nueva clave sustituirá de inmediato la credencial anterior.</p>
           </div>
         </div>
       </div>
@@ -164,16 +154,24 @@
         </div>
       </div>
     </div>
+
+    <DeviceApiKeyModal
+      :show="Boolean(oneTimeApiKey)"
+      :api-key="oneTimeApiKey"
+      @close="clearOneTimeApiKey"
+    />
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 
-import { getDevice, getDeviceSensors, updateDeviceStatus } from '@/api/devices';
+import { getDevice, getDeviceSensors, rotateDeviceKey, updateDeviceStatus } from '@/api/devices';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
+import DeviceApiKeyModal from '@/components/devices/DeviceApiKeyModal.vue';
+import DeviceRealtimeStatus from '@/components/devices/DeviceRealtimeStatus.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 import { asArray, formatDate, formatNumber } from '@/utils/formatters';
@@ -192,8 +190,10 @@ const sensors = ref([]);
 const loading = ref(false);
 const error = ref('');
 const updatingStatus = ref(false);
-const showApiKey = ref(false);
-const apiKeyCopied = ref(false);
+const rotatingApiKey = ref(false);
+// Plaintext keys are ephemeral component state: the API supplies them once after rotation and
+// this value is cleared on modal dismissal. It is deliberately never added to `device`.
+const oneTimeApiKey = ref('');
 
 // Gate 8.5: overlay the shared realtime/snapshot projection over the fetched device — the
 // projection (fed by useDeviceStatusRealtime, no polling here) owns the live status.
@@ -253,16 +253,33 @@ async function toggleStatus() {
   }
 }
 
-async function copyApiKey() {
-  if (!device.value?.api_key) {
+function clearOneTimeApiKey() {
+  oneTimeApiKey.value = '';
+}
+
+async function rotateApiKey() {
+  if (!authStore.can('device.api_key.rotate') || !device.value) {
     return;
   }
 
-  await navigator.clipboard.writeText(device.value.api_key);
-  apiKeyCopied.value = true;
-  setTimeout(() => {
-    apiKeyCopied.value = false;
-  }, 2000);
+  if (!window.confirm('La clave actual dejará de funcionar. ¿Desea rotarla?')) {
+    return;
+  }
+
+  rotatingApiKey.value = true;
+  error.value = '';
+  try {
+    const response = await rotateDeviceKey(device.value.id);
+    const apiKey = response.data?.api_key || '';
+    if (!apiKey) {
+      throw new Error('La respuesta no incluyó la nueva clave de API.');
+    }
+    oneTimeApiKey.value = apiKey;
+  } catch (requestError) {
+    error.value = getApiErrorMessage(requestError, 'No se pudo rotar la clave de API.');
+  } finally {
+    rotatingApiKey.value = false;
+  }
 }
 
 onMounted(load);
