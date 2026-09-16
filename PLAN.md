@@ -62,6 +62,31 @@ grepping `⨯`/`FAILED`.
   (backend gates catalog **writes** behind `system_setting.update`). RBAC redirect for the real
   admin routes verified.
 
+### Live Docker-stack verification (M9–M12) — full evidence in `docs/GATE10_MAC_VERIFICATION_EVIDENCE_2026-09-16.md`
+
+With the complete Docker stack up (db, redis, back, front, debezium + 3 consumers; `ingestion`
+excluded as it needs an external MQTT broker — events injected via `POST /api/ingestion/events`):
+
+- **M9 upgrade path — PASS.** `php artisan migrate --force` (NOT fresh) over a DB with
+  pre-existing data (1 device, 2 sensors, no mappings table) applied every new migration on
+  populated tables and backfilled both sensors correctly (canonical keys, one open interval
+  each, no collisions, no data loss). Real upgrade proof, complementing the `migrate:fresh` run.
+- **M10 stack health — PASS.** 8 services healthy, no restart loops, `/api/health`=200. Debezium
+  connected to MySQL 8.0.46, snapshot complete, streaming binlog → Redis; all CDC + domain
+  streams present; consumers looping clean.
+- **M11 vertical slice — PASS.** Injected a marked reading and traced all 8 stages
+  HTTP→raw→normalizer(temporal mapping resolved `temperature`)→sensor_readings(42.7)→
+  reading_projections(provenance)→domain outbox(published, delivered_at set)→Debezium CDC→Redis
+  `iot.domain-events`. Validates the tz mapping fix on a real MySQL+Debezium stack. Device
+  isolation: valid X-Device-Key → only that device's sensors; invalid/missing → 401.
+- **M12 fault matrix (core) — PASS.** (1) Duplicate/at-least-once: re-POST same
+  `source_event_id` → `duplicate:true`, 0 duplicate readings. (2) Consumer group health:
+  pending=0, lag=0 across groups. (3) Crash+recovery: killed `outbox-cdc-consumer`, event stayed
+  durable at `pending` (not lost, nothing falsely delivered); on restart, full recovery in ~8s
+  (received→processed, pending→published, reading created). No loss, no manual intervention.
+- **M12 remaining (OPEN):** Redis restart, Debezium restart, poison→DLQ, browser
+  disconnect/reconnect, >35s real-browser no-polling capture.
+
 ### Previous reconciliation retained below for history
 
 ### Items now CLOSED in source (no further action needed)
