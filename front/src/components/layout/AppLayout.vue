@@ -1,38 +1,13 @@
 <template>
-  <LabShell v-if="usesLabShell">
+  <LabShell>
     <slot />
     <AlertToast v-if="canViewAlerts" />
   </LabShell>
-  <div v-else class="app-shell">
-    <NavBar />
-
-    <main class="app-main py-4">
-      <div class="container-fluid px-3 px-lg-4">
-        <slot />
-      </div>
-    </main>
-
-    <AlertToast v-if="canViewAlerts" />
-
-    <footer class="app-footer border-top py-3">
-      <div class="container-fluid px-3 px-lg-4 small text-muted">
-        iot-platform-v2
-      </div>
-    </footer>
-  </div>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, watch } from 'vue';
-import { useRoute } from 'vue-router';
 import LabShell from '@/components/dashboard/lab/LabShell.vue';
-const route = useRoute();
-const usesLabShell = computed(() => [
-  'dashboard', 'devices', 'device-detail', 'sensors', 'sensor-detail',
-  'alerts', 'alert-detail', 'alert-rules',
-  'config', 'config-general', 'config-alerts', 'config-email', 'config-diagnostics',
-  'labs', 'sensor-types', 'device-types', 'users', 'metrics', 'profile'
-].includes(route?.name));
 
 import AlertToast from '@/components/alerts/AlertToast.vue';
 import { useAlertsRealtime } from '@/realtime/useAlertsRealtime';
@@ -41,8 +16,6 @@ import { useAlertsStore } from '@/stores/alerts';
 import { useAuthStore } from '@/stores/auth';
 import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 import { unlockAlertSound } from '@/utils/sound';
-
-import NavBar from './NavBar.vue';
 
 const authStore = useAuthStore();
 const alertsStore = useAlertsStore();

@@ -6,7 +6,7 @@
 
 ## RECONCILIATION — 2026-09-16
 
-This section reconciles the plan against audited `refraccion` HEAD `8b3d4e49f94f033c2fda86967a60ae415e1f987a` and the Windows-only corrections currently in this working tree. It replaces stale status claims elsewhere in this document. Backend, responsive-browser, Docker, and Mac-only claims retain their reported status until independently rerun.
+This section reconciles the plan against committed `refraccion` HEAD `ff8c42989e561d614cdac3d5d37126191c5924a1` plus the NavBar retirement currently in this working tree. It replaces stale status claims elsewhere in this document. Backend, responsive-browser, Docker, and Mac-only claims retain their reported status until independently rerun.
 
 ### Items now CLOSED in source (no further action needed)
 
@@ -43,7 +43,7 @@ This section reconciles the plan against audited `refraccion` HEAD `8b3d4e49f94f
 | `api_key_hash` missing index | P2 | ⚠️ CODED_NOT_VERIFIED | Migration adds `UNIQUE(api_key_hash)`; needs migration run on Mac |
 | RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `DeviceResource` uses `isAdmin()`; `is_admin` retained as migration bridge; needs runtime verification |
 | Live Gate 9/10 evidence | P0 | ⬜ OPEN | Requires Mac + Docker stack: WebSocket capture, fault injection A–E, MySQL EXPLAIN, dependency audit |
-| `PLAN.md` reconciliation | IN PROGRESS | ⚠️ | Refresh the audited SHA after these uncommitted Windows changes are committed |
+| `PLAN.md` reconciliation | IN PROGRESS | ⚠️ | Refresh the source SHA after the pending NavBar retirement is committed |
 
 ### What the reviewer asked for (correction order)
 
@@ -62,7 +62,7 @@ This section reconciles the plan against audited `refraccion` HEAD `8b3d4e49f94f
 
 | Suite | Status | Count |
 |---|---|---|
-| Frontend unit tests | ✅ PASS | 256/256 (46 files), locally rerun on Windows 2026-09-16 |
+| Frontend unit tests | ✅ PASS | 247/247 (45 files), locally rerun on Windows 2026-09-16 after NavBar retirement |
 | Frontend build | ✅ PASS | Clean |
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
 | Architecture CI | ✅ PASS | CI verified |
@@ -74,12 +74,13 @@ This section reconciles the plan against audited `refraccion` HEAD `8b3d4e49f94f
 
 | Finding | Status | Evidence |
 |---|---|---|
-| Alerts and device-status lifecycle ignored RBAC capability changes | CLOSED locally | `AppLayout.vue` derives `alert.view` and `device.view`; grant starts and revocation stops plus clears each projection |
-| Alert toast mounted for every authenticated user | CLOSED locally | `AlertToast` now requires `alert.view` |
-| Alert badge fetched for users lacking `alert.view` | CLOSED locally | `NavBar.refreshAlertBadge()` returns before the API request without that capability |
-| Alert sound runtime config crossed `system_setting.view` boundary | CLOSED locally | Runtime config is fetched only for `system_setting.view`; alert subscription remains allowed with `alert.view` |
-| Sensor logout unit scenario modeled a guest resync | CLOSED locally | Test now exercises authenticated private-channel to guest public-channel transition and projection clear |
-| Windows frontend verification | PASS | `npx.cmd vitest run`: 46 files, 256 tests, 0 failures |
+| Alerts and device-status lifecycle ignored RBAC capability changes | CLOSED IN SOURCE | `AppLayout.vue` derives `alert.view` and `device.view`; grant starts and revocation stops plus clears each projection |
+| Alert toast mounted for every authenticated user | CLOSED IN SOURCE | `AlertToast` now requires `alert.view` |
+| Alert badge fetched for users lacking `alert.view` | CLOSED IN SOURCE | `ff8c429` gates the request on `alert.view`; NavBar is retired in the pending working tree change |
+| Alert sound runtime config crossed `system_setting.view` boundary | CLOSED IN SOURCE | Runtime config is fetched only for `system_setting.view`; alert subscription remains allowed with `alert.view` |
+| Sensor logout unit scenario modeled a guest resync | CLOSED IN SOURCE | Test exercises authenticated private-channel to guest public-channel transition and projection clear |
+| Legacy NavBar fallback and duplicate alert snapshot owner | CLOSED LOCALLY | All AppLayout children use LabShell; `NavBar.vue` and its separate `fetchUnresolved()` hydration are retired pending commit |
+| Windows frontend verification | PASS | `npx.cmd vitest run`: 45 files, 247 tests, 0 failures after NavBar retirement |
 
 ---
 

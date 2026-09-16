@@ -2,10 +2,6 @@ import { createApp, nextTick } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('vue-router', () => ({
-  useRoute: () => ({ name: undefined })
-}));
-
 const subscribeAlerts = vi.fn(() => true);
 const unsubscribeAlerts = vi.fn();
 const subscribeDeviceStatus = vi.fn(() => true);
@@ -14,7 +10,7 @@ const getRuntimeConfig = vi.fn(() => Promise.resolve({ data: {} }));
 const getPublicConfig = vi.fn(() => Promise.resolve({ data: {} }));
 const getActiveAlerts = vi.fn(() => Promise.resolve({ data: { alerts: [], count: 0 } }));
 
-vi.mock('./NavBar.vue', () => ({ default: { template: '<div />' } }));
+vi.mock('@/components/dashboard/lab/LabShell.vue', () => ({ default: { template: '<section data-testid="lab-shell"><slot /></section>' } }));
 vi.mock('@/components/alerts/AlertToast.vue', () => ({ default: { template: '<div data-testid="alert-toast-host" />' } }));
 
 vi.mock('@/realtime/useAlertsRealtime', () => ({
@@ -109,6 +105,14 @@ describe('AppLayout guest vs authenticated alert initialization', () => {
     expect(getActiveAlerts).not.toHaveBeenCalled();
     expect(subscribeAlerts).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+
+    unmount();
+  });
+
+  it('renders every AppLayout child through LabShell instead of the retired NavBar fallback', async () => {
+    const { el, unmount } = await mountAppLayout();
+
+    expect(el.querySelector('[data-testid="lab-shell"]')).not.toBeNull();
 
     unmount();
   });
