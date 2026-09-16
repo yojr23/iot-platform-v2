@@ -35,7 +35,12 @@ grepping `⨯`/`FAILED`.
 
 ### Current release state (authoritative)
 
-**Current application baseline:** `719a3f5444bbfaf2ff2cefab42f8b7dddf0542e3`.
+**Last Mac-certified application baseline:** `719a3f5444bbfaf2ff2cefab42f8b7dddf0542e3`.
+
+**Current Windows/source candidate:** `700831f18dbead51712ff8e1058d4480223b0c02`
+(`fix(front): hand off device credentials once`). This candidate has Windows-valid frontend/source
+evidence only; it has not been certified on Mac and the documentation-only commit that records
+this handoff must receive its own exact-SHA CI result.
 
 | CI job | Status |
 |---|---|
@@ -45,8 +50,14 @@ grepping `⨯`/`FAILED`.
 | Ingestion Python | PASS |
 | Architecture | PASS |
 
-**Windows/source phase: COMPLETE** after this documentation correction is committed and its CI
-run is green. Windows is not a Gate 9/Gate 10 certification environment.
+**Windows/source implementation is COMPLETE** at `700831f` subject to this documentation commit
+and its exact-SHA CI run. Windows is not a Gate 9/Gate 10 certification environment and this
+does not close either gate.
+
+**Current Windows-only evidence for `700831f`:** `npx.cmd vitest run` passed 47 files / 262
+tests; `npm.cmd run build` passed; and `npm.cmd run audit:no-polling:source` passed. This is
+source evidence, not live browser, backend, database, Redis, Docker, MQTT, Debezium, or WebSocket
+certification.
 
 **Mac certification remains OPEN:** device provisioning atomicity; sensor plus mapping
 atomicity; mapping concurrency; allReadings scalability/bounds; MQTT-to-browser E2E; Redis and
@@ -75,6 +86,11 @@ dependency paths and compatible upgrades against the final candidate; do not run
    `private-sensor.{id}` authorization to `ResourceAccessService::canViewSensor()`, but final
    certification must exercise allowed and denied users through the real broadcaster/browser
    flow, including revocation. This is not certifiable from Windows mocks.
+3. **Sensor access permissions are semantically inconsistent.** Sensor list/detail/graph-zones
+   routes use `sensor.view`, while readings, private series, and latest-readings use
+   `sensor_reading.view`; the SPA sensor route and navigation use `sensor.view`. Define and test
+   the intended RBAC matrix (including REST and private-channel behavior) on Mac before treating
+   either permission as a complete sensor-data authorization boundary.
 
 **Gate 9: OPEN. Gate 10: OPEN. PLAN: OPEN.** Final closure is reserved for the Mac-certified
 application SHA and a subsequent green documentation-only closure commit.
@@ -156,8 +172,7 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Broadcast marked/XACKed before WebSocket dispatch | CLOSED | `DomainEventBroadcastConsumer` broadcasts outside DB lock; XACK after `delivered_at` |
 | `usleep` in production Ingestion code | CLOSED | Fault injection seam extracted; `faultInjectionPauseAfterPublishMs()` static for test harness only |
 | Duplicate `POST /alert-rules/store` route | CLOSED | Dead route removed |
-| Device API key never returned to caller | CLOSED | `DeviceApiController::store()` returns `api_key` once via `Device::pullPlaintextApiKey()` |
-| Eager-loaded readings global limit | CLOSED | `allReadings()` now uses bounded from/to window + per-sensor limit |
+| Device API key returned by backend once | CLOSED IN BACKEND SOURCE | `DeviceApiController::store()` returns `api_key` once via `Device::pullPlaintextApiKey()`; the SPA handoff is tracked separately below |
 | Silent null role_id on user create | CLOSED | `User::creating` throws `RuntimeException` when role code not found |
 | Firefox download broken (detached element) | CLOSED | `SensorDetailView.vue` appends link to `document.body` before click |
 
@@ -195,7 +210,7 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 
 | Suite | Status | Count |
 |---|---|---|
-| Frontend unit tests | ✅ PASS | 250/250 (45 files), locally rerun on Windows 2026-09-16 after device-status recovery freshness coverage |
+| Frontend unit tests | ✅ PASS | 262/262 (47 files), locally rerun on Windows 2026-09-16 for the credential lifecycle and device freshness UI |
 | Frontend build | ✅ PASS | Clean |
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
 | Architecture CI | ✅ PASS | CI verified |
@@ -215,7 +230,10 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Sensor logout unit scenario modeled a guest resync | CLOSED IN SOURCE | Test exercises authenticated private-channel to guest public-channel transition and projection clear |
 | Legacy NavBar fallback and duplicate alert snapshot owner | CLOSED IN SOURCE | All AppLayout children use LabShell; `NavBar.vue` and its separate `fetchUnresolved()` hydration are retired in `ce5f132`. |
 | Connected device-status projection could remain stale after snapshot recovery failure | CLOSED IN SOURCE | `useDeviceStatusRealtime` now records recovering/stale/live freshness; failed recovery preserves buffered events, and later successful recovery restores live state. |
-| Windows frontend verification | PASS | `npx.cmd vitest run`: 45 files, 250 tests, 0 failures after device-status recovery freshness coverage |
+| Device-status freshness was not visible to operators | CLOSED IN SOURCE | `700831f` renders live/recovering/stale/disconnected state in device list/detail; focused UI and existing lifecycle tests cover recovery failure/success, buffered events, and projection clearing. |
+| SPA discarded the one-time device API key | SOURCE FIXED / MAC QA OPEN | `700831f` keeps the key in a component-local ref, shows a copyable one-time modal after create/rotate, clears it on dismissal, and never places it in Pinia or browser storage. Live browser QA remains part of Mac certification. |
+| Frontend API-key rotation control absent | CLOSED IN SOURCE | `700831f` calls `POST /devices/{id}/rotate-key` only from the permission-gated `device.api_key.rotate` control and presents the returned one-time key. |
+| Windows frontend verification | PASS | `700831f`: `npx.cmd vitest run` 47 files / 262 tests, production build, and static no-polling gate all passed. |
 
 ---
 
