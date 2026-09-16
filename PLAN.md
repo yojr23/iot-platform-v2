@@ -30,16 +30,32 @@ Note: on local PHP 8.5 every passing test is tagged "deprecated" purely from the
 `PDO::MYSQL_ATTR_SSL_CA` notice — not a failure (CI's PHP 8.2 is clean). Count real failures by
 grepping `⨯`/`FAILED`.
 
-### Current CI status (authoritative release gate)
+> The preceding Mac-session notes are retained as historical evidence only; they do not certify
+> the current application baseline or close any gate.
 
-Remote CI evidence supplied for `origin/refraccion` at `1e59c50` reports frontend, responsive
-mocked E2E, ingestion, and architecture PASS, but Backend PHP + SQLite + Redis FAIL. The local
-checkout is one unpushed Graphiphy-artifact commit ahead (`1a59319`), and the Windows
-runtime-config correction is in the working tree; neither has an exact-SHA CI result yet.
+### Current release state (authoritative)
 
-The Mac-local backend pass is useful prior evidence, not a closure for the later remote failure.
-Until the failing test and stack trace are reproduced, the backend release gate is RED / UNDER
-INVESTIGATION. Gate 9 and Gate 10 remain OPEN.
+**Current application baseline:** `719a3f5444bbfaf2ff2cefab42f8b7dddf0542e3`.
+
+| CI job | Status |
+|---|---|
+| Frontend unit/build/no-polling | PASS |
+| Responsive mocked E2E | PASS |
+| Backend PHP + SQLite + Redis | PASS |
+| Ingestion Python | PASS |
+| Architecture | PASS |
+
+**Windows/source phase: COMPLETE** after this documentation correction is committed and its CI
+run is green. Windows is not a Gate 9/Gate 10 certification environment.
+
+**Mac certification remains OPEN:** device provisioning atomicity; sensor plus mapping
+atomicity; mapping concurrency; allReadings scalability/bounds; MySQL fresh/upgrade migration;
+MQTT-to-browser E2E; Redis and Debezium recovery; XAUTOCLAIM/reclaim; poison-to-DLQ; WebSocket
+disconnect/reconnect; real-browser no-polling capture longer than 35 seconds; desktop/mobile QA;
+database performance; and security/dependency audit.
+
+**Gate 9: OPEN. Gate 10: OPEN. PLAN: OPEN.** Final closure is reserved for the Mac-certified
+application SHA and a subsequent green documentation-only closure commit.
 
 ### Root causes fixed this session (code)
 
@@ -127,7 +143,7 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 
 | Item | Severity | Status | Required action |
 |---|---|---|---|
-| Backend CI failing (`php artisan test`) | P0 BLOCKER | RED / UNDER INVESTIGATION | Mac-local evidence passed, but the supplied exact remote CI record for `1e59c50` fails; reproduce and capture the failing test before closure. |
+| Backend CI historical regression (`php artisan test`) | P0 BLOCKER | RESOLVED AT BASELINE | The current baseline `719a3f` has a green backend CI job; retain the earlier failure only as historical context. |
 | Responsive E2E failing | P1 | ✅ FIXED | 35/35 mocked matrix pass; audit admin-route list corrected (commit `c6daf18`). |
 | Sensor-mapping cutover/backfill | P0 | ✅ VERIFIED | `migrate:fresh` passes on MySQL 8.4 + SQLite; backfill has fail-closed collision preflight. |
 | Temporal mapping concurrency | P1 | ⚠️ PARTIALLY VERIFIED | `mapSensor()` locks the identity rows; still needs a genuine concurrent-connection MySQL race test (M6). |
@@ -139,9 +155,8 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 
 ### What the reviewer asked for (correction order)
 
-> Historical correction order only. The **Current CI status (authoritative release gate)** above
-> supersedes its backend-closure wording: remote `1e59c50` backend CI is RED / UNDER
-> INVESTIGATION until its failing test and stack trace are captured.
+> Historical correction order only. The **Current release state (authoritative)** above
+> supersedes this list's older status wording.
 
 1. ✅ **Fix backend CI** — DONE. Root cause was a migration cascade, not 13 isolated tests. 476 pass.
 2. ✅ **Fix responsive E2E** — DONE. 35/35; audit's admin-route list corrected to match RBAC.
@@ -163,7 +178,7 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | No-polling source gate | ✅ PASS | Zero `usleep`/polling in production |
 | Architecture CI | ✅ PASS | CI verified |
 | Ingestion Python | ✅ PASS | CI verified |
-| Backend Laravel suite | RED / UNDER INVESTIGATION | Prior Mac run: 476 tests, 0 failed, 1826 assertions; supplied remote CI at `1e59c50` fails. Capture the current failing test and stack trace on Mac. |
+| Backend Laravel suite | PASS | Current baseline `719a3f` CI is green; prior Mac evidence remains supporting context. |
 | Responsive E2E | ✅ PASS | 35/35 mocked responsive matrix, Mac 2026-09-16 |
 | MySQL `migrate:fresh` | ✅ PASS | All migrations DONE on real MySQL 8.4 (Docker), Mac 2026-09-16 |
 
@@ -174,7 +189,7 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Alerts and device-status lifecycle ignored RBAC capability changes | CLOSED IN SOURCE | `AppLayout.vue` derives `alert.view` and `device.view`; grant starts and revocation stops plus clears each projection |
 | Alert toast mounted for every authenticated user | CLOSED IN SOURCE | `AlertToast` now requires `alert.view` |
 | Alert badge fetched for users lacking `alert.view` | CLOSED IN SOURCE | `ff8c429` gates the request on `alert.view`; NavBar is retired in the pending working tree change |
-| Alert sound runtime config crossed `system_setting.view` boundary | CLOSED LOCALLY | Sanitized runtime config now loads for every `alert.view` user before alert subscription; `system_setting.view` remains an editing permission. |
+| Alert sound runtime config crossed `system_setting.view` boundary | CLOSED IN SOURCE | Sanitized runtime config loads for every `alert.view` user before alert subscription; `system_setting.view` remains an editing permission. |
 | Sensor logout unit scenario modeled a guest resync | CLOSED IN SOURCE | Test exercises authenticated private-channel to guest public-channel transition and projection clear |
 | Legacy NavBar fallback and duplicate alert snapshot owner | CLOSED IN SOURCE | All AppLayout children use LabShell; `NavBar.vue` and its separate `fetchUnresolved()` hydration are retired in `ce5f132`. |
 | Windows frontend verification | PASS | `npx.cmd vitest run`: 45 files, 248 tests, 0 failures after the runtime-config correction |
