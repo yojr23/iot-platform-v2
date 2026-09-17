@@ -1,4 +1,6 @@
-from app.normalizer import build_raw_event, derive_source_event_id
+import pytest
+
+from app.normalizer import MissingEventIdentityError, build_raw_event, derive_source_event_id
 
 
 def test_build_raw_event_generates_contract_for_backend():
@@ -85,19 +87,47 @@ def test_source_event_identity_uses_session_boot_count_and_reading_index_before_
     )
 
 
-def test_source_event_identity_falls_back_to_a_canonical_semantic_fingerprint():
-    first = {
+def test_source_event_identity_rejects_payload_with_no_event_id_or_sequence_tuple():
+    payload = {
         "timestamp": "2026-05-14T17:30:00Z",
         "device": {"node_id": "lab-01"},
         "sensors": {"temperature": {"value": 23.47}},
-    }
-    same_fact_different_key_order = {
-        "sensors": {"temperature": {"value": 23.47}},
-        "device": {"node_id": "lab-01"},
-        "timestamp": "2026-05-14T17:30:00Z",
     }
 
-    assert derive_source_event_id(first, topic="iot/lab/readings") == derive_source_event_id(
-        same_fact_different_key_order,
+    with pytest.raises(MissingEventIdentityError):
+        derive_source_event_id(payload, topic="iot/lab/readings")
+
+
+def test_identical_measurements_with_different_sequence_numbers_are_distinct_events():
+    """Same value/time is not identity: distinct sequence numbers must produce distinct ids."""
+    first = {
+        "device": {"node_id": "lab-01"},
+        "session": {"boot_id": "boot-9", "reading_index": 1},
+        "timestamp": "2026-05-14T17:30:00Z",
+        "sensors": {"temperature": {"value": 23.47}},
+    }
+    second = {
+        **first,
+        "session": {"boot_id": "boot-9", "reading_index": 2},
+    }
+
+    assert derive_source_event_id(first, topic="iot/lab/readings") != derive_source_event_id(
+        second,
+        topic="iot/lab/readings",
+    )
+
+
+def test_genuine_redelivery_with_same_event_id_is_deduplicated():
+    """A retry carrying the same explicit event_id must resolve to the same identity."""
+    payload = {
+        "event_id": "reading-147",
+        "device": {"node_id": "lab-01"},
+        "timestamp": "2026-05-14T17:30:00Z",
+        "sensors": {"temperature": {"value": 23.47}},
+    }
+    redelivered = {**payload, "timestamp": "2026-05-14T17:30:05Z"}  # transport retry, slight clock skew
+
+    assert derive_source_event_id(payload, topic="iot/lab/readings") == derive_source_event_id(
+        redelivered,
         topic="iot/lab/readings",
     )

@@ -6,7 +6,7 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
-from app.normalizer import build_raw_event, derive_source_event_id
+from app.normalizer import MissingEventIdentityError, build_raw_event, derive_source_event_id
 from app.settings import Settings
 from app.spool import DurableEventSpool
 from app.validators import PayloadValidationError, validate_payload
@@ -71,5 +71,10 @@ class MQTTIngestionClient:
             )
         except json.JSONDecodeError as exc:
             logger.error("Invalid JSON received on topic=%s error=%s", topic, exc)
+            self._spool.quarantine(topic=topic, reason=f"invalid_json: {exc}", raw_payload=msg.payload)
         except PayloadValidationError as exc:
             logger.error("Invalid MQTT payload on topic=%s error=%s", topic, exc)
+            self._spool.quarantine(topic=topic, reason=f"invalid_payload: {exc}", raw_payload=msg.payload)
+        except MissingEventIdentityError as exc:
+            logger.error("Missing event identity on topic=%s error=%s", topic, exc)
+            self._spool.quarantine(topic=topic, reason=f"missing_identity: {exc}", raw_payload=msg.payload)

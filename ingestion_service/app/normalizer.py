@@ -2,11 +2,19 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
-import json
 from typing import Any
 from uuid import uuid4
 
 from app.schemas import RawIngestionEvent
+
+
+class MissingEventIdentityError(ValueError):
+    """Raised when a payload has neither an explicit event id nor a device+boot+sequence tuple.
+
+    A payload fingerprint is never an acceptable substitute: two legitimately
+    identical measurements (same value/time) with different sequence numbers
+    must be treated as distinct events, not collapsed by content hash.
+    """
 
 
 def _iso_now() -> str:
@@ -31,7 +39,10 @@ def _source_identity(kind: str, *parts: str) -> str:
 
 
 def derive_source_event_id(payload: dict[str, Any], *, topic: str | None) -> str:
-    """Build a retry-stable identity from device-domain fields, never MQTT packet IDs."""
+    """Build a retry-stable identity from an explicit event id or a device+boot+sequence tuple.
+
+    Never falls back to a payload-content fingerprint (see MissingEventIdentityError).
+    """
     device = payload.get("device") if isinstance(payload.get("device"), dict) else {}
     device_id = _identity_part(device.get("node_id")) or _identity_part(payload.get("node_id"))
     scope = device_id or _identity_part(topic) or "unknown-device"
@@ -56,9 +67,10 @@ def derive_source_event_id(payload: dict[str, Any], *, topic: str | None) -> str
     if boot_id and sequence:
         return _source_identity("sequence", scope, boot_id, sequence)
 
-    canonical_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    fingerprint = hashlib.sha256(f"{topic or ''}\0{canonical_payload}".encode("utf-8")).hexdigest()
-    return f"mqtt:fingerprint:{fingerprint}"
+    raise MissingEventIdentityError(
+        "Payload must include an explicit event_id/reading_id, or a "
+        "device + boot/session id + sequence number tuple."
+    )
 
 
 def build_raw_event(

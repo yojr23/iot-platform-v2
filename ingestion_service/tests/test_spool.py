@@ -141,6 +141,45 @@ def test_dead_letters_returns_empty_when_no_exhausted_events(tmp_path):
     spool.close()
 
 
+def test_quarantine_persists_sanitized_record_with_reason_and_hash(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+
+    spool.quarantine(topic="iot/lab-01/readings", reason="invalid_json: bad token", raw_payload=b"{not json")
+
+    records = spool.quarantined()
+    assert len(records) == 1
+    record = records[0]
+    assert record["topic"] == "iot/lab-01/readings"
+    assert record["reason"] == "invalid_json: bad token"
+    assert record["payload_snippet"] == "{not json"
+    assert len(record["payload_hash"]) == 64  # sha256 hex digest, not the raw payload itself
+    spool.close()
+
+
+def test_quarantine_snippet_is_capped_not_unbounded(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    huge_payload = b"x" * 50_000
+
+    spool.quarantine(topic="iot/lab-01/readings", reason="invalid_json: huge", raw_payload=huge_payload)
+
+    record = spool.quarantined()[0]
+    assert len(record["payload_snippet"]) <= 2000
+    spool.close()
+
+
+def test_quarantine_evicts_oldest_past_capacity(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3", quarantine_capacity=2)
+
+    for i in range(3):
+        spool.quarantine(topic="t", reason=f"reason-{i}", raw_payload=f"payload-{i}".encode())
+
+    records = spool.quarantined()
+    assert len(records) == 2
+    # Oldest (reason-0) was evicted; the two most recent survive.
+    assert [r["reason"] for r in records] == ["reason-1", "reason-2"]
+    spool.close()
+
+
 def test_mark_failed_does_not_dead_letter_below_max_attempts(tmp_path):
     now = [100.0]
     spool = DurableEventSpool(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from os import PathLike
 from pathlib import Path
@@ -9,6 +10,8 @@ import threading
 import time
 from typing import Any, Callable
 from uuid import uuid4
+
+QUARANTINE_SNIPPET_LIMIT = 2000
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,7 @@ class DurableEventSpool:
         lease_seconds: float = 30,
         max_attempts: int = 20,
         clock: Callable[[], float] = time.time,
+        quarantine_capacity: int = 200,
     ) -> None:
         database_path = Path(path)
         database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -38,6 +42,7 @@ class DurableEventSpool:
         self._lease_seconds = lease_seconds
         self._max_attempts = max_attempts
         self._clock = clock
+        self._quarantine_capacity = quarantine_capacity
         with self._lock:
             self._connection.execute("PRAGMA journal_mode=WAL")
             self._connection.execute(
@@ -64,6 +69,18 @@ class DurableEventSpool:
                     last_error TEXT,
                     created_at REAL NOT NULL,
                     dead_lettered_at REAL NOT NULL
+                )
+                """
+            )
+            self._connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS quarantine (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT,
+                    reason TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    payload_snippet TEXT NOT NULL,
+                    created_at REAL NOT NULL
                 )
                 """
             )
@@ -227,6 +244,52 @@ class DurableEventSpool:
                 "last_error": r[3],
                 "created_at": r[4],
                 "dead_lettered_at": r[5],
+            }
+            for r in rows
+        ]
+
+    def quarantine(self, *, topic: str | None, reason: str, raw_payload: bytes | str) -> None:
+        """Persist a bounded, sanitized record of a rejected message (never the raw unbounded payload)."""
+        if isinstance(raw_payload, bytes):
+            text = raw_payload.decode("utf-8", errors="replace")
+        else:
+            text = raw_payload
+        payload_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        snippet = text[:QUARANTINE_SNIPPET_LIMIT]
+
+        with self._lock:
+            self._connection.execute(
+                """
+                INSERT INTO quarantine (topic, reason, payload_hash, payload_snippet, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (topic, reason, payload_hash, snippet, self._clock()),
+            )
+            # ponytail: bound via delete-outside-newest-N rather than a true ring buffer, fine at this scale.
+            self._connection.execute(
+                """
+                DELETE FROM quarantine
+                WHERE id NOT IN (SELECT id FROM quarantine ORDER BY id DESC LIMIT ?)
+                """,
+                (self._quarantine_capacity,),
+            )
+            self._connection.commit()
+
+    def quarantined(self) -> list[dict]:
+        """Return all quarantined rejection records for inspection, oldest first."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT id, topic, reason, payload_hash, payload_snippet, created_at "
+                "FROM quarantine ORDER BY id",
+            ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "topic": r[1],
+                "reason": r[2],
+                "payload_hash": r[3],
+                "payload_snippet": r[4],
+                "created_at": r[5],
             }
             for r in rows
         ]
