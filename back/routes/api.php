@@ -114,7 +114,14 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/metrics', [ApiDashboardController::class, 'metrics'])->middleware('throttle:api-read');
-        Route::get('/graph-catalog', [DashboardGraphCatalogController::class, 'index'])->middleware('throttle:api-read');
+        // Task 6 decision: readable by sensor.view OR device.view (existing `permission` middleware
+        // already checks the list as OR, see EnsureUserHasPermission) — previously reachable by any
+        // authenticated+verified user with no resource-capability check at all. Resource-scoped
+        // filtering (limiting which devices/sensors enumerate, not just gating the endpoint) is a
+        // separate follow-up, not built here.
+        Route::get('/graph-catalog', [DashboardGraphCatalogController::class, 'index'])
+            ->middleware('permission:sensor.view,device.view')
+            ->middleware('throttle:api-read');
         Route::get('/preferences', [ApiDashboardPreferenceController::class, 'show'])->middleware('throttle:api-read');
         Route::put('/preferences', [ApiDashboardPreferenceController::class, 'store'])
             ->middleware('permission:system_setting.update')

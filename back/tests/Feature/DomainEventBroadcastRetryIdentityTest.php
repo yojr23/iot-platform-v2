@@ -12,11 +12,12 @@ use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 /**
- * PENDING MAC VERIFICATION — written on Windows, never executed here.
+ * PENDING CI EXECUTION — written on Windows, executed by GitHub Actions.
  *
- * Fix 3 (persistent event-envelope identity on retry). Covers PLAN.md/task item 5 and 6: a
- * retried broadcast of the SAME domain fact must keep the SAME event_id and the SAME occurred_at
- * across delivery attempts — never regenerate either on redelivery.
+ * Fix 3 (persistent event-envelope identity on retry). Covers PLAN.md/task item 5, 6 and task
+ * 7(a): a retried broadcast of the SAME domain fact must keep the SAME event_id, the SAME
+ * occurred_at AND the SAME correlation_id across delivery attempts — never regenerate any of the
+ * three on redelivery.
  *
  * Root cause this guards: `App\Events\Concerns\HasEventEnvelope` lazily generates `event_id`
  * (Str::uuid()) and `occurred_at` (now()) with `??=` on the event OBJECT instance.
@@ -169,5 +170,29 @@ class DomainEventBroadcastRetryIdentityTest extends TestCase
         );
         // The stable timestamp is the outbox row's own created_at, not now() at broadcast time.
         $this->assertSame($outbox->created_at->toIso8601String(), $first->envelopeOccurredAt());
+    }
+
+    /**
+     * Task 7(a): correlation_id must be PRESERVED across retries, not regenerated. Before this
+     * fix, `HasEventEnvelope::envelopeMetadata()` minted a fresh `Str::uuid()` correlation_id
+     * per event OBJECT (same `??=`-on-first-read bug event_id/occurred_at had), and
+     * `broadcastFact()` builds a brand-new object per delivery attempt, so two deliveries of the
+     * same outbox row previously produced two different correlation_id values.
+     */
+    public function test_retried_broadcast_preserves_the_same_correlation_id(): void
+    {
+        $outbox = $this->resolvedAlertOutbox();
+
+        [$first, $second] = $this->broadcastTwiceForSameOutbox($outbox);
+
+        $this->assertNotEmpty($first->correlationId);
+        $this->assertSame(
+            $first->correlationId,
+            $second->correlationId,
+            'a retried broadcast of the same outbox row must keep the same correlation_id'
+        );
+        // v1: correlation_id is seeded from the same stable outbox row id used for event_id (see
+        // HasEventEnvelope::seedEnvelope()'s ponytail note) — not a fresh UUID per attempt.
+        $this->assertSame((string) $outbox->id, $first->correlationId);
     }
 }

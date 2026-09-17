@@ -433,19 +433,16 @@ class SensorApiController extends Controller
     }
 
     /**
-     * Phase E / PENDING MAC VERIFICATION (reopened): hard global ceiling on total rows hydrated by
-     * allReadings(), independent of how many sensors exist. Covers BOTH the sensor metadata rows
-     * and the reading rows the endpoint returns — never just one of the two.
+     * PENDING MAC VERIFICATION (task 5, second reopened round): hard global ceiling on total rows
+     * hydrated by allReadings(), independent of how many sensors exist. Covers BOTH the sensor
+     * metadata rows and the reading rows the endpoint returns — never just one of the two.
      *
-     * Root cause of the reopened finding: the previous version capped a local $sensorCount variable
-     * only for the per-sensor-limit ARITHMETIC (`floor(BUDGET / sensorCount)`); the actual
-     * `Sensor::with(...)->get()` query below had no `->limit()` at all, so with more sensors than
-     * the budget (e.g. 6,000) the query still hydrated every sensor row unbounded, plus up to 1
-     * reading each — 12,000 rows against a claimed 5,000-row ceiling. Fixed by (1) applying
-     * `->limit()` to the sensor query itself, so the number of Sensor objects loaded is the SAME
-     * value used in the ratio, not just an input to it, and (2) reserving budget for the sensor
-     * metadata rows before computing the per-sensor reading slice, so
-     * `sensorsLoaded + sensorsLoaded * perSensorLimit` is provably <= this constant.
+     * History: the first fix (commit 9583230) applied `->limit()` to the sensor query and reserved
+     * budget for sensor metadata rows before splitting the remainder across readings — but that
+     * "reserve then split" arithmetic let sensorsLoaded alone consume the whole budget at ~2,500+
+     * sensors, driving remainingForReadings/perSensorLimit to 0 — every returned sensor had ZERO
+     * readings, the opposite of useful. See `allReadings()` for the current fix (cap sensorsLoaded
+     * at floor(BUDGET/2) so perSensorLimit >= 1 is provable for any sensor count).
      */
     public const ALL_READINGS_GLOBAL_ROW_BUDGET = 5000;
 
@@ -472,17 +469,43 @@ class SensorApiController extends Controller
                 : now();
             $requestedLimit = min((int) ($validated['limit'] ?? 1000), self::ALL_READINGS_GLOBAL_ROW_BUDGET);
 
-            // Genuine global bound (PENDING MAC VERIFICATION): $sensorsLoaded is the actual cap
-            // applied to the Sensor query below via ->limit() — never just a ratio input. Budget is
-            // reserved for sensor metadata rows FIRST, then whatever remains is split evenly across
-            // the per-sensor reading slice, so sensorsLoaded + sensorsLoaded * perSensorLimit can
-            // never exceed ALL_READINGS_GLOBAL_ROW_BUDGET regardless of how many sensors exist.
+            // V1 redesign (task 5, supersedes the reserve-then-split draft from commit 9583230):
+            // that draft could return ZERO readings per sensor once sensorsLoaded alone consumed
+            // the whole budget (>= 2,500 sensors: remainingForReadings collapsed to <= sensorsLoaded,
+            // and integer division floored perSensorLimit to 0) — the exact regression this fixes.
+            //
+            // Fix: CAP the number of sensors loaded at floor(BUDGET/2) so at least half the budget
+            // is always left for readings. With sensorsLoaded <= floor(BUDGET/2), remainingForReadings
+            // = BUDGET - sensorsLoaded is provably >= sensorsLoaded, so
+            // intdiv(remainingForReadings, sensorsLoaded) >= 1 for every sensorsLoaded >= 1 — every
+            // SELECTED sensor gets at least one reading, and
+            // sensorsLoaded + sensorsLoaded * perSensorLimit <= BUDGET always holds, independent of
+            // how many sensors exist in the table.
+            //
+            // Trade-off (no silent truncation): above floor(BUDGET/2) sensors, the excess sensors are
+            // dropped from this response entirely rather than starved to 0 readings. Dropped count is
+            // logged and surfaced in the response as `sensors_truncated`/`sensors_dropped_count`.
+            //
+            // ponytail: long-term upgrade is paginated sensors (cursor-based) + a bounded
+            // per-sensor reading limit, so no sensor is ever dropped — deferred until a caller
+            // actually needs >2,500 sensors in one response.
             $totalSensors = max(0, Sensor::query()->count());
-            $sensorsLoaded = min($totalSensors, self::ALL_READINGS_GLOBAL_ROW_BUDGET);
-            $remainingForReadings = max(0, self::ALL_READINGS_GLOBAL_ROW_BUDGET - $sensorsLoaded);
+            $maxSensorsForGuaranteedReading = intdiv(self::ALL_READINGS_GLOBAL_ROW_BUDGET, 2);
+            $sensorsLoaded = min($totalSensors, $maxSensorsForGuaranteedReading);
+            $sensorsDropped = max(0, $totalSensors - $sensorsLoaded);
+            $remainingForReadings = self::ALL_READINGS_GLOBAL_ROW_BUDGET - $sensorsLoaded;
             $perSensorLimit = $sensorsLoaded > 0
-                ? max(0, min($requestedLimit, intdiv($remainingForReadings, $sensorsLoaded)))
+                ? max(1, min($requestedLimit, intdiv($remainingForReadings, $sensorsLoaded)))
                 : 0;
+
+            if ($sensorsDropped > 0) {
+                Log::warning('All sensor readings request truncated sensor list to keep the global row budget', [
+                    'total_sensors' => $totalSensors,
+                    'sensors_loaded' => $sensorsLoaded,
+                    'sensors_dropped' => $sensorsDropped,
+                    'per_sensor_limit' => $perSensorLimit,
+                ]);
+            }
 
             $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) use ($from, $to, $perSensorLimit) {
                 $query->where('reading_time', '>=', $from)
@@ -496,12 +519,18 @@ class SensorApiController extends Controller
 
             Log::info('All sensor readings requested', [
                 'sensor_count' => $sensors->count(),
+                'sensors_dropped' => $sensorsDropped,
                 'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
             ]);
 
             return response()->json([
                 'from' => $from->toIso8601String(),
                 'to' => $to->toIso8601String(),
+                // No-silent-truncation indicator (task 5): true whenever the sensor list itself was
+                // capped by the global row budget, independent of per-reading truncation.
+                'sensors_truncated' => $sensorsDropped > 0,
+                'sensors_dropped_count' => $sensorsDropped,
+                'total_sensors' => $totalSensors,
                 'sensors' => $sensors->map(function ($sensor) {
                     return [
                         'id' => $sensor->id,

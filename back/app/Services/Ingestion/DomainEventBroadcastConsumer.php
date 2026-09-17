@@ -329,21 +329,25 @@ class DomainEventBroadcastConsumer
     }
 
     /**
-     * PENDING MAC VERIFICATION — Fix 3 (persistent event-envelope identity on retry). Every
+     * PENDING CI EXECUTION — Fix 3 (persistent event-envelope identity on retry). Every
      * broadcastXxx() method above constructs a brand-new event object per delivery attempt; without
      * this, a redelivered message (crash between broadcast success and delivered_at/XACK, then
-     * XAUTOCLAIM reclaim) would emit a fresh `event_id`/`occurred_at` for the same logical fact
-     * (App\Events\Concerns\HasEventEnvelope lazily generates both with `??=` on first read). The
-     * `DomainEventOutbox` row is the stable identity already used by the raw/domain outbox
-     * publishers (`$outbox->id`, `$outbox->created_at`) — this is the single place that seeds the
-     * SAME identity into the broadcast event, so a retried broadcast is provably the same event_id
-     * and occurred_at as the first attempt.
+     * XAUTOCLAIM reclaim) would emit a fresh `event_id`/`occurred_at`/`correlation_id` for the same
+     * logical fact (App\Events\Concerns\HasEventEnvelope lazily generates all three with `??=` on
+     * first read). The `DomainEventOutbox` row is the stable identity already used by the
+     * raw/domain outbox publishers (`$outbox->id`, `$outbox->created_at`) — this is the single
+     * place that seeds the SAME identity into the broadcast event, so a retried broadcast is
+     * provably the same event_id, occurred_at AND correlation_id as the first attempt (task 7a).
+     * `correlation_id` is passed the same `$outbox->id` as `event_id` — see
+     * `HasEventEnvelope::seedEnvelope()`'s ponytail note for why, and the upgrade path if a real
+     * cross-event correlation value is ever needed.
      */
     private function seedFromOutbox(object $event, DomainEventOutbox $outbox): object
     {
         return $event->seedEnvelope(
             (string) $outbox->id,
             ($outbox->created_at ?? now())->toIso8601String(),
+            (string) $outbox->id,
         );
     }
 

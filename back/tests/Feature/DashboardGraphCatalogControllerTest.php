@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AlertRule;
 use App\Models\Device;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\Sensor;
 use App\Models\SensorType;
 use App\Models\User;
@@ -15,10 +17,77 @@ class DashboardGraphCatalogControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Task 6 decision: readable by sensor.view OR device.view, 403 for neither. Builds a role with
+     * exactly the given permission codes (mirrors the pattern already used in
+     * AllReadingsGlobalBoundAboveCeilingTest::token()) so each case is isolated from the seeded
+     * default 'user' role, which already carries both permissions.
+     */
+    private function userWithPermissions(array $permissionCodes): User
+    {
+        $role = Role::create([
+            'code' => 'catalog-test-'.uniqid(),
+            'name' => 'Catalog Test Role',
+            'description' => 'test',
+            'is_system' => false,
+            'level' => 10,
+        ]);
+
+        if ($permissionCodes !== []) {
+            $permIds = Permission::whereIn('code', $permissionCodes)->pluck('id');
+            $role->permissions()->sync($permIds);
+        }
+
+        return User::factory()->create(['role_id' => $role->id]);
+    }
+
     public function test_graph_catalog_requires_sanctum_authentication(): void
     {
         $this->getJson('/api/dashboard/graph-catalog')
             ->assertUnauthorized();
+    }
+
+    /**
+     * PENDING CI EXECUTION — written on Windows, executed by GitHub Actions.
+     *
+     * Task 6: a user with neither sensor.view nor device.view must be rejected. Previously this
+     * endpoint required only auth:sanctum+verified with no resource-capability check at all.
+     */
+    public function test_user_without_sensor_or_device_view_is_forbidden(): void
+    {
+        $user = $this->userWithPermissions([]);
+
+        $this->actingAs($user)
+            ->getJson('/api/dashboard/graph-catalog')
+            ->assertForbidden();
+    }
+
+    /**
+     * PENDING CI EXECUTION — written on Windows, executed by GitHub Actions.
+     *
+     * Task 6: sensor.view alone is sufficient (OR, not AND).
+     */
+    public function test_user_with_only_sensor_view_is_allowed(): void
+    {
+        $user = $this->userWithPermissions(['sensor.view']);
+
+        $this->actingAs($user)
+            ->getJson('/api/dashboard/graph-catalog')
+            ->assertOk();
+    }
+
+    /**
+     * PENDING CI EXECUTION — written on Windows, executed by GitHub Actions.
+     *
+     * Task 6: device.view alone is sufficient (OR, not AND).
+     */
+    public function test_user_with_only_device_view_is_allowed(): void
+    {
+        $user = $this->userWithPermissions(['device.view']);
+
+        $this->actingAs($user)
+            ->getJson('/api/dashboard/graph-catalog')
+            ->assertOk();
     }
 
     public function test_authenticated_catalog_returns_every_graph_device_and_restricted_sensor_with_a_minimal_projection(): void

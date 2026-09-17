@@ -67,7 +67,7 @@ trait HasEventEnvelope
     }
 
     /**
-     * PENDING MAC VERIFICATION — root-cause fix for Fix 3 (persistent event-envelope identity on
+     * PENDING CI EXECUTION — root-cause fix for Fix 3 (persistent event-envelope identity on
      * retry). Existing code reused: the trait's own `??=`-memoized envelope properties — this only
      * adds a way to seed them from outside instead of introducing a second identity mechanism.
      * Existing owner retired/delegated: none; `envelopeEventId()`/`envelopeOccurredAt()` remain the
@@ -87,11 +87,29 @@ trait HasEventEnvelope
      * `$outbox->created_at` directly and were already correct). This method lets the broadcast
      * consumer seed the SAME identity into the broadcast event, closing the one place it was not
      * yet reused. Guarded with `??=` so it never overrides an explicitly-set value.
+     *
+     * Task 7(a) extension (correlation_id): `correlation_id` had the exact same per-instance-mint
+     * bug as `event_id` — `envelopeMetadata()` calls `$this->correlationId ??= Str::uuid()`, and
+     * since `broadcastFact()` builds a fresh event object per delivery attempt, a retried broadcast
+     * previously got a DIFFERENT correlation_id too. There is no dedicated `correlation_id` column
+     * on `domain_event_outboxes` (no evidence yet of cross-event causal chains needing a distinct
+     * value — see ponytail note below), so this reuses the SAME stable per-outbox-row identity
+     * already passed for `$eventId` (the outbox row's own `id`) as the default correlation seed,
+     * rather than inventing a second column/mechanism for a value nothing yet needs to differ.
+     * `??=` still guards an explicitly-set correlationId (e.g. a future causal chain) from being
+     * overridden.
+     *
+     * ponytail: correlation_id == event_id (the outbox row id) is a v1 simplification — it is
+     * stable across retries (this fix's actual requirement) but does not yet link separate events
+     * from the same causal chain (e.g. a reading that triggers an alert). Add a real
+     * `correlation_id` column, threaded from `DomainEventRecorder::record()` through to this seed
+     * call, only when a concrete cross-event correlation need shows up.
      */
-    public function seedEnvelope(string $eventId, string $occurredAt): static
+    public function seedEnvelope(string $eventId, string $occurredAt, ?string $correlationId = null): static
     {
         $this->envelopeEventId ??= $eventId;
         $this->envelopeOccurredAt ??= $occurredAt;
+        $this->correlationId ??= $correlationId ?? $eventId;
 
         return $this;
     }
