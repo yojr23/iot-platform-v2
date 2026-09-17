@@ -27,7 +27,12 @@ class DeviceUpdateAtomicityTest extends TestCase
 
     private function adminToken(): string
     {
-        return User::factory()->create(['is_admin' => true])->createToken('t', ['*'])->plainTextToken;
+        // Assign the seeded admin role via role_id — MySQL blocks direct is_admin=true inserts
+        // (users_before_insert_block_is_admin trigger); SQLite has no such trigger.
+        $user = User::factory()->create();
+        $user->forceFill(['role_id' => \App\Models\Role::where('code', 'admin')->value('id')])->save();
+
+        return $user->createToken('t', ['*'])->plainTextToken;
     }
 
     public function test_metadata_change_rolls_back_when_status_transition_fails(): void

@@ -98,6 +98,17 @@ Index-backed range scan, no full-table scan, no filesort, 833 rows in ~2.5ms.
 The Phase E global bound is served by the composite
 `(sensor_id, reading_time, id)` index.
 
+## Real-MySQL suite run (Phase B/C/E on MySQL 8.0, not just SQLite)
+
+Running the atomicity/authorization/bounds tests against real MySQL first
+surfaced 4 failures SQLite had hidden: the `users_before_insert_block_is_admin`
+trigger (MySQL-only) rejects the test factory's `is_admin => true`. Fixed the
+fixtures to grant admin capability the sanctioned way (assign the seeded
+`admin` role via `role_id`), matching production. After the fix: **17 pass on
+real MySQL and 17 pass on SQLite** — B2's nested transaction (mapSensor inner
+tx as a savepoint) is now proven correct on MySQL specifically, and the tests
+are engine-portable.
+
 ## Phase O (partial) — fresh migration on real MySQL
 
 `migrate:fresh --force` against MySQL 8.0 completed all migrations cleanly

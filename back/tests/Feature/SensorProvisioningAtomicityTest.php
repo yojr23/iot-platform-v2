@@ -27,7 +27,10 @@ class SensorProvisioningAtomicityTest extends TestCase
 
     private function adminToken(): string
     {
-        $user = User::factory()->create(['is_admin' => true]);
+        // Assign the seeded admin role via role_id — MySQL blocks direct is_admin=true inserts
+        // (users_before_insert_block_is_admin trigger); SQLite has no such trigger.
+        $user = User::factory()->create();
+        $user->forceFill(['role_id' => \App\Models\Role::where('code', 'admin')->value('id')])->save();
 
         return $user->createToken('t', ['*'])->plainTextToken;
     }
