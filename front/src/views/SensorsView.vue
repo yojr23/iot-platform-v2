@@ -243,6 +243,12 @@ async function deleteSelectedSensor(sensor) {
 }
 
 async function exportSelectedSensor(sensor) {
+  // Defense-in-depth: don't rely on the button's v-if or the backend alone — gate the call
+  // itself on sensor_reading.export, matching SensorDetailView.exportReadings.
+  if (!authStore.can('sensor_reading.export')) {
+    return;
+  }
+
   error.value = '';
   success.value = '';
 

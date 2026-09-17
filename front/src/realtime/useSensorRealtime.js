@@ -63,6 +63,10 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
   // Transport connectivity alone does not prove the projection is current — set true only after
   // a snapshot has actually succeeded, cleared on disconnect/failure, exactly like the device flag.
   let projectionFresh = false;
+  // Mirrors useDeviceStatusRealtime.js's recoveryGeneration: bumped on every
+  // subscribe/unsubscribe so an A-sensor snapshot that resolves after B is active can't merge
+  // into B's projection or flip B's mode (A->B route-param navigation without unmount).
+  let currentGeneration = 0;
 
   function setStatus(status) {
     realtimeStatus.value = { connected: false, mode: 'disconnected', error: '', ...status };
@@ -85,6 +89,12 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
       return;
     }
 
+    const generation = ++currentGeneration;
+    const requestedSensorId = currentSensorId;
+    // Stale-response guard: true once this snapshot's sensor/generation no longer match the
+    // composable's current subscription (e.g. A->B navigation resolved while this awaited).
+    const isStale = () => generation !== currentGeneration || requestedSensorId !== currentSensorId;
+
     setStatus({ connected: isConnected.value, mode: 'recovering', error: '' });
 
     try {
@@ -93,27 +103,27 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
       // a latest-tail branch). The consumer's own id-based dedup absorbs overlap with buffered
       // live events, so no cursor/gap tracking is needed here.
       if (currentPrivateChannel) {
-        const response = await getSensorLatestReadings(currentSensorId, { limit: 20 });
+        const response = await getSensorLatestReadings(requestedSensorId, { limit: 20 });
 
-        if (!telemetryAccessAllowed()) {
+        if (isStale() || !telemetryAccessAllowed()) {
           return;
         }
 
         const readings = unwrapData(response);
         (Array.isArray(readings) ? readings.slice().reverse() : []).forEach((reading) => {
-          onReading?.({ ...normalizeReading(reading), sensor_id: currentSensorId });
+          onReading?.({ ...normalizeReading(reading), sensor_id: requestedSensorId });
         });
       } else {
         const to = new Date();
         const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
-        const result = await useGraphSeriesQueryStore().fetchWindow(currentSensorId, {
+        const result = await useGraphSeriesQueryStore().fetchWindow(requestedSensorId, {
           authorizationScope: 'public',
           from,
           to,
-          consumerKey: `snapshot:${currentSensorId}`
+          consumerKey: `snapshot:${requestedSensorId}`
         });
 
-        if (!telemetryAccessAllowed()) {
+        if (isStale() || !telemetryAccessAllowed()) {
           return;
         }
 
@@ -125,8 +135,12 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
         }
 
         (result.points || []).forEach((point) => {
-          onReading?.(graphPointToReading(point, currentSensorId));
+          onReading?.(graphPointToReading(point, requestedSensorId));
         });
+      }
+
+      if (isStale()) {
+        return;
       }
 
       projectionFresh = true;
@@ -136,6 +150,10 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
         error: ''
       });
     } catch {
+      if (isStale()) {
+        return;
+      }
+
       // Existing buffered/live readings already in the sensorReadings store are untouched here —
       // this only flips the status flag, it never clears the store.
       projectionFresh = false;
@@ -155,6 +173,10 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
       isConnected.value = false;
       return false;
     }
+
+    // Invalidate any snapshot still in flight for a previous sensor/subscription before this
+    // one takes over currentSensorId below.
+    currentGeneration++;
 
     const echo = getEcho();
 
@@ -250,6 +272,8 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
     currentSensorId = null;
     currentPrivateChannel = false;
     projectionFresh = false;
+    // Invalidate any snapshot still in flight so it can no longer apply once resolved.
+    currentGeneration++;
     setStatus({ connected: false, mode: 'disconnected', error: '' });
   }
 

@@ -480,3 +480,122 @@ describe('Task 1: sensor realtime freshness states (recovering/live/stale/discon
     expect(realtime.isConnected.value).toBe(false);
   });
 });
+
+describe('A->B navigation lifecycle & generation guard (route-param reuse, no unmount)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    storedToken = null;
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    echoMock.echo.channel.mockClear();
+    echoMock.echo.private.mockClear();
+    echoMock.echo.leaveChannel.mockClear();
+    echoMock.publicChannel.listen.mockClear();
+    echoMock.publicChannel.stopListening.mockClear();
+    echoMock.privateChannel.listen.mockClear();
+    echoMock.privateChannel.stopListening.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  it('releases the exact A listener on switch, and the new B listener ignores a stray A-tagged event', async () => {
+    storedToken = 'test-token';
+    const onReading = vi.fn();
+    const { useSensorRealtime, SENSOR_EVENT } = await import('./useSensorRealtime');
+    let sensorId = 7;
+    const realtime = useSensorRealtime(() => sensorId, onReading);
+
+    realtime.subscribeSensor();
+    const [, listenerForA] = echoMock.privateChannel.listen.mock.calls[0];
+
+    realtime.unsubscribeSensor();
+    // This is the real-world guarantee: real Echo/pusher-js removes exactly this callback
+    // reference from its bound listeners, so a genuinely late A event can never reach it again.
+    expect(echoMock.privateChannel.stopListening).toHaveBeenCalledWith(SENSOR_EVENT, listenerForA);
+
+    sensorId = 8;
+    realtime.subscribeSensor();
+    const [, listenerForB] = echoMock.privateChannel.listen.mock.calls[1];
+    expect(listenerForB).not.toBe(listenerForA);
+
+    // Defense in depth: even a stray dispatch onto B's listener carrying A's sensor_id is
+    // dropped by the listener's own id match, not merged as if it were B's data.
+    listenerForB({ sensor_id: 7, id: 999, value: 999, reading_time: '2026-01-01T00:00:00Z' });
+    expect(onReading).not.toHaveBeenCalled();
+
+    listenerForB({ sensor_id: 8, id: 1000, value: 1000, reading_time: '2026-01-01T00:00:00Z' });
+    expect(onReading).toHaveBeenCalledWith(expect.objectContaining({ sensor_id: 8, id: 1000 }));
+  });
+
+  it('a snapshot for A that resolves after B becomes active is dropped (no merge, no mode flip)', async () => {
+    const { getGraphSeries } = await import('@/api/graph');
+    let resolveA;
+    getGraphSeries.mockImplementationOnce(() => new Promise((resolve) => { resolveA = resolve; }));
+
+    const onReading = vi.fn();
+    let sensorId = 7;
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const realtime = useSensorRealtime(() => sensorId, onReading);
+    realtime.subscribeSensor();
+
+    for (const callback of [...resyncWatchers]) callback('reconnect');
+    expect(realtime.realtimeStatus.value.mode).toBe('recovering');
+
+    // Navigate away to B before A's snapshot resolves (mirrors SensorDetailView's props.id
+    // watcher: unsubscribe old, then subscribe new).
+    realtime.unsubscribeSensor();
+    sensorId = 8;
+    realtime.subscribeSensor();
+    expect(realtime.realtimeStatus.value.mode).toBe('stale');
+
+    resolveA({
+      data: {
+        points: [{ timestamp: '2026-01-01T00:00:01Z', value: 42, reading_id: 9 }],
+        stats: { min: 42, max: 42, mean: 42, count: 1 }
+      }
+    });
+    await flushMicrotasks();
+
+    expect(onReading).not.toHaveBeenCalled();
+    expect(realtime.realtimeStatus.value.mode).toBe('stale');
+  });
+
+  it('reconnect resync does not create a duplicate channel subscription', async () => {
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const { getChannelRefCount } = await import('./channelRegistry');
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+
+    expect(getChannelRefCount('sensor.7')).toBe(1);
+    expect(echoMock.publicChannel.listen).toHaveBeenCalledTimes(1);
+
+    for (const callback of [...resyncWatchers]) callback('reconnect');
+    await flushMicrotasks();
+
+    expect(getChannelRefCount('sensor.7')).toBe(1);
+    expect(echoMock.publicChannel.listen).toHaveBeenCalledTimes(1);
+  });
+
+  it('disconnect then reconnect with a failing recovery snapshot preserves prior readings and reports stale', async () => {
+    const { getGraphSeries } = await import('@/api/graph');
+    getGraphSeries.mockRejectedValueOnce(new Error('network down'));
+
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+    const projection = useSensorReadingsStore();
+    projection.mergeReading(7, { id: 1, value: 1, reading_time: '2026-01-01T00:00:00Z' });
+
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+
+    for (const callback of [...connectionWatchers]) callback('disconnected');
+    expect(realtime.realtimeStatus.value.mode).toBe('disconnected');
+    expect(projection.readingsFor(7)).toHaveLength(1);
+
+    for (const callback of [...connectionWatchers]) callback('connected');
+    for (const callback of [...resyncWatchers]) callback('reconnect');
+    await flushMicrotasks();
+
+    expect(realtime.realtimeStatus.value.mode).toBe('stale');
+    expect(projection.readingsFor(7)).toHaveLength(1);
+  });
+});

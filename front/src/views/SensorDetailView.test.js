@@ -356,3 +356,125 @@ describe('SensorDetailView shared-tail live projection', () => {
     unmount();
   });
 });
+
+describe('SensorDetailView: A->B lifecycle regressions (Task 3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedOnReading = null;
+    latestDeferred = deferred();
+    setActivePinia(createPinia());
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it('permission revoked while the initial latest-readings request is in flight: late result is not merged', async () => {
+    const { auth, store, unmount } = await mountView();
+    // latestDeferred is still pending (not resolved) when telemetry is revoked.
+    auth.user.permissions = ['sensor.view'];
+    await nextTick();
+
+    latestDeferred.resolve({ data: [{ id: 1, value: 1, reading_time: at(1) }] });
+    await flush();
+    await nextTick();
+
+    expect(store.readingsFor('7')).toEqual([]);
+
+    unmount();
+  });
+
+  it('revoke -> grant -> revoke -> grant: ends in a single-subscription live state, each re-grant issues exactly one new subscribe and one new reading request', async () => {
+    const { auth, store, unmount } = await mountView();
+    latestDeferred.resolve({ data: [] });
+    await flush();
+    await nextTick();
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+    expect(getSensorLatestReadings).toHaveBeenCalledTimes(1);
+
+    // revoke #1
+    auth.user.permissions = ['sensor.view'];
+    await nextTick();
+    expect(unsubscribeSensor).toHaveBeenCalledTimes(1);
+    expect(store.readingsFor('7')).toEqual([]);
+
+    // grant #1 (Option A re-acquire)
+    latestDeferred = deferred();
+    auth.user.permissions = ['sensor.view', 'sensor_reading.view'];
+    await nextTick();
+    expect(subscribeSensor).toHaveBeenCalledTimes(2);
+    expect(getSensorLatestReadings).toHaveBeenCalledTimes(2);
+    latestDeferred.resolve({ data: [{ id: 10, value: 10, reading_time: at(10) }] });
+    await flush();
+    await nextTick();
+    expect(store.readingsFor('7')).toHaveLength(1);
+
+    // revoke #2
+    auth.user.permissions = ['sensor.view'];
+    await nextTick();
+    expect(unsubscribeSensor).toHaveBeenCalledTimes(2);
+    expect(store.readingsFor('7')).toEqual([]);
+
+    // grant #2
+    latestDeferred = deferred();
+    auth.user.permissions = ['sensor.view', 'sensor_reading.view'];
+    await nextTick();
+    expect(subscribeSensor).toHaveBeenCalledTimes(3);
+    expect(getSensorLatestReadings).toHaveBeenCalledTimes(3);
+    latestDeferred.resolve({ data: [{ id: 20, value: 20, reading_time: at(20) }] });
+    await flush();
+    await nextTick();
+
+    // Final state: exactly one active subscription (subscribe count exceeds unsubscribe count
+    // by exactly 1) and the projection reflects only the final grant's data.
+    expect(subscribeSensor).toHaveBeenCalledTimes(3);
+    expect(unsubscribeSensor).toHaveBeenCalledTimes(2);
+    expect(store.readingsFor('7')).toHaveLength(1);
+    expect(store.readingsFor('7')[0].id).toBe(20);
+
+    unmount();
+  });
+
+  it('unmount aborts the in-flight metadata request and releases the channel', async () => {
+    let capturedSignal;
+    getSensor.mockImplementationOnce((id, opts) => {
+      capturedSignal = opts?.signal;
+      return new Promise(() => {}); // never resolves within this test
+    });
+
+    const { unmount } = await mountView();
+    await nextTick();
+
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal.aborted).toBe(false);
+
+    unmount();
+
+    expect(capturedSignal.aborted).toBe(true);
+    expect(unsubscribeSensor).toHaveBeenCalledTimes(1);
+  });
+
+  it('a canceled metadata request (aborted by rapid navigation) does not show a user-facing error', async () => {
+    getSensor.mockRejectedValueOnce({ name: 'CanceledError', code: 'ERR_CANCELED', message: 'canceled' });
+    const { el, unmount } = await mountView();
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).not.toContain('No se pudo cargar el sensor');
+
+    unmount();
+  });
+
+  it('telemetry-denied view never calls latest-readings, readings, or export APIs and never subscribes', async () => {
+    const { unmount } = await mountView({ permissions: ['sensor.view'] });
+    await flush();
+    await nextTick();
+
+    expect(getSensorLatestReadings).not.toHaveBeenCalled();
+    expect(getSensorReadings).not.toHaveBeenCalled();
+    expect(exportSensorReadings).not.toHaveBeenCalled();
+    expect(subscribeSensor).not.toHaveBeenCalled();
+
+    unmount();
+  });
+});

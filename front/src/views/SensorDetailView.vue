@@ -313,6 +313,31 @@ onMounted(async () => {
   await load();
 });
 
+// Vue Router reuses this component when only :id changes (A -> B does not unmount/remount),
+// so without this watcher navigating between sensors would leave A's metadata, subscription,
+// and shared-tail projection showing under B's route. Old-first ordering (abort + unsubscribe
+// + clear A) then load+subscribe B avoids a stale A response landing in B's projection.
+watch(() => props.id, async (newId, oldId) => {
+  if (newId === oldId) {
+    return;
+  }
+
+  log.info('sensor id changed', oldId, '->', newId);
+  metadataAbort?.abort();
+  sensorRealtime.unsubscribeSensor();
+  readingsStore.clearSensor(oldId);
+  sensor.value = null;
+  filteredReadings.value = [];
+  filterActive.value = false;
+  error.value = '';
+
+  await load();
+
+  if (canViewTelemetry.value) {
+    sensorRealtime.subscribeSensor();
+  }
+});
+
 onBeforeUnmount(() => {
   metadataAbort?.abort();
   sensorRealtime.unsubscribeSensor();
