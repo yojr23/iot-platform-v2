@@ -2,11 +2,11 @@
 
 ## Current state — read this first
 
-- Current repository HEAD: `9583230` — `fix(back)` telemetry/allReadings/envelope DRAFTS (PENDING MAC, unrun).
-- Current application candidate (frontend, verified on Windows): `2e92f74` — `fix(front)` sensor realtime lifecycle hardening (A→B race + generation guard), on top of `672421b` (which bundled the earlier front freshness/abort/regrant + docs + graphify regen — a mixed commit; future graphify regen is isolated per `docs/graphify-strategy.md`).
-- Current exact-SHA CI: PASS on the frontend Windows source gate (vitest 294 pass / 0 fail, build, no-polling). NOT run for the backend `fix(back)` drafts — no PHP on Windows.
-- Windows/source verification (2026-09-17 session 2): frontend COMPLETE — full vitest suite 294 pass / 0 fail, realtime suite 51 tests × 3 runs zero flakes, `vite build` clean, polling audit clean, authorization call-site audit done. Backend `fix(back)` = source-only DRAFTS, NEVER EXECUTED — FIX PENDING MAC.
-- Mac live certification: PARTIAL / OPEN.
+- Current repository HEAD (application tip): `3672e9b` — `fix(ingest)` identity contract + MQTT quarantine [PENDING CI], on top of `d5b5322` `fix(back)` and `b440a44` `fix(front)` (2026-09-17 session 3).
+- Application SHA vs docs/Graphify SHA (kept separate per `docs/graphify-strategy.md`): the last Graphify/docs regeneration is `672421b` (a mixed commit — the reason the isolation rule now exists); every commit since (`2e92f74`, `9583230`, `49fdad0`, `b440a44`, `d5b5322`, `3672e9b`) is application/plan only, no `graphify-out/` churn.
+- CI as executor: PHP/Redis and Python are unreachable on this Windows machine, so backend + ingestion changes are executed by **GitHub Actions on push** (not Mac). They are PENDING CI EXECUTION, not "never executed". `gh` is not installed here, so the exact-tip CI result is not observable from this session — confirm in the Actions tab / via `gh run list` before treating any backend/ingestion finding as closed.
+- Windows/source verification (session 3): frontend COMPLETE and Windows-verified — full vitest **299 pass / 0 fail**, realtime+detail **×3 zero flakes**, `vite build` clean, all four `test:phase*` structural scripts updated to permission-based routing and passing, polling audit clean, authorization call-site audit done. Backend (`d5b5322`) + ingestion (`3672e9b`) = source-only, PENDING CI EXECUTION.
+- Mac live certification: PARTIAL / OPEN (reserved for real MySQL/Redis/MQTT/Debezium/WebSocket/rendered-browser only — not for running unit/feature suites, which CI covers).
 - Gate 9: OPEN.
 - Gate 10 release certification: OPEN.
 - PLAN: OPEN.
@@ -73,6 +73,30 @@ Backend (DRAFTS ONLY — commit `9583230`, NEVER EXECUTED, no PHP on Windows —
 - `allReadings()` global row bound fixed in source (see `allReadings` row).
 - `HasEventEnvelope::seedEnvelope()` added so a redelivered domain event keeps its stable `event_id`/`occurred_at` from the outbox row (the per-instance `??=` mint would otherwise differ per delivery attempt).
 - 6 draft PHPUnit tests written (SensorResource visibility, device.view w/o telemetry, dashboard telemetry gate, allReadings 5,500-sensor bound, retry preserves id + occurred_at, REST authority matrix). **None executed.** No backend finding is closed on the strength of a Windows source edit.
+
+#### Windows session 3 (2026-09-17) — telemetry race close-out, allReadings redesign, authz + ingestion identity
+
+Frontend (COMPLETE, Windows-verified — commit `b440a44`):
+
+- **SensorDetailView manual-path A→B race closed:** `loadTelemetry()`/`filterReadings()` re-read `props.id` after the await and could merge a late sensor-A response into B. Added a view-scoped `telemetryGeneration` + `telemetryAbort`; both capture generation/requestedId, pass the abort signal, and guard every post-await touch (store, `error`, `filteredReadings`, `filtering` incl. `finally`). Late A success OR error no longer affects B.
+- **Snapshot→subscription gap closed:** the A→B watcher now subscribes B (live WS) BEFORE the REST snapshot, so a reading emitted during the snapshot window is retained (store dedups by id) instead of lost.
+- `getSensorReadings` gained `{ signal }` support. +5 vitest regressions for the race/gap paths.
+- **Verification-script cleanup:** `test:phase3/4/5` asserted the retired `NavBar.vue` / `requiresAdmin` / `is_admin` architecture — updated to the current permission-based routing (`requiresPermission`, `LabShell.vue`, `ActiveAlertsCard.vue`). Every `npm run test:*` command is now meaningful and passing.
+- **Gate:** full vitest **299 pass / 0 fail**; realtime+detail **×3 zero flakes**; `vite build` clean.
+
+Backend (source-only — commit `d5b5322`, PENDING CI EXECUTION via GitHub Actions):
+
+- **`allReadings()` redesigned:** the session-2 draft could return ZERO readings at ~3000–5000 sensors. V1 caps `sensorsLoaded = min(total, floor(BUDGET/2))` so every returned sensor gets ≥1 reading and total rows ≤ 5000 for any count; dropped-sensor count logged + surfaced (`sensors_truncated`). ponytail: cursor-paginated sensors + bounded per-sensor readings is the long-term upgrade.
+- **`/dashboard/graph-catalog` authorization:** now requires `sensor.view` OR `device.view` (via existing `EnsureUserHasPermission` OR-semantics) — previously any authenticated+verified user could enumerate the full inventory. Resource-scoped filtering noted as a follow-up, not built.
+- **Event envelope:** `correlation_id` preserved across retries (seeded from the stable outbox row id alongside `event_id`/`occurred_at`).
+- **⚠ `NewSensorReading` payload made self-contained** (embeds display metadata so browser delivery needs no `SensorReading` re-read). This **flips** the prior payload-minimization test. Safety argument: audience (public vs private channel) is decided in `DomainEventBroadcastConsumer` via `PublicGraphVisibility` BEFORE the payload is attached, so a restricted sensor's fact never reaches the public channel regardless of payload. **CI/Mac MUST verify** the public channel does not leak restricted-sensor metadata — this is the one change in this session with a real leakage-risk surface.
+- Tests written for all four, PENDING CI EXECUTION.
+
+Ingestion (source-only — commit `3672e9b`, PENDING CI EXECUTION; the generating agent was interrupted, so treat as draft until the ingestion pytest job is green):
+
+- **Logical event identity contract:** removed the payload-content fingerprint fallback in `normalizer.derive_source_event_id`. Identity now requires an explicit `event_id`/`reading_id` OR a device + boot/session + monotonic-sequence tuple; raises `MissingEventIdentityError` otherwise. Two identical measurements with different sequence numbers stay DISTINCT (the defect the fingerprint caused).
+- **Invalid-MQTT quarantine:** malformed/invalid/identity-rejected messages now persist a bounded quarantine record (`{topic, timestamp, reason, hash/sanitized payload}`, size-capped with eviction) instead of log-and-drop.
+- pytest **NOT run here** (Python unreachable on this machine, by constraint); CI ingestion job is the executor.
 
 ### Still OPEN (need infra beyond core stack, or repo admin)
 
