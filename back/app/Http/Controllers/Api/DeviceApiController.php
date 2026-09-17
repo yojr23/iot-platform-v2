@@ -11,6 +11,7 @@ use App\Models\DomainEventOutbox;
 use App\Services\DeviceService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -217,14 +218,11 @@ class DeviceApiController extends Controller
         $status = array_key_exists('status', $validated) ? (bool) $validated['status'] : true;
 
         try {
-            $device = Device::create($validated + [
+            // SEC-TX-001: device row + initial status log commit atomically (DeviceService::createDevice
+            // wraps both in a transaction), so a status-log failure never leaves an orphan device/credential.
+            $device = $this->deviceService->createDevice($validated + [
                 'status' => $status,
                 'is_active' => $status,
-            ]);
-
-            $device->statusLogs()->create([
-                'status' => $status,
-                'changed_at' => now(),
             ]);
 
             $device->load(['deviceType', 'lab', 'sensors.sensorType']);
@@ -296,13 +294,18 @@ class DeviceApiController extends Controller
         unset($validated['status'], $validated['is_active']);
 
         try {
-            if ($validated !== []) {
-                $device->update($validated);
-            }
+            // SEC-TX-004: a PUT that changes metadata AND status is one aggregate mutation. Without this
+            // transaction, a failing status transition would leave the metadata change committed while
+            // the request returns 500. changeStatus() has its own inner transaction (nests as savepoint).
+            DB::transaction(function () use ($device, $validated, $statusChange): void {
+                if ($validated !== []) {
+                    $device->update($validated);
+                }
 
-            if ($statusChange !== null) {
-                $this->deviceService->changeStatus($device, $statusChange);
-            }
+                if ($statusChange !== null) {
+                    $this->deviceService->changeStatus($device, $statusChange);
+                }
+            });
 
             $device->refresh()->load(['deviceType', 'lab', 'sensors.sensorType']);
 
@@ -371,8 +374,12 @@ class DeviceApiController extends Controller
         }
 
         try {
-            $device->statusLogs()->delete();
-            $device->delete();
+            // SEC-TX-002: deleting the status-log history and the device is one unit — if the device
+            // delete fails, history must survive too (no orphaned/half-deleted device state).
+            DB::transaction(function () use ($device): void {
+                $device->statusLogs()->delete();
+                $device->delete();
+            });
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

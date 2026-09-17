@@ -36,12 +36,18 @@ class DeviceService
 
         $startTime = microtime(true);
 
-        $device = Device::create($data);
+        // SEC-TX-001: Device row + its initial status log are one provisioning unit. Without a
+        // transaction, a status-log failure leaves an orphan device (and its credential hash).
+        $device = DB::transaction(function () use ($data): Device {
+            $device = Device::create($data);
 
-        $device->statusLogs()->create([
-            'status' => $data['status'] ?? true,
-            'changed_at' => now(),
-        ]);
+            $device->statusLogs()->create([
+                'status' => $data['status'] ?? true,
+                'changed_at' => now(),
+            ]);
+
+            return $device;
+        });
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         Log::info('DeviceService:createDevice completed', ['device_id' => $device->id, 'duration_ms' => $durationMs]);

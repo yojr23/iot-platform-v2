@@ -11,6 +11,7 @@ use App\Services\Ingestion\SensorReadingProjectionService;
 use App\Services\Monitoring\PublicGraphSeriesService;
 use App\Services\Monitoring\RuleToGraphZones;
 use App\Services\SensorMappingService;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -630,17 +631,24 @@ class SensorApiController extends Controller
         }
 
         try {
-            $sensor = Sensor::create($validated + ['status' => true]);
-            $sensor->load(['sensorType', 'device.lab']);
+            // SEC-TX-003: sensor row + its initial canonical mapping are one provisioning unit. Without
+            // this outer transaction, a mapSensor() failure leaves a sensor the normalizer cannot resolve
+            // (exists but has no canonical mapping). mapSensor's own inner transaction nests as a savepoint.
+            $sensor = DB::transaction(function () use ($validated, $device) {
+                $sensor = Sensor::create($validated + ['status' => true]);
 
-            // P0: auto-create the canonical mapping so the new normalizer can resolve
-            // this sensor immediately after creation (no separate operator step needed).
-            $this->mappingService->mapSensor(
-                $device,
-                $sensor,
-                'ingestion_service',
-                $sensor->name,
-            );
+                // P0: auto-create the canonical mapping so the new normalizer can resolve
+                // this sensor immediately after creation (no separate operator step needed).
+                $this->mappingService->mapSensor(
+                    $device,
+                    $sensor,
+                    'ingestion_service',
+                    $sensor->name,
+                );
+
+                return $sensor;
+            });
+            $sensor->load(['sensorType', 'device.lab']);
 
             return (new SensorResource($sensor))
                 ->additional(['message' => 'Sensor creado correctamente.'])
