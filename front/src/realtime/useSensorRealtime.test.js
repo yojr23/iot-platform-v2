@@ -175,6 +175,30 @@ describe('sensor realtime channel privacy', () => {
     expect(getChannelRefCount('sensor.7', { privateChannel: true })).toBe(0);
     expect(getChannelRefCount('sensor.7')).toBe(1);
   });
+
+  it('releases the private channel, clears the projection, and does not reacquire telemetry after permission revocation', async () => {
+    storedToken = 'test-token';
+    let telemetryAllowed = true;
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+    const { getChannelRefCount } = await import('./channelRegistry');
+    const projection = useSensorReadingsStore();
+
+    const realtime = useSensorRealtime(7, vi.fn(), {
+      canSubscribe: () => telemetryAllowed
+    });
+    realtime.subscribeSensor();
+    projection.mergeReading(7, { id: 1, value: 1, reading_time: '2026-01-01T00:00:00Z' });
+
+    telemetryAllowed = false;
+    fireAuthResync();
+    fireAuthResync();
+
+    expect(projection.readingsFor(7)).toEqual([]);
+    expect(getChannelRefCount('sensor.7', { privateChannel: true })).toBe(0);
+    expect(getChannelRefCount('sensor.7')).toBe(0);
+    expect(echoMock.echo.private).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('sensor realtime recovery snapshot (graph-series adapter)', () => {

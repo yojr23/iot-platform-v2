@@ -17,11 +17,11 @@ frontend **262 pass**, build + no-polling gate PASS.
 |------|--------|----------|
 | Dependency security (backend) | CLOSED | `composer audit` 44 advisories → **0**; `laravel/framework` 12.10.2 → 12.69.2 (fixes CRLF-in-email high + signed-URL confusion). `config.platform.php=8.2` pinned so CI (PHP 8.2) can install — an earlier `--with-all-dependencies` had pulled Symfony 8 (needs PHP 8.4) and broke the backend + security CI jobs. |
 | Dependency security (frontend) | CLOSED (residual accepted) | `immutable` high patched; residual `vitest`/`esbuild` moderate are dev-only (unshipped), reviewed exception. |
-| Sensor telemetry authority (SEC-RT-002) | CLOSED | WS `sensor.{id}` carried reading telemetry but gated on `sensor.view`; REST readings gate on `sensor_reading.view`. Unified via `ResourceAccessService::canViewSensorReadings()`; four-cell matrix + WS parity tests. |
+| Sensor telemetry authority (SEC-RT-002) | REOPENED — MAC BACKEND | WebSocket `sensor.{id}` now uses `sensor_reading.view`, but REST reading actions still reach `SensorPolicy::view`, which requires `sensor.view`. The documented four-cell permission matrix (`sensor.view` × `sensor_reading.view`) is therefore not the effective REST matrix: REST `latest-readings`/`readings`/`export` require `sensor.view` (not `sensor_reading.view`), while the private WebSocket channel requires `sensor_reading.view` (not `sensor.view`). This means a user with `sensor_reading.view` but not `sensor.view` can receive live telemetry via WebSocket but gets 403 on REST reading endpoints — and a user with `sensor.view` but not `sensor_reading.view` can call REST reading endpoints but cannot subscribe to the private channel. Windows SPA behavior now keeps metadata usable without telemetry (sensor_reading.view=no → no readings request, no subscription, controlled "telemetry unavailable" message), but Mac must choose and verify one server authority across REST and private-channel grant/revoke flows. |
 | Device provisioning atomicity (B1) | CLOSED | `DeviceService::createDevice` + `store()` wrap Device row + status log in one transaction. Forced-failure test. |
 | Sensor + mapping atomicity (B2) | CLOSED | `SensorApiController::store` wraps `Sensor::create` + `mapSensor`; nested tx as savepoint, verified on real MySQL. |
 | Device update / delete atomicity (B3/B4) | CLOSED | metadata+status PUT and log+device delete each wrapped atomically. |
-| `allReadings` global bound + validation | CLOSED | `ALL_READINGS_GLOBAL_ROW_BUDGET=5000`, per-sensor = floor(budget/sensorCount); 422 on malformed/reversed/zero. EXPLAIN ANALYZE on real MySQL: index range scan, 833 rows in 2.5ms. |
+| `allReadings` global bound + validation | REOPENED — MAC BACKEND | `max(1, floor(5000 / sensorCount))` gives every loaded sensor at least one row, so more than 5,000 sensors can exceed the claimed 5,000-row ceiling; the loaded sensor objects are unbounded too. Specifically: with 6,000 sensors the formula yields `max(1, floor(5000/6000))` = 1 reading per sensor, but loading 6,000 sensor objects + 6,000 readings = 12,000 rows, breaching the 5,000-row global ceiling. With 10,000 sensors: 10,000 sensor objects (unbounded) + 10,000 readings = 20,000 rows. The sensor object list itself has no bound at all. Retain input validation, but implement and verify a genuine global sensor-and-reading bound on Mac. |
 | MySQL mapping concurrency (Phase D) | CLOSED | Real-MySQL harness `back/tests/concurrency/`: 100/100 iterations, COUNT(open)=1 every time (InnoDB gap locks serialize the empty-set race). |
 | CI dependency-security gate (Phase R) | CLOSED | `dependency-security` job added to `gate10-quality.yml`. |
 
@@ -30,6 +30,16 @@ frontend **262 pass**, build + no-polling gate PASS.
 - **Ingestion HTTP tier:** valid=201 + atomic RawSensorEvent+outbox; duplicate `source_event_id`=200 idempotent (no double-insert); wrong/missing token=401; malformed=422.
 - **Phase H4 poison→DLQ (live):** unmapped-node event retried 5× → `max_attempts_exceeded` → `iot.dead-letter-events` with full diagnostic, without stalling the partition (other events processed normally).
 - **Audit harness bug fixed:** live no-polling script read `data.token`; real `/api/auth/login` returns `access_token` (matches SPA). Fixed.
+
+### Windows frontend session (2026-09-17)
+
+Source-review findings corrected the documentation for the two REOPENED items above. Frontend permission behavior hardened:
+
+- `SensorDetailView` now explicitly separates `sensor.view` (metadata) from `sensor_reading.view` (telemetry) at the load level: metadata loads unconditionally; telemetry load + subscription are gated by `canViewTelemetry`. A metadata-only user sees sensor data, a "telemetry unavailable" warning, and no readings request or private subscription is attempted.
+- Telemetry revoke guard: once telemetry access is revoked, re-granting `sensor_reading.view` does not auto-reacquire subscription or readings (user must navigate away and back). Prevents unintended re-subscription after an explicit revoke.
+- Vitest regression coverage added for permission transitions while a sensor page is mounted: `sensor.view=yes + sensor_reading.view=no` → no latest-readings call, no private subscription, metadata remains usable, controlled "telemetry unavailable" state; telemetry permission revoked → clear sensor reading projection, release private channel, do not reacquire.
+- Frontend performance: try/catch with structured logging added to all API calls in views; `AbortController` for sensor detail metadata load; frontend logger utility (`createLogger`) with level filtering via `VITE_LOG_LEVEL`.
+- Completion gate: `vitest run` **277 pass / 0 fail**, `vite build`, `audit:no-polling:source` all PASS.
 
 ### Still OPEN (need infra beyond core stack, or repo admin)
 
@@ -91,9 +101,10 @@ this handoff must receive its own exact-SHA CI result.
 | Ingestion Python | PASS |
 | Architecture | PASS |
 
-**Windows/source implementation is COMPLETE** at `700831f` subject to this documentation commit
-and its exact-SHA CI run. Windows is not a Gate 9/Gate 10 certification environment and this
-does not close either gate.
+**Windows/source implementation was COMPLETE** at `700831f`. This checkout now contains the
+uncommitted Windows frontend/docs correction for sensor telemetry permission UX; it needs the
+completion gate and a new exact-SHA CI result after commit. Windows is not a Gate 9/Gate 10
+certification environment and this does not close either gate.
 
 **Current Windows-only evidence for `700831f`:** `npx.cmd vitest run` passed 47 files / 262
 tests; `npm.cmd run build` passed; and `npm.cmd run audit:no-polling:source` passed. This is
@@ -101,7 +112,7 @@ source evidence, not live browser, backend, database, Redis, Docker, MQTT, Debez
 certification.
 
 **Mac certification remains OPEN:** device provisioning atomicity; sensor plus mapping
-atomicity; mapping concurrency; allReadings scalability/bounds; MQTT-to-browser E2E; Redis and
+atomicity; mapping concurrency; the genuine allReadings sensor-and-row global bound; MQTT-to-browser E2E; Redis and
 Debezium recovery; XAUTOCLAIM/reclaim; poison-to-DLQ; WebSocket disconnect/reconnect;
 real-browser no-polling capture longer than 35 seconds; desktop/mobile QA; database performance;
 and security/dependency audit.
@@ -128,10 +139,12 @@ dependency paths and compatible upgrades against the final candidate; do not run
    certification must exercise allowed and denied users through the real broadcaster/browser
    flow, including revocation. This is not certifiable from Windows mocks.
 3. **Sensor access permissions are semantically inconsistent.** Sensor list/detail/graph-zones
-   routes use `sensor.view`, while readings, private series, and latest-readings use
-   `sensor_reading.view`; the SPA sensor route and navigation use `sensor.view`. Define and test
-   the intended RBAC matrix (including REST and private-channel behavior) on Mac before treating
-   either permission as a complete sensor-data authorization boundary.
+   routes use `sensor.view`; the new private sensor channel uses `sensor_reading.view`; but REST
+   reading actions still invoke `SensorPolicy::view` and therefore require `sensor.view`. The SPA
+   route stays `sensor.view`; its Windows-only guard now treats `sensor_reading.view` as telemetry
+   access and preserves metadata-only use. Define, implement, and live-test the effective REST and
+   private-channel matrix (including grant/revoke) on Mac before treating either permission as a
+   complete sensor-data authorization boundary.
 
 **Gate 9: OPEN. Gate 10: OPEN. PLAN: OPEN.** Final closure is reserved for the Mac-certified
 application SHA and a subsequent green documentation-only closure commit.
@@ -225,7 +238,7 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Responsive E2E failing | P1 | ✅ FIXED | 35/35 mocked matrix pass; audit admin-route list corrected (commit `c6daf18`). |
 | Sensor-mapping cutover/backfill | P0 | PASS PREVIOUSLY | `migrate:fresh` passed on MySQL 8.4 + SQLite; rerun on the final candidate only if database or migration-path code changes. |
 | Temporal mapping concurrency | P1 | ⚠️ PARTIALLY VERIFIED | `mapSensor()` locks the identity rows; still needs a genuine concurrent-connection MySQL race test (M6). |
-| `allReadings` endpoint unbounded | P1 | ✅ CLOSED (2026-09-17) | Global `ALL_READINGS_GLOBAL_ROW_BUDGET=5000`, per-sensor = floor(budget/sensorCount); 422 on malformed/reversed/zero. See 2026-09-17 reconciliation. |
+| `allReadings` endpoint global bound | P1 | REOPENED — MAC BACKEND | `max(1, floor(5000 / sensorCount))` breaches the 5,000-row claim above 5,000 sensors, and the sensor list is unbounded. Implement a true total ceiling on Mac and re-run MySQL evidence. |
 | `api_key_hash` missing index | P2 | ✅ VERIFIED | `UNIQUE(api_key_hash)` applied cleanly in `migrate:fresh` on MySQL 8.4. |
 | RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `is_admin` retained as migration bridge; caller migration + removal still pending (M8). |
 | Live Gate 9/10 evidence | P0 | ⚠️ PARTIAL (2026-09-17) | Now done: poison→DLQ (live), ingestion HTTP tier (live), MySQL EXPLAIN, dependency audit, MySQL mapping concurrency. Still open: Redis/Debezium restart, XAUTOCLAIM, MQTT→browser, live 60s no-polling capture (harness fixed). See 2026-09-17 reconciliation. |

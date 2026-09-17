@@ -49,20 +49,24 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function mountView() {
+async function mountView({ permissions = ['sensor.view', 'sensor_reading.view'] } = {}) {
   const { default: SensorDetailView } = await import('./SensorDetailView.vue');
   const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+  const { useAuthStore } = await import('@/stores/auth');
   const el = document.createElement('div');
   const app = createApp(SensorDetailView, { id: '7' });
   const pinia = createPinia();
   app.use(pinia);
   setActivePinia(pinia);
+  const auth = useAuthStore();
+  auth.user = { id: 1, permissions };
   app.component('RouterLink', { template: '<a><slot /></a>' });
   app.mount(el);
   mountedApps.push(app);
   await nextTick();
   return {
     el,
+    auth,
     store: useSensorReadingsStore(),
     unmount: () => {
       app.unmount();
@@ -158,6 +162,176 @@ describe('SensorDetailView shared-tail live projection', () => {
     expect(el.textContent).not.toContain('999');
     // The shared tail still received the event (it is just not what the filtered view renders).
     expect(store.readingsFor('7').some((reading) => reading.id === 999)).toBe(true);
+
+    unmount();
+  });
+
+  it('keeps metadata available without requesting or subscribing to telemetry for a metadata-only user', async () => {
+    const { el, unmount } = await mountView({ permissions: ['sensor.view'] });
+    await flush();
+    await nextTick();
+
+    expect(getSensorLatestReadings).not.toHaveBeenCalled();
+    expect(subscribeSensor).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('S7');
+    expect(el.textContent).toContain('Telemetría no disponible');
+
+    unmount();
+  });
+
+  it('keeps export available to a metadata user with the distinct export permission', async () => {
+    const { el, unmount } = await mountView({ permissions: ['sensor.view', 'sensor_reading.export'] });
+    await flush();
+    await nextTick();
+
+    expect(getSensorLatestReadings).not.toHaveBeenCalled();
+    expect(subscribeSensor).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('Exportar lecturas');
+
+    unmount();
+  });
+
+  it('releases telemetry and clears its projection when telemetry access is revoked while mounted', async () => {
+    const { auth, store, unmount } = await mountView();
+    latestDeferred.resolve({ data: [] });
+    await flush();
+    await nextTick();
+
+    store.mergeReading('7', { id: 12, value: 12, reading_time: at(12) });
+    auth.user.permissions = ['sensor.view'];
+    await nextTick();
+
+    expect(unsubscribeSensor).toHaveBeenCalledTimes(1);
+    expect(store.readingsFor('7')).toEqual([]);
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('loads telemetry when sensor_reading.view is granted after mount', async () => {
+    const { auth, el, store, unmount } = await mountView({ permissions: ['sensor.view'] });
+    await flush();
+    await nextTick();
+
+    expect(getSensorLatestReadings).not.toHaveBeenCalled();
+    expect(subscribeSensor).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('Telemetría no disponible');
+
+    auth.user.permissions = ['sensor.view', 'sensor_reading.view'];
+    latestDeferred.resolve({ data: [{ id: 20, value: 20, reading_time: at(20) }] });
+    await flush();
+    await nextTick();
+
+    expect(getSensorLatestReadings).toHaveBeenCalledTimes(1);
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+    expect(store.readingsFor('7')).toHaveLength(1);
+    expect(el.textContent).not.toContain('Telemetría no disponible');
+
+    unmount();
+  });
+
+  it('shows error when user has no permissions at all', async () => {
+    getSensor.mockRejectedValueOnce({ response: { status: 403, data: { message: 'Forbidden' } } });
+    const { el, unmount } = await mountView({ permissions: [] });
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).toContain('Forbidden');
+    expect(getSensorLatestReadings).not.toHaveBeenCalled();
+    expect(subscribeSensor).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('revokes export button when sensor_reading.export is removed', async () => {
+    const { auth, el, unmount } = await mountView({ permissions: ['sensor.view', 'sensor_reading.export'] });
+    latestDeferred.resolve({ data: [] });
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).toContain('Exportar lecturas');
+
+    auth.user.permissions = ['sensor.view'];
+    await nextTick();
+
+    expect(el.textContent).not.toContain('Exportar lecturas');
+
+    unmount();
+  });
+
+  it('sensor.view=yes + sensor_reading.view=no: no latest-readings call, no private subscription, metadata usable, telemetry unavailable', async () => {
+    const { el, unmount } = await mountView({ permissions: ['sensor.view'] });
+    await flush();
+    await nextTick();
+
+    expect(getSensorLatestReadings).not.toHaveBeenCalled();
+    expect(subscribeSensor).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('S7');
+    expect(el.textContent).toContain('Telemetría no disponible');
+    expect(el.querySelector('form')).toBeNull();
+
+    unmount();
+  });
+
+  it('telemetry permission revoked: clears sensor reading projection, releases private channel, does not reacquire', async () => {
+    const { auth, store, unmount } = await mountView();
+    latestDeferred.resolve({ data: [] });
+    await flush();
+    await nextTick();
+
+    store.mergeReading('7', { id: 30, value: 30, reading_time: at(30) });
+    expect(store.readingsFor('7')).toHaveLength(1);
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+
+    auth.user.permissions = ['sensor.view'];
+    await nextTick();
+
+    expect(unsubscribeSensor).toHaveBeenCalledTimes(1);
+    expect(store.readingsFor('7')).toEqual([]);
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+
+    auth.user.permissions = ['sensor.view', 'sensor_reading.view'];
+    await nextTick();
+
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('login while sensor page is mounted: subscribes to telemetry if permission present', async () => {
+    const { auth, el, unmount } = await mountView({ permissions: [] });
+    getSensor.mockRejectedValueOnce({ response: { status: 403, data: { message: 'Forbidden' } } });
+    await flush();
+    await nextTick();
+
+    expect(subscribeSensor).not.toHaveBeenCalled();
+
+    getSensor.mockResolvedValueOnce({ data: { id: 7, name: 'S7', unit: 'C' } });
+    auth.user.permissions = ['sensor.view', 'sensor_reading.view'];
+    await nextTick();
+    await flush();
+    await nextTick();
+
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+    expect(el.textContent).toContain('S7');
+
+    unmount();
+  });
+
+  it('logout while sensor page is mounted: clears projection and releases channel', async () => {
+    const { auth, store, unmount } = await mountView();
+    latestDeferred.resolve({ data: [] });
+    await flush();
+    await nextTick();
+
+    store.mergeReading('7', { id: 40, value: 40, reading_time: at(40) });
+    expect(store.readingsFor('7')).toHaveLength(1);
+
+    auth.user = null;
+    await nextTick();
+
+    expect(unsubscribeSensor).toHaveBeenCalledTimes(1);
+    expect(store.readingsFor('7')).toEqual([]);
 
     unmount();
   });

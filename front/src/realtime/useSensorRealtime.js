@@ -43,7 +43,7 @@ function normalizeReading(payload) {
   };
 }
 
-export function useSensorRealtime(sensorIdSource, onReading) {
+export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = () => true } = {}) {
   const isRealtimeEnabled = ref(false);
   const isConnected = ref(false);
   const error = ref('');
@@ -55,6 +55,10 @@ export function useSensorRealtime(sensorIdSource, onReading) {
   let currentSensorId = null;
   let currentPrivateChannel = false;
 
+  function telemetryAccessAllowed() {
+    return canSubscribe() !== false;
+  }
+
   async function runSnapshot() {
     // PLAN.md Stage 6.2: one-shot bounded snapshot on reconnect/visibility/auth change — never
     // a periodic GET — now sourced through the historical graph query layer instead of calling
@@ -62,7 +66,7 @@ export function useSensorRealtime(sensorIdSource, onReading) {
     // rapid reconnect+visibility double-fire from racing itself. The consumer's own onReading
     // merge (id-based dedup, e.g. SensorDetailView#addRealtimeReading /
     // sensorReadings store#mergeReading) absorbs overlap with buffered live events.
-    if (!currentSensorId) {
+    if (!currentSensorId || !telemetryAccessAllowed()) {
       return;
     }
 
@@ -76,6 +80,10 @@ export function useSensorRealtime(sensorIdSource, onReading) {
       try {
         response = await getSensorLatestReadings(currentSensorId, { limit: 20 });
       } catch {
+        return;
+      }
+
+      if (!telemetryAccessAllowed()) {
         return;
       }
 
@@ -95,6 +103,10 @@ export function useSensorRealtime(sensorIdSource, onReading) {
       consumerKey: `snapshot:${currentSensorId}`
     });
 
+    if (!telemetryAccessAllowed()) {
+      return;
+    }
+
     (result?.points || []).forEach((point) => {
       onReading?.(graphPointToReading(point, currentSensorId));
     });
@@ -103,7 +115,9 @@ export function useSensorRealtime(sensorIdSource, onReading) {
   function subscribeSensor() {
     const sensorId = resolveSensorId(sensorIdSource);
 
-    if (!sensorId || subscribed) {
+    if (!sensorId || subscribed || !telemetryAccessAllowed()) {
+      isRealtimeEnabled.value = false;
+      isConnected.value = false;
       return false;
     }
 
@@ -154,6 +168,9 @@ export function useSensorRealtime(sensorIdSource, onReading) {
         // resubscribing on whatever channel type the new credentials resolve to.
         unsubscribeSensor();
         useSensorReadingsStore().clearAll();
+        if (!telemetryAccessAllowed()) {
+          return;
+        }
         subscribeSensor();
       }
 

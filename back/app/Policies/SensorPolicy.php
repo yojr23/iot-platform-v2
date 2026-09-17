@@ -23,4 +23,15 @@ class SensorPolicy
     {
         return app(ResourceAccessService::class)->canViewSensor($user, $sensor);
     }
+
+    /**
+     * SEC-RT-002: telemetry reading authority — the REST-side counterpart of the
+     * canViewSensorReadings() rule used by the private sensor broadcast channel.
+     * Reading endpoints (readings, latestReadings, series, exportReadings) must gate
+     * behind sensor_reading.view, not sensor.view, to maintain REST/WS parity.
+     */
+    public function viewReading(User $user, Sensor $sensor): bool
+    {
+        return app(ResourceAccessService::class)->canViewSensorReadings($user, $sensor);
+    }
 }

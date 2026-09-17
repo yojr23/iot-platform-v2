@@ -177,7 +177,7 @@ class SensorApiController extends Controller
      */
     public function series(Request $request, Sensor $sensor, PublicGraphSeriesService $service)
     {
-        $this->authorize('view', $sensor);
+        $this->authorize('viewReading', $sensor);
 
         $startTime = microtime(true);
 
@@ -209,7 +209,7 @@ class SensorApiController extends Controller
 
     public function readings(Request $request, Sensor $sensor)
     {
-        $this->authorize('view', $sensor);
+        $this->authorize('viewReading', $sensor);
 
         $startTime = microtime(true);
 
@@ -260,7 +260,7 @@ class SensorApiController extends Controller
 
     public function exportReadings(Request $request, Sensor $sensor)
     {
-        $this->authorize('view', $sensor);
+        $this->authorize('viewReading', $sensor);
 
         // SEC-EXPORT-001: exports are bounded — mandatory date range, max 31-day window,
         // hard 50k row cap — so a single export can't pull unbounded history. Validation
@@ -349,7 +349,7 @@ class SensorApiController extends Controller
 
     public function latestReadings(Request $request, Sensor $sensor)
     {
-        $this->authorize('view', $sensor);
+        $this->authorize('viewReading', $sensor);
 
         $startTime = microtime(true);
 
@@ -465,7 +465,9 @@ class SensorApiController extends Controller
             // Phase E global budget: total work is capped at ALL_READINGS_GLOBAL_ROW_BUDGET rows across
             // ALL sensors, not per-sensor. Split the budget evenly so more sensors -> smaller per-sensor
             // slice, never sensor_count x limit. At least 1 row/sensor so every sensor still reports.
-            $sensorCount = max(1, Sensor::query()->count());
+            // Cap sensor count at the budget so that sensorCount * perSensorLimit <= GLOBAL_ROW_BUDGET
+            // even when every sensor gets exactly 1 row.
+            $sensorCount = min(max(1, Sensor::query()->count()), self::ALL_READINGS_GLOBAL_ROW_BUDGET);
             $perSensorLimit = max(1, min($requestedLimit, (int) floor(self::ALL_READINGS_GLOBAL_ROW_BUDGET / $sensorCount)));
 
             $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) use ($from, $to, $perSensorLimit) {

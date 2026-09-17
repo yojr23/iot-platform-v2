@@ -109,6 +109,9 @@ import DeviceRealtimeStatus from '@/components/devices/DeviceRealtimeStatus.vue'
 import { useAuthStore } from '@/stores/auth';
 import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
 import { asArray, paginatedItems, validationMessage } from '@/utils/formatters';
+import { createLogger } from '@/utils/logger';
+
+const log = createLogger('DevicesView');
 
 const authStore = useAuthStore();
 const deviceStatuses = useDeviceStatusesStore();
@@ -164,6 +167,7 @@ async function load() {
   error.value = '';
 
   try {
+    log.info('load: fetching devices, page 1');
     const shouldLoadCatalogs = Boolean(authStore.can('device.create'));
     const [devicesResponse, labsResponse, typesResponse] = await Promise.all([
       getDevices({ per_page: DEVICES_PER_PAGE, page: 1 }),
@@ -173,7 +177,9 @@ async function load() {
     applyDevicesPage(devicesResponse);
     labs.value = asArray(unwrapData(labsResponse));
     deviceTypes.value = asArray(unwrapData(typesResponse));
+    log.debug('load: devices=', devices.value.length, 'labs=', labs.value.length);
   } catch (requestError) {
+    log.warn('load failed:', requestError?.message);
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los dispositivos.');
   } finally {
     loading.value = false;

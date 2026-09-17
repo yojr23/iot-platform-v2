@@ -94,6 +94,9 @@ import SensorFilters from '@/components/sensors/SensorFilters.vue';
 import SensorList from '@/components/sensors/SensorList.vue';
 import { useAuthStore } from '@/stores/auth';
 import { asArray, paginatedItems, validationMessage } from '@/utils/formatters';
+import { createLogger } from '@/utils/logger';
+
+const log = createLogger('SensorsView');
 
 const authStore = useAuthStore();
 const route = useRoute();
@@ -145,6 +148,7 @@ async function load() {
   error.value = '';
 
   try {
+    log.info('load: fetching sensors');
     const shouldLoadAdminData = Boolean(authStore.can('sensor.create'));
     const [sensorsResponse, devicesResponse, typesResponse] = await Promise.all([
       getSensors({ per_page: 50 }),
@@ -154,7 +158,9 @@ async function load() {
     sensors.value = asArray(unwrapData(sensorsResponse));
     devices.value = paginatedItems(devicesResponse).filter((device) => device.status && device.is_active);
     sensorTypes.value = asArray(unwrapData(typesResponse));
+    log.debug('load: sensors=', sensors.value.length, 'devices=', devices.value.length);
   } catch (requestError) {
+    log.warn('load failed:', requestError?.message);
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los sensores.');
   } finally {
     loading.value = false;

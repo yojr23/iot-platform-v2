@@ -152,7 +152,7 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
     // API para sensores
     Route::prefix('sensors')->group(function () {
         Route::get('/all/readings', [SensorApiController::class, 'allReadings'])
-            ->middleware('permission:sensor.view')
+            ->middleware('permission:sensor_reading.view')
             ->middleware('throttle:api-read');
         Route::post('/', [SensorApiController::class, 'createSensor'])
             ->middleware('permission:sensor.create')
