@@ -35,6 +35,17 @@ final class ResourceAccessService
         return $user->hasVerifiedEmail() && $user->can('sensor.view');
     }
 
+    /**
+     * SEC-RT-002: telemetry (reading value/time) authority. This is the SINGLE rule the REST reading
+     * endpoints (`permission:sensor_reading.view`) and the telemetry-carrying `sensor.{id}` broadcast
+     * channel must both delegate to. Keeping it separate from `canViewSensor` (metadata-only) prevents
+     * a WS/REST divergence where `sensor.view` alone would leak live readings that REST denies.
+     */
+    public function canViewSensorReadings(User $user, Sensor $sensor): bool
+    {
+        return $user->hasVerifiedEmail() && $user->can('sensor_reading.view');
+    }
+
     public function canReceiveAlerts(User $user): bool
     {
         return $user->hasVerifiedEmail() && $user->can('alert.view');

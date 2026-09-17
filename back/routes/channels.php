@@ -61,7 +61,10 @@ Broadcast::channel('sensor.{sensorId}', function (User $user, $sensorId) {
         return false;
     }
 
-    return app(ResourceAccessService::class)->canViewSensor($user, $sensor);
+    // SEC-RT-002: this channel delivers reading TELEMETRY (App\Events\NewSensorReading), so it gates
+    // on the same authority as the REST reading endpoints (`permission:sensor_reading.view`), NOT the
+    // metadata-only `canViewSensor`. Do not revert to canViewSensor — that reopens the WS/REST divergence.
+    return app(ResourceAccessService::class)->canViewSensorReadings($user, $sensor);
 });
 
 Broadcast::channel('alerts', function (User $user) {
