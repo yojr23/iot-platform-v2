@@ -80,15 +80,31 @@ class DashboardController extends Controller
         try {
             $summary = $this->metrics->getSummaryStats();
 
-            return [
+            $payload = [
                 'total_devices' => Device::count(),
                 'active_devices' => $summary['activeDevices'] ?? 0,
                 'total_sensors' => Sensor::count(),
                 'active_alerts' => $summary['activeAlerts'] ?? 0,
                 'unresolved_alerts' => Alert::active()->count(),
-                'latest_readings' => $this->latestReadings(),
                 'system_status' => 'ok',
             ];
+
+            // SEC-RT-002 / PENDING MAC VERIFICATION: `latest_readings` carries raw reading
+            // telemetry (values + sensor/device identity) — the same class of data REST reading
+            // endpoints and the private `sensor.{id}` channel gate behind `sensor_reading.view`.
+            // This route (`auth:sanctum` + `verified` only, no `permission:*` middleware) embedded
+            // it for ANY authenticated user regardless of permission — not even `sensor.view` was
+            // required. The aggregate counts above stay ungated (a dashboard summary, not
+            // telemetry); only this field needs the same authority as every other telemetry
+            // surface, consistent with the rest of Fix 1. `auth()->user()` is safe here — this
+            // method is only reachable via `metrics()` (behind `auth:sanctum`); `publicData()`
+            // (the other caller) is documented dead code, unreferenced by any route (PLAN.md
+            // Stage 6.0 / Gate 6).
+            if (auth()->user()?->can('sensor_reading.view')) {
+                $payload['latest_readings'] = $this->latestReadings();
+            }
+
+            return $payload;
         } catch (QueryException $e) {
             Log::error('Dashboard database error', [
                 'sql_state' => $e->errorInfo[0] ?? null,

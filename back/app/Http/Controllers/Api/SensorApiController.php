@@ -433,9 +433,19 @@ class SensorApiController extends Controller
     }
 
     /**
-     * Phase E: hard global ceiling on total rows hydrated by allReadings(), independent of how many
-     * sensors exist. Prevents a single legal request from producing sensor_count x per_sensor_limit
-     * in-memory Eloquent objects. Per-sensor limit is derived from this budget at request time.
+     * Phase E / PENDING MAC VERIFICATION (reopened): hard global ceiling on total rows hydrated by
+     * allReadings(), independent of how many sensors exist. Covers BOTH the sensor metadata rows
+     * and the reading rows the endpoint returns — never just one of the two.
+     *
+     * Root cause of the reopened finding: the previous version capped a local $sensorCount variable
+     * only for the per-sensor-limit ARITHMETIC (`floor(BUDGET / sensorCount)`); the actual
+     * `Sensor::with(...)->get()` query below had no `->limit()` at all, so with more sensors than
+     * the budget (e.g. 6,000) the query still hydrated every sensor row unbounded, plus up to 1
+     * reading each — 12,000 rows against a claimed 5,000-row ceiling. Fixed by (1) applying
+     * `->limit()` to the sensor query itself, so the number of Sensor objects loaded is the SAME
+     * value used in the ratio, not just an input to it, and (2) reserving budget for the sensor
+     * metadata rows before computing the per-sensor reading slice, so
+     * `sensorsLoaded + sensorsLoaded * perSensorLimit` is provably <= this constant.
      */
     public const ALL_READINGS_GLOBAL_ROW_BUDGET = 5000;
 
@@ -462,20 +472,27 @@ class SensorApiController extends Controller
                 : now();
             $requestedLimit = min((int) ($validated['limit'] ?? 1000), self::ALL_READINGS_GLOBAL_ROW_BUDGET);
 
-            // Phase E global budget: total work is capped at ALL_READINGS_GLOBAL_ROW_BUDGET rows across
-            // ALL sensors, not per-sensor. Split the budget evenly so more sensors -> smaller per-sensor
-            // slice, never sensor_count x limit. At least 1 row/sensor so every sensor still reports.
-            // Cap sensor count at the budget so that sensorCount * perSensorLimit <= GLOBAL_ROW_BUDGET
-            // even when every sensor gets exactly 1 row.
-            $sensorCount = min(max(1, Sensor::query()->count()), self::ALL_READINGS_GLOBAL_ROW_BUDGET);
-            $perSensorLimit = max(1, min($requestedLimit, (int) floor(self::ALL_READINGS_GLOBAL_ROW_BUDGET / $sensorCount)));
+            // Genuine global bound (PENDING MAC VERIFICATION): $sensorsLoaded is the actual cap
+            // applied to the Sensor query below via ->limit() — never just a ratio input. Budget is
+            // reserved for sensor metadata rows FIRST, then whatever remains is split evenly across
+            // the per-sensor reading slice, so sensorsLoaded + sensorsLoaded * perSensorLimit can
+            // never exceed ALL_READINGS_GLOBAL_ROW_BUDGET regardless of how many sensors exist.
+            $totalSensors = max(0, Sensor::query()->count());
+            $sensorsLoaded = min($totalSensors, self::ALL_READINGS_GLOBAL_ROW_BUDGET);
+            $remainingForReadings = max(0, self::ALL_READINGS_GLOBAL_ROW_BUDGET - $sensorsLoaded);
+            $perSensorLimit = $sensorsLoaded > 0
+                ? max(0, min($requestedLimit, intdiv($remainingForReadings, $sensorsLoaded)))
+                : 0;
 
             $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) use ($from, $to, $perSensorLimit) {
                 $query->where('reading_time', '>=', $from)
                     ->where('reading_time', '<=', $to)
                     ->orderBy('reading_time', 'desc')
                     ->limit($perSensorLimit);
-            }])->get();
+            }])
+                ->orderBy('id')
+                ->limit($sensorsLoaded)
+                ->get();
 
             Log::info('All sensor readings requested', [
                 'sensor_count' => $sensors->count(),

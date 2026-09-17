@@ -66,6 +66,36 @@ trait HasEventEnvelope
         return $this->envelopeOccurredAt ??= now()->toIso8601String();
     }
 
+    /**
+     * PENDING MAC VERIFICATION — root-cause fix for Fix 3 (persistent event-envelope identity on
+     * retry). Existing code reused: the trait's own `??=`-memoized envelope properties — this only
+     * adds a way to seed them from outside instead of introducing a second identity mechanism.
+     * Existing owner retired/delegated: none; `envelopeEventId()`/`envelopeOccurredAt()` remain the
+     * sole readers, they just get a chance to be pre-filled from a durable, stable source before
+     * their own lazy `Str::uuid()`/`now()` fallback would otherwise fire.
+     *
+     * Root cause this fixes: every call site that dispatches one of these events (in practice only
+     * `DomainEventBroadcastConsumer::broadcastFact()`) constructs a BRAND NEW event object on each
+     * delivery attempt. Because `envelopeEventId`/`envelopeOccurredAt` were only ever lazily
+     * generated on the object itself (`??=`), a redelivered message (XAUTOCLAIM reclaim after a
+     * crash between broadcast success and `delivered_at`/XACK, or any other at-least-once retry)
+     * built a fresh object and therefore emitted a DIFFERENT event_id and a DIFFERENT occurred_at
+     * for what is logically the same fact — breaking downstream dedup by event_id. The already-
+     * durable identity for these events is the `DomainEventOutbox` row (`id`, `created_at`), set
+     * once at first persistence and never mutated by retries (see `CdcOutboxStreamConsumer`,
+     * `RawSensorEventPublisher`, `DomainEventPublisher`, all of which already read `$outbox->id`/
+     * `$outbox->created_at` directly and were already correct). This method lets the broadcast
+     * consumer seed the SAME identity into the broadcast event, closing the one place it was not
+     * yet reused. Guarded with `??=` so it never overrides an explicitly-set value.
+     */
+    public function seedEnvelope(string $eventId, string $occurredAt): static
+    {
+        $this->envelopeEventId ??= $eventId;
+        $this->envelopeOccurredAt ??= $occurredAt;
+
+        return $this;
+    }
+
     public function eventVersion(): int
     {
         return 1;

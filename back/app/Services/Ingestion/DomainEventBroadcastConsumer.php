@@ -248,7 +248,7 @@ class DomainEventBroadcastConsumer
         $value = data_get($payload, 'value');
         $timestamp = data_get($payload, 'timestamp');
 
-        event(new NewAlertTriggered(
+        $event = new NewAlertTriggered(
             alertId: (int) data_get($payload, 'alert_id'),
             message: (string) data_get($payload, 'message', 'Alerta generada'),
             severity: (string) data_get($payload, 'severity', 'warning'),
@@ -259,7 +259,9 @@ class DomainEventBroadcastConsumer
             deviceName: (string) data_get($payload, 'device_name', 'Dispositivo desconocido'),
             labName: (string) data_get($payload, 'lab_name', 'Lab no definido'),
             timestamp: $timestamp !== null ? (string) $timestamp : null,
-        ));
+        );
+
+        event($this->seedFromOutbox($event, $outbox));
     }
 
     private function broadcastAlertResolved(DomainEventOutbox $outbox): void
@@ -267,11 +269,13 @@ class DomainEventBroadcastConsumer
         $payload = $outbox->payload;
         $resolvedAt = data_get($payload, 'resolved_at');
 
-        event(new AlertResolved(
+        $event = new AlertResolved(
             alertId: (int) data_get($payload, 'alert_id'),
             resolved: (bool) data_get($payload, 'resolved', true),
             resolvedAt: $resolvedAt !== null ? (string) $resolvedAt : null,
-        ));
+        );
+
+        event($this->seedFromOutbox($event, $outbox));
     }
 
     private function broadcastDeviceStatusChanged(DomainEventOutbox $outbox): void
@@ -281,13 +285,15 @@ class DomainEventBroadcastConsumer
         // current row would let a later transition's status leak into an earlier fact's broadcast.
         $payload = $outbox->payload;
 
-        event(new DeviceStatusUpdated(
+        $event = new DeviceStatusUpdated(
             deviceId: (int) data_get($payload, 'device_id'),
             status: (bool) data_get($payload, 'status'),
             isActive: (bool) data_get($payload, 'is_active'),
             changedAt: (string) data_get($payload, 'changed_at'),
             eventSequence: $outbox->id,
-        ));
+        );
+
+        event($this->seedFromOutbox($event, $outbox));
     }
 
     private function broadcastSensorReadingCreated(DomainEventOutbox $outbox): void
@@ -313,11 +319,32 @@ class DomainEventBroadcastConsumer
         // it just never reaches the public channel. The private channel is unaffected: authorized
         // viewers of a restricted sensor keep realtime via the private `sensor.{id}` channel added
         // in preflight.
-        event(new NewSensorReading(
+        $event = new NewSensorReading(
             $reading,
             includePublicChannel: $this->publicVisibility->isPublic($reading->sensor),
             includePrivateChannel: true,
-        ));
+        );
+
+        event($this->seedFromOutbox($event, $outbox));
+    }
+
+    /**
+     * PENDING MAC VERIFICATION — Fix 3 (persistent event-envelope identity on retry). Every
+     * broadcastXxx() method above constructs a brand-new event object per delivery attempt; without
+     * this, a redelivered message (crash between broadcast success and delivered_at/XACK, then
+     * XAUTOCLAIM reclaim) would emit a fresh `event_id`/`occurred_at` for the same logical fact
+     * (App\Events\Concerns\HasEventEnvelope lazily generates both with `??=` on first read). The
+     * `DomainEventOutbox` row is the stable identity already used by the raw/domain outbox
+     * publishers (`$outbox->id`, `$outbox->created_at`) — this is the single place that seeds the
+     * SAME identity into the broadcast event, so a retried broadcast is provably the same event_id
+     * and occurred_at as the first attempt.
+     */
+    private function seedFromOutbox(object $event, DomainEventOutbox $outbox): object
+    {
+        return $event->seedEnvelope(
+            (string) $outbox->id,
+            ($outbox->created_at ?? now())->toIso8601String(),
+        );
     }
 
     private function ack(string $id): void
