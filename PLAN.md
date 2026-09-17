@@ -2,10 +2,10 @@
 
 ## Current state — read this first
 
-- Current repository HEAD: `dfe7074` — Graphify generated artifacts only (`graphify-out/`), not an application change.
-- Current application candidate: `86e4331` — frontend logger/AbortController/SensorDetailView telemetry-permission hardening (plus a small backend `SensorPolicy`/route touch-up).
-- Current exact-SHA CI: PASS (Windows source gate — vitest/build/no-polling; not Mac/live).
-- Windows/source verification: `<pending: SHA after 2026-09-17 front freshness/abort/regrant fixes>` (code commit for this session hasn't happened yet).
+- Current repository HEAD: `9583230` — `fix(back)` telemetry/allReadings/envelope DRAFTS (PENDING MAC, unrun).
+- Current application candidate (frontend, verified on Windows): `2e92f74` — `fix(front)` sensor realtime lifecycle hardening (A→B race + generation guard), on top of `672421b` (which bundled the earlier front freshness/abort/regrant + docs + graphify regen — a mixed commit; future graphify regen is isolated per `docs/graphify-strategy.md`).
+- Current exact-SHA CI: PASS on the frontend Windows source gate (vitest 294 pass / 0 fail, build, no-polling). NOT run for the backend `fix(back)` drafts — no PHP on Windows.
+- Windows/source verification (2026-09-17 session 2): frontend COMPLETE — full vitest suite 294 pass / 0 fail, realtime suite 51 tests × 3 runs zero flakes, `vite build` clean, polling audit clean, authorization call-site audit done. Backend `fix(back)` = source-only DRAFTS, NEVER EXECUTED — FIX PENDING MAC.
 - Mac live certification: PARTIAL / OPEN.
 - Gate 9: OPEN.
 - Gate 10 release certification: OPEN.
@@ -32,11 +32,11 @@ frontend **262 pass**, build + no-polling gate PASS.
 |------|--------|----------|
 | Dependency security (backend) | CLOSED | `composer audit` 44 advisories → **0**; `laravel/framework` 12.10.2 → 12.69.2 (fixes CRLF-in-email high + signed-URL confusion). `config.platform.php=8.2` pinned so CI (PHP 8.2) can install — an earlier `--with-all-dependencies` had pulled Symfony 8 (needs PHP 8.4) and broke the backend + security CI jobs. |
 | Dependency security (frontend) | CLOSED (residual accepted) | `immutable` high patched; residual `vitest`/`esbuild` moderate are dev-only (unshipped), reviewed exception. |
-| Sensor telemetry authority (SEC-RT-002) | SOURCE FIXED (frontend) — Mac live matrix PENDING | WebSocket `sensor.{id}` uses `sensor_reading.view`, while REST reading actions still reach `SensorPolicy::view`, which requires `sensor.view` — so the effective REST matrix and the private-channel matrix key off different permissions (REST `latest-readings`/`readings`/`export` require `sensor.view`; the private WebSocket channel requires `sensor_reading.view`). On the frontend this divergence is now fully handled: `SensorDetailView` separates `sensor.view` (metadata, always loaded) from `sensor_reading.view` (telemetry — gates the readings request and the private subscription), with tested permission-transition coverage (grant/revoke while mounted). A metadata-only user sees a controlled "telemetry unavailable" state instead of a broken request or a stale subscription. What remains OPEN is server-side: Mac must still choose and verify ONE server authority across REST and the private channel (today the two surfaces authorize on different permissions), including live grant/revoke flows against the real backend/broadcaster. |
+| Sensor telemetry authority (SEC-RT-002) | SOURCE FIXED (REST+WS unified in `eba39b9` via `ResourceAccessService::canViewSensorReadings`; frontend gated) — Mac live matrix PENDING; two newly-found telemetry leaks fixed in source (DRAFT, unrun) — PENDING MAC | **2026-09-17 session 2:** the core REST/WS split is already unified in source (`eba39b9`): `latest-readings`/`readings`/`series` require `sensor_reading.view`, `export` requires `sensor_reading.export`+`viewReading`, and the private channel delegates to the same `ResourceAccessService`. Two additional leaks of the SAME class were found and fixed in source (unrun, PENDING MAC): (a) `SensorResource` embedded `latest_readings`/`latest_reading` reachable via `show()` (sensor.view) and `DeviceApiController::sensors()` (device.view) — now gated on `sensor_reading.view`; (b) `DashboardController::dashboardPayload` returned raw `latest_readings` to any authenticated user with no permission check — now gated. Mac must still verify ONE live server authority across REST + private channel (grant/revoke) AND execute the new tests. |
 | Device provisioning atomicity (B1) | CLOSED | `DeviceService::createDevice` + `store()` wrap Device row + status log in one transaction. Forced-failure test. |
 | Sensor + mapping atomicity (B2) | CLOSED | `SensorApiController::store` wraps `Sensor::create` + `mapSensor`; nested tx as savepoint, verified on real MySQL. |
 | Device update / delete atomicity (B3/B4) | CLOSED | metadata+status PUT and log+device delete each wrapped atomically. |
-| `allReadings` global bound + validation | REOPENED — MAC BACKEND | `max(1, floor(5000 / sensorCount))` gives every loaded sensor at least one row, so more than 5,000 sensors can exceed the claimed 5,000-row ceiling; the loaded sensor objects are unbounded too. Specifically: with 6,000 sensors the formula yields `max(1, floor(5000/6000))` = 1 reading per sensor, but loading 6,000 sensor objects + 6,000 readings = 12,000 rows, breaching the 5,000-row global ceiling. With 10,000 sensors: 10,000 sensor objects (unbounded) + 10,000 readings = 20,000 rows. The sensor object list itself has no bound at all. Retain input validation, but implement and verify a genuine global sensor-and-reading bound on Mac. |
+| `allReadings` global bound + validation | SOURCE FIXED (DRAFT, unrun) — PENDING MAC EXECUTION | Confirmed real: `Sensor::with(...)->get()` had NO `->limit()`, so the sensor-object list was unbounded and `max(1, floor(5000/sensorCount))` still gave ≥1 reading per sensor (6,000 sensors → 12,000 rows). **Fixed in source (2026-09-17 session 2, commit `9583230`, NOT executed):** `allReadings()` now reserves a metadata-row budget then splits the remainder across per-sensor readings, and the sensor query carries `->orderBy('id')->limit($sensorsLoaded)`, so `sensorsLoaded + sensorsLoaded * perSensorLimit <= ALL_READINGS_GLOBAL_ROW_BUDGET` (5000) for any sensor count. Draft test `AllReadingsGlobalBoundAboveCeilingTest` (5,500 sensors) written but unrun. Mac must execute + confirm runtime/perf. |
 | MySQL mapping concurrency (Phase D) | CLOSED | Real-MySQL harness `back/tests/concurrency/`: 100/100 iterations, COUNT(open)=1 every time (InnoDB gap locks serialize the empty-set race). |
 | CI dependency-security gate (Phase R) | CLOSED | `dependency-security` job added to `gate10-quality.yml`. |
 
@@ -51,10 +51,28 @@ frontend **262 pass**, build + no-polling gate PASS.
 Source-review findings corrected the documentation for the two REOPENED items above. Frontend permission behavior hardened:
 
 - `SensorDetailView` now explicitly separates `sensor.view` (metadata) from `sensor_reading.view` (telemetry) at the load level: metadata loads unconditionally; telemetry load + subscription are gated by `canViewTelemetry`. A metadata-only user sees sensor data, a "telemetry unavailable" warning, and no readings request or private subscription is attempted.
-- Telemetry revoke guard: once telemetry access is revoked, re-granting `sensor_reading.view` does not auto-reacquire subscription or readings (user must navigate away and back). Prevents unintended re-subscription after an explicit revoke.
-- Vitest regression coverage added for permission transitions while a sensor page is mounted: `sensor.view=yes + sensor_reading.view=no` → no latest-readings call, no private subscription, metadata remains usable, controlled "telemetry unavailable" state; telemetry permission revoked → clear sensor reading projection, release private channel, do not reacquire.
+- Telemetry revoke guard: on revoke, subscription + readings are dropped and the projection cleared.
+- Vitest regression coverage added for permission transitions while a sensor page is mounted: `sensor.view=yes + sensor_reading.view=no` → no latest-readings call, no private subscription, metadata remains usable, controlled "telemetry unavailable" state; telemetry permission revoked → clear sensor reading projection, release private channel.
 - Frontend performance: try/catch with structured logging added to all API calls in views; `AbortController` for sensor detail metadata load; frontend logger utility (`createLogger`) with level filtering via `VITE_LOG_LEVEL`.
 - Completion gate: `vitest run` **277 pass / 0 fail**, `vite build`, `audit:no-polling:source` all PASS.
+
+#### Windows session 2 (2026-09-17) — realtime lifecycle + backend drafts
+
+Frontend (COMPLETE, verified on Windows — commit `2e92f74`):
+
+- **Re-grant contract corrected to auto re-acquire (supersedes the earlier "does not auto-reacquire" behavior above):** re-granting `sensor_reading.view` after a revoke now resubscribes and reloads telemetry (recovering → snapshot → live), consistent with the device composable.
+- **Sensor realtime freshness states** added (`recovering`/`live`/`stale`/`disconnected`), mirroring the device model; snapshot failure → `stale` without erasing buffered readings; four-state header badge.
+- **A→B route-param race fixed:** `watch(props.id)` aborts in-flight metadata, unsubscribes sensor.A, clears A's projection, resets state, loads B, subscribes only to B.
+- **Generation/token guard** in `useSensorRealtime` so a stale A snapshot resolving after B is active cannot merge into B or flip B's mode (also fixed a latent post-await `sensor_id` re-read).
+- **Audits:** polling audit CLEAN (no `setInterval` in production; two justified one-shot `setTimeout`); authorization call-site audit — telemetry calls gated by `sensor_reading.view`/`.export`; fixed `SensorsView.exportSelectedSensor` to gate in-function (not just button v-if); flagged `useLabWorkspace` public-monitoring path (gated by auth + public/private scope by design — Mac must confirm backend enforces `public_monitoring`).
+- **Completion gate:** full vitest suite **294 pass / 0 fail**; realtime suite **51 tests × 3 runs, zero flakes**; `vite build` clean. (`test:phase4/5` fail pre-existing/unrelated — missing `NavBar.vue`, router `requiresAdmin` gap.)
+
+Backend (DRAFTS ONLY — commit `9583230`, NEVER EXECUTED, no PHP on Windows — FIX PENDING MAC):
+
+- Two telemetry leaks fixed in source: `SensorResource` `latest_readings`/`latest_reading` and `DashboardController` `latest_readings` now gated on `sensor_reading.view` (see SEC-RT-002 row).
+- `allReadings()` global row bound fixed in source (see `allReadings` row).
+- `HasEventEnvelope::seedEnvelope()` added so a redelivered domain event keeps its stable `event_id`/`occurred_at` from the outbox row (the per-instance `??=` mint would otherwise differ per delivery attempt).
+- 6 draft PHPUnit tests written (SensorResource visibility, device.view w/o telemetry, dashboard telemetry gate, allReadings 5,500-sensor bound, retry preserves id + occurred_at, REST authority matrix). **None executed.** No backend finding is closed on the strength of a Windows source edit.
 
 ### Still OPEN (need infra beyond core stack, or repo admin)
 
