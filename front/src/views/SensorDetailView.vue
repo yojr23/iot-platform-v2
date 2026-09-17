@@ -6,9 +6,13 @@
         <p class="lab-resource-description">Consulta las lecturas en tiempo real y explora el historial del sensor.</p>
       </div>
       <div class="lab-resource-actions">
-        <span class="badge" :class="canViewTelemetry && sensorRealtime.isConnected.value ? 'text-bg-success' : 'text-bg-secondary'">
-          {{ canViewTelemetry ? (sensorRealtime.isConnected.value ? 'Tiempo real' : 'API') : 'Telemetría no disponible' }}
-        </span>
+        <span
+          class="badge"
+          :class="realtimeBadge.className"
+          role="status"
+          aria-live="polite"
+          :data-realtime-mode="realtimeBadge.mode"
+        >{{ realtimeBadge.label }}</span>
         <button
           v-if="canExportTelemetry"
           class="btn btn-outline-info"
@@ -210,6 +214,24 @@ const sensorRealtime = useSensorRealtime(() => props.id, (reading) => {
   canSubscribe: () => canViewTelemetry.value
 });
 
+// Same className mapping as DeviceRealtimeStatus.vue's four-mode badge, with sensor-specific
+// Spanish labels.
+const REALTIME_BADGE_BY_MODE = {
+  live: { label: 'Tiempo real', className: 'text-bg-success' },
+  recovering: { label: 'Actualizando…', className: 'text-bg-warning' },
+  stale: { label: 'Datos posiblemente desactualizados', className: 'text-bg-warning' },
+  disconnected: { label: 'Sin conexión en tiempo real', className: 'text-bg-secondary' }
+};
+
+const realtimeBadge = computed(() => {
+  if (!canViewTelemetry.value) {
+    return { mode: 'unavailable', label: 'Telemetría no disponible', className: 'text-bg-secondary' };
+  }
+
+  const mode = sensorRealtime.realtimeStatus.value.mode;
+  return { mode, ...(REALTIME_BADGE_BY_MODE[mode] || REALTIME_BADGE_BY_MODE.disconnected) };
+});
+
 async function loadTelemetry() {
   if (!canViewTelemetry.value) {
     log.debug('loadTelemetry skipped: sensor_reading.view not granted');
@@ -232,22 +254,18 @@ async function loadTelemetry() {
   }
 }
 
-let telemetryTornDown = false;
-
 function clearTelemetryProjection() {
   sensorRealtime.unsubscribeSensor();
   readingsStore.clearSensor(props.id);
   filteredReadings.value = [];
   filterActive.value = false;
-  telemetryTornDown = true;
 }
 
+// OPTION A (auto re-acquire): a re-grant after a prior revoke resubscribes AND reloads
+// telemetry, same as useDeviceStatusRealtime.js's 'auth' resync auto-resubscribing — it does not
+// require a manual page reload to see live data again.
 watch(canViewTelemetry, async (allowed, previouslyAllowed) => {
   if (allowed) {
-    if (telemetryTornDown) {
-      log.debug('sensor_reading.view re-granted after revoke, not reacquiring');
-      return;
-    }
     log.debug('sensor_reading.view granted, subscribing sensor');
     sensorRealtime.subscribeSensor();
     if (previouslyAllowed === false && sensor.value) {
@@ -273,7 +291,7 @@ async function load() {
 
   try {
     log.info('load: fetching metadata for sensor', props.id);
-    const sensorResponse = await getSensor(props.id);
+    const sensorResponse = await getSensor(props.id, { signal: metadataAbort.signal });
 
     sensor.value = unwrapData(sensorResponse);
     log.debug('load: metadata loaded, name=', sensor.value?.name);

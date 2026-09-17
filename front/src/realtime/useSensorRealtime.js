@@ -43,10 +43,16 @@ function normalizeReading(payload) {
   };
 }
 
+// Mirrors useDeviceStatusRealtime.js's stale message shape (same store-preserving contract:
+// failure never erases the sensorReadings store, it just flags the projection uncertain).
+const SNAPSHOT_FAILURE_MESSAGE = 'Error al recuperar lecturas del sensor; datos posiblemente desactualizados.';
+
 export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = () => true } = {}) {
   const isRealtimeEnabled = ref(false);
   const isConnected = ref(false);
   const error = ref('');
+  // Same four-mode model as useDeviceStatusRealtime.js's store-level realtimeStatus.
+  const realtimeStatus = ref({ connected: false, mode: 'disconnected', error: '' });
 
   let releaseChannel = null;
   let stopConnectionWatch = null;
@@ -54,6 +60,15 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
   let subscribed = false;
   let currentSensorId = null;
   let currentPrivateChannel = false;
+  // Transport connectivity alone does not prove the projection is current — set true only after
+  // a snapshot has actually succeeded, cleared on disconnect/failure, exactly like the device flag.
+  let projectionFresh = false;
+
+  function setStatus(status) {
+    realtimeStatus.value = { connected: false, mode: 'disconnected', error: '', ...status };
+    isConnected.value = Boolean(status.connected);
+    error.value = status.error || '';
+  }
 
   function telemetryAccessAllowed() {
     return canSubscribe() !== false;
@@ -70,46 +85,66 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
       return;
     }
 
-    // Private/restricted sensors have no anonymous graph-series contract yet — this composable owns
-    // that recovery directly (Gate 6: the public historical query store no longer carries a
-    // latest-tail branch). The consumer's own id-based dedup absorbs overlap with buffered live
-    // events, so no cursor/gap tracking is needed here.
-    if (currentPrivateChannel) {
-      let response;
+    setStatus({ connected: isConnected.value, mode: 'recovering', error: '' });
 
-      try {
-        response = await getSensorLatestReadings(currentSensorId, { limit: 20 });
-      } catch {
-        return;
+    try {
+      // Private/restricted sensors have no anonymous graph-series contract yet — this composable
+      // owns that recovery directly (Gate 6: the public historical query store no longer carries
+      // a latest-tail branch). The consumer's own id-based dedup absorbs overlap with buffered
+      // live events, so no cursor/gap tracking is needed here.
+      if (currentPrivateChannel) {
+        const response = await getSensorLatestReadings(currentSensorId, { limit: 20 });
+
+        if (!telemetryAccessAllowed()) {
+          return;
+        }
+
+        const readings = unwrapData(response);
+        (Array.isArray(readings) ? readings.slice().reverse() : []).forEach((reading) => {
+          onReading?.({ ...normalizeReading(reading), sensor_id: currentSensorId });
+        });
+      } else {
+        const to = new Date();
+        const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
+        const result = await useGraphSeriesQueryStore().fetchWindow(currentSensorId, {
+          authorizationScope: 'public',
+          from,
+          to,
+          consumerKey: `snapshot:${currentSensorId}`
+        });
+
+        if (!telemetryAccessAllowed()) {
+          return;
+        }
+
+        // fetchWindow() never throws (it catches internally and returns null on failure/abort) —
+        // treat null the same as a thrown failure so the catch block below sets mode='stale'
+        // instead of silently reporting success with no data.
+        if (!result) {
+          throw new Error('Sensor snapshot fetch failed.');
+        }
+
+        (result.points || []).forEach((point) => {
+          onReading?.(graphPointToReading(point, currentSensorId));
+        });
       }
 
-      if (!telemetryAccessAllowed()) {
-        return;
-      }
-
-      const readings = unwrapData(response);
-      (Array.isArray(readings) ? readings.slice().reverse() : []).forEach((reading) => {
-        onReading?.({ ...normalizeReading(reading), sensor_id: currentSensorId });
+      projectionFresh = true;
+      setStatus({
+        connected: isConnected.value,
+        mode: isConnected.value ? 'live' : 'stale',
+        error: ''
       });
-      return;
+    } catch {
+      // Existing buffered/live readings already in the sensorReadings store are untouched here —
+      // this only flips the status flag, it never clears the store.
+      projectionFresh = false;
+      setStatus({
+        connected: isConnected.value,
+        mode: 'stale',
+        error: SNAPSHOT_FAILURE_MESSAGE
+      });
     }
-
-    const to = new Date();
-    const from = new Date(to.getTime() - RECOVERY_WINDOW_MS);
-    const result = await useGraphSeriesQueryStore().fetchWindow(currentSensorId, {
-      authorizationScope: 'public',
-      from,
-      to,
-      consumerKey: `snapshot:${currentSensorId}`
-    });
-
-    if (!telemetryAccessAllowed()) {
-      return;
-    }
-
-    (result?.points || []).forEach((point) => {
-      onReading?.(graphPointToReading(point, currentSensorId));
-    });
   }
 
   function subscribeSensor() {
@@ -154,10 +189,25 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
     // S5-02: connected state now derives from the shared transport ack (echo.js) and
     // delivers the current state immediately to late subscribers via { immediate: true }.
     // A consumer created after Echo is already connected now sees isConnected=true right away
-    // instead of waiting for the next transport transition.
+    // instead of waiting for the next transport transition. Mode mirrors
+    // useDeviceStatusRealtime.js: a reconnect alone doesn't prove the projection fresh, so it's
+    // 'live' only if a snapshot already succeeded (projectionFresh), otherwise 'stale'.
     stopConnectionWatch = onConnectionStateChange((state) => {
-      isConnected.value = state === 'connected';
-      error.value = state === 'connected' ? '' : 'Conexion en tiempo real interrumpida; reintentando.';
+      if (state === 'connected') {
+        setStatus({
+          connected: true,
+          mode: projectionFresh ? 'live' : 'stale',
+          error: ''
+        });
+        return;
+      }
+
+      projectionFresh = false;
+      setStatus({
+        connected: false,
+        mode: 'disconnected',
+        error: 'Conexion en tiempo real interrumpida; reintentando.'
+      });
     }, { immediate: true });
 
     stopResync = onResync((reason) => {
@@ -180,9 +230,11 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
       runSnapshot();
     });
 
+    // error.value is not reset here: the immediate onConnectionStateChange call above (synchronous,
+    // { immediate: true }) already set it correctly for the actual current transport state via
+    // setStatus() — unconditionally clearing it here would wipe a real disconnected-state message.
     subscribed = true;
     isRealtimeEnabled.value = true;
-    error.value = '';
     return true;
   }
 
@@ -197,13 +249,15 @@ export function useSensorRealtime(sensorIdSource, onReading, { canSubscribe = ()
     subscribed = false;
     currentSensorId = null;
     currentPrivateChannel = false;
-    isConnected.value = false;
+    projectionFresh = false;
+    setStatus({ connected: false, mode: 'disconnected', error: '' });
   }
 
   return {
     isRealtimeEnabled,
     isConnected,
     error,
+    realtimeStatus,
     subscribeSensor,
     unsubscribeSensor
   };

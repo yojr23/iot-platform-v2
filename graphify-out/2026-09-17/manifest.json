@@ -1,9 +1,9 @@
 {
   ".claude/settings.local.json": {
-    "mtime": 1789677960.8261817,
-    "seen": 1789678460.4506345,
-    "ast_hash": "9fdb6af728f2aa7a5ca6de502e487a93",
-    "semantic_hash": ""
+    "mtime": 1789419503.1741035,
+    "seen": 1789478785.4642994,
+    "ast_hash": "e24c5632f864a57ec6a5465e49bdb3d2",
+    "semantic_hash": "e24c5632f864a57ec6a5465e49bdb3d2"
   },
   "back/app/Console/Commands/ConsumeCdcOutboxes.php": {
     "mtime": 1789134338.822695,
@@ -2034,10 +2034,10 @@
     "semantic_hash": "4c630f720627a580633340fbd2f74c1f"
   },
   "front/src/api/sensors.js": {
-    "mtime": 1789677213.9118762,
-    "seen": 1789678460.4886632,
-    "ast_hash": "b5551b03eee28ccc4d608f88eeb2e375",
-    "semantic_hash": ""
+    "mtime": 1788987999.3988636,
+    "seen": 1789157893.3845513,
+    "ast_hash": "9b34bb86983c95592a228469853c4014",
+    "semantic_hash": "9b34bb86983c95592a228469853c4014"
   },
   "front/src/api/users.js": {
     "mtime": 1789417773.8134072,
@@ -2412,16 +2412,16 @@
     "semantic_hash": "9f8fd7f93475061d2211e304479e1020"
   },
   "front/src/realtime/useSensorRealtime.js": {
-    "mtime": 1789677444.2390506,
-    "seen": 1789678460.495019,
-    "ast_hash": "ad63063eaace51e341cd62ef1ea5ffc0",
-    "semantic_hash": ""
+    "mtime": 1789653887.821825,
+    "seen": 1789663126.9065077,
+    "ast_hash": "0bbc862cdc9bbad8a896a2ac3aa0725f",
+    "semantic_hash": "0bbc862cdc9bbad8a896a2ac3aa0725f"
   },
   "front/src/realtime/useSensorRealtime.test.js": {
-    "mtime": 1789677600.3659363,
-    "seen": 1789678460.4950206,
-    "ast_hash": "42fe7949e791af9b7f76e4dd4b898c57",
-    "semantic_hash": ""
+    "mtime": 1789653710.0057497,
+    "seen": 1789663126.9065096,
+    "ast_hash": "b46c4a463f7ac8a387c0a3f68be6746b",
+    "semantic_hash": "b46c4a463f7ac8a387c0a3f68be6746b"
   },
   "front/src/router/configRoutes.test.js": {
     "mtime": 1789425483.181433,
@@ -2616,16 +2616,16 @@
     "semantic_hash": "03246913ec7c8a7e71b0330d0c675527"
   },
   "front/src/views/SensorDetailView.test.js": {
-    "mtime": 1789677556.553696,
-    "seen": 1789678460.4983425,
-    "ast_hash": "cb6c5c21cbbbe3c00a2e5f84277a7988",
-    "semantic_hash": ""
+    "mtime": 1789659824.5690353,
+    "seen": 1789663126.9065752,
+    "ast_hash": "4cb7ea47482126e3b26b43dff22b4565",
+    "semantic_hash": "4cb7ea47482126e3b26b43dff22b4565"
   },
   "front/src/views/SensorDetailView.vue": {
-    "mtime": 1789677472.1554856,
-    "seen": 1789678460.4983442,
-    "ast_hash": "1fa383ec92b49cc45d2a063c98d920c3",
-    "semantic_hash": ""
+    "mtime": 1789660300.0936615,
+    "seen": 1789663126.9065766,
+    "ast_hash": "81e699a5ce9bea84b7d865243e2d81a9",
+    "semantic_hash": "81e699a5ce9bea84b7d865243e2d81a9"
   },
   "front/src/views/SensorsView.test.js": {
     "mtime": 1789418436.165738,
@@ -3032,8 +3032,8 @@
   "back/database/setup_iot_platform.sql": {
     "mtime": 1788814128.9908023,
     "seen": 1789478785.4645462,
-    "ast_hash": "",
-    "semantic_hash": ""
+    "ast_hash": "e23ac342f66cc277a4f2d2efdbf42c30",
+    "semantic_hash": "e23ac342f66cc277a4f2d2efdbf42c30"
   },
   "back/tests/Feature/Api/AlertAuthorizationTest.php": {
     "mtime": 1789419856.0136728,
@@ -3324,10 +3324,10 @@
     "semantic_hash": "8b33b9c30adf82e14ecd123d1be6a26d"
   },
   "PLAN.md": {
-    "mtime": 1789677438.7352438,
-    "seen": 1789678460.503058,
-    "ast_hash": "088485a1c721b3d610421bc878154f44",
-    "semantic_hash": ""
+    "mtime": 1789660423.9941418,
+    "seen": 1789663126.9066474,
+    "ast_hash": "ef780fc9aae381ddaff2ed4c96fb69bc",
+    "semantic_hash": "ef780fc9aae381ddaff2ed4c96fb69bc"
   },
   "README.md": {
     "mtime": 1789158606.7140954,
@@ -3916,23 +3916,5 @@
     "seen": 1789663126.906649,
     "ast_hash": "eedf586298a42be1fe7ea9635cd0e5eb",
     "semantic_hash": "eedf586298a42be1fe7ea9635cd0e5eb"
-  },
-  "front/src/api/sensors.test.js": {
-    "mtime": 1789677548.5440998,
-    "seen": 1789678460.4886663,
-    "ast_hash": "194db7401d559329f3a1a29083c10490",
-    "semantic_hash": ""
-  },
-  "docs/graphify-strategy.md": {
-    "mtime": 1789677455.8694997,
-    "seen": 1789678460.504549,
-    "ast_hash": "09566a473410f39aa80711e4f2f59b1d",
-    "semantic_hash": ""
-  },
-  "docs/simulated-infra-certification.md": {
-    "mtime": 1789677482.9636354,
-    "seen": 1789678460.506047,
-    "ast_hash": "f51dd0b8f693e9b4a1220e05c60b7919",
-    "semantic_hash": ""
   }
 }

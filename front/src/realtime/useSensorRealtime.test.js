@@ -384,3 +384,99 @@ describe('W10-W11: sensor realtime logout clears projections / login leaves subs
     expect(echoMock.publicChannel.listen).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Task 1: sensor realtime freshness states (recovering/live/stale/disconnected)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    storedToken = null;
+    connectionWatchers.clear();
+    resyncWatchers.clear();
+    echoMock.echo.channel.mockClear();
+    echoMock.echo.private.mockClear();
+    echoMock.echo.leaveChannel.mockClear();
+    echoMock.publicChannel.listen.mockClear();
+    echoMock.publicChannel.stopListening.mockClear();
+    echoMock.privateChannel.listen.mockClear();
+    echoMock.privateChannel.stopListening.mockClear();
+    setActivePinia(createPinia());
+  });
+
+  it('starts disconnected before subscribeSensor is called', async () => {
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const realtime = useSensorRealtime(7, vi.fn());
+
+    expect(realtime.realtimeStatus.value.mode).toBe('disconnected');
+  });
+
+  it('reconnect -> snapshot starts -> mode is recovering while the snapshot is in flight, then live on success', async () => {
+    const { getGraphSeries } = await import('@/api/graph');
+    let resolveSnapshot;
+    getGraphSeries.mockImplementationOnce(() => new Promise((resolve) => { resolveSnapshot = resolve; }));
+
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+
+    for (const callback of [...resyncWatchers]) callback('reconnect');
+
+    // Snapshot request is still pending (getGraphSeries hasn't resolved yet).
+    expect(realtime.realtimeStatus.value.mode).toBe('recovering');
+
+    resolveSnapshot({ data: { points: [], stats: { min: null, max: null, mean: null, count: 0 } } });
+    await flushMicrotasks();
+
+    expect(realtime.realtimeStatus.value.mode).toBe('live');
+  });
+
+  it('snapshot failure -> mode is stale AND previously-merged readings stay in the store (not erased)', async () => {
+    const { getGraphSeries } = await import('@/api/graph');
+    getGraphSeries.mockRejectedValueOnce(new Error('network down'));
+
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+    const projection = useSensorReadingsStore();
+    projection.mergeReading(7, { id: 1, value: 1, reading_time: '2026-01-01T00:00:00Z' });
+
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+
+    for (const callback of [...resyncWatchers]) callback('reconnect');
+    await flushMicrotasks();
+
+    expect(realtime.realtimeStatus.value.mode).toBe('stale');
+    expect(realtime.realtimeStatus.value.error).toMatch(/lecturas del sensor/);
+    // The failed recovery snapshot must not erase readings merged before it ran.
+    expect(projection.readingsFor(7)).toHaveLength(1);
+  });
+
+  it('a later resync that succeeds brings mode back to live after a prior failure', async () => {
+    const { getGraphSeries } = await import('@/api/graph');
+    getGraphSeries.mockRejectedValueOnce(new Error('network down'));
+    getGraphSeries.mockResolvedValueOnce({
+      data: { points: [], stats: { min: null, max: null, mean: null, count: 0 } }
+    });
+
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+
+    for (const callback of [...resyncWatchers]) callback('reconnect');
+    await flushMicrotasks();
+    expect(realtime.realtimeStatus.value.mode).toBe('stale');
+
+    for (const callback of [...resyncWatchers]) callback('visibility');
+    await flushMicrotasks();
+    expect(realtime.realtimeStatus.value.mode).toBe('live');
+  });
+
+  it('a WS disconnect sets mode to disconnected', async () => {
+    const { useSensorRealtime } = await import('./useSensorRealtime');
+    const realtime = useSensorRealtime(7, vi.fn());
+    realtime.subscribeSensor();
+
+    for (const callback of [...connectionWatchers]) callback('disconnected');
+
+    expect(realtime.realtimeStatus.value.mode).toBe('disconnected');
+    expect(realtime.isConnected.value).toBe(false);
+  });
+});

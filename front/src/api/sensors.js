@@ -4,8 +4,8 @@ export function getSensors(params = {}) {
   return apiClient.get('/sensors', { params });
 }
 
-export function getSensor(sensorId) {
-  return apiClient.get(`/sensors/${sensorId}`);
+export function getSensor(sensorId, { signal } = {}) {
+  return apiClient.get(`/sensors/${sensorId}`, { signal });
 }
 
 export function createSensor(payload) {

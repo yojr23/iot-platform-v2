@@ -1,5 +1,20 @@
 # IoT Platform v2 — full migration plan (`refraccion`)
 
+## Current state — read this first
+
+- Current repository HEAD: `dfe7074` — Graphify generated artifacts only (`graphify-out/`), not an application change.
+- Current application candidate: `86e4331` — frontend logger/AbortController/SensorDetailView telemetry-permission hardening (plus a small backend `SensorPolicy`/route touch-up).
+- Current exact-SHA CI: PASS (Windows source gate — vitest/build/no-polling; not Mac/live).
+- Windows/source verification: `<pending: SHA after 2026-09-17 front freshness/abort/regrant fixes>` (code commit for this session hasn't happened yet).
+- Mac live certification: PARTIAL / OPEN.
+- Gate 9: OPEN.
+- Gate 10 release certification: OPEN.
+- PLAN: OPEN.
+
+Exactly one section below is authoritative for current release state: **RECONCILIATION — 2026-09-17 (Mac hardening + live-stack session)**, immediately following this block. Every other RECONCILIATION/ledger/status section further down is marked **HISTORICAL RECORD — NOT CURRENT RELEASE STATE** and is retained for audit traceability only, not as a competing source of truth.
+
+---
+
 **Derives from:** `audit.md` (original audit SHA `880cffbcfc7aecb081fb378642d8693c1df64170`) plus a required application-code refresh against baseline `06d619c4c57c2cacae0c890e4dd7056097ddc79d`. The planning-document base SHA for this status reconciliation is `26aedcfb05ecda2044f68d7732853cdc12a85140`. Status below is sourced from the 2026-09-14 audit handoff and repository inspection; future documentation-only commits should not be mistaken for application drift. The audit is the source of truth for *why* and *what's broken*, but it is not yet fully current/reproducible. This document is the ordered, gated *how* to fix every finding and reach the Definition of Done in `audit.md §23`.
 
 ---
@@ -17,7 +32,7 @@ frontend **262 pass**, build + no-polling gate PASS.
 |------|--------|----------|
 | Dependency security (backend) | CLOSED | `composer audit` 44 advisories → **0**; `laravel/framework` 12.10.2 → 12.69.2 (fixes CRLF-in-email high + signed-URL confusion). `config.platform.php=8.2` pinned so CI (PHP 8.2) can install — an earlier `--with-all-dependencies` had pulled Symfony 8 (needs PHP 8.4) and broke the backend + security CI jobs. |
 | Dependency security (frontend) | CLOSED (residual accepted) | `immutable` high patched; residual `vitest`/`esbuild` moderate are dev-only (unshipped), reviewed exception. |
-| Sensor telemetry authority (SEC-RT-002) | REOPENED — MAC BACKEND | WebSocket `sensor.{id}` now uses `sensor_reading.view`, but REST reading actions still reach `SensorPolicy::view`, which requires `sensor.view`. The documented four-cell permission matrix (`sensor.view` × `sensor_reading.view`) is therefore not the effective REST matrix: REST `latest-readings`/`readings`/`export` require `sensor.view` (not `sensor_reading.view`), while the private WebSocket channel requires `sensor_reading.view` (not `sensor.view`). This means a user with `sensor_reading.view` but not `sensor.view` can receive live telemetry via WebSocket but gets 403 on REST reading endpoints — and a user with `sensor.view` but not `sensor_reading.view` can call REST reading endpoints but cannot subscribe to the private channel. Windows SPA behavior now keeps metadata usable without telemetry (sensor_reading.view=no → no readings request, no subscription, controlled "telemetry unavailable" message), but Mac must choose and verify one server authority across REST and private-channel grant/revoke flows. |
+| Sensor telemetry authority (SEC-RT-002) | SOURCE FIXED (frontend) — Mac live matrix PENDING | WebSocket `sensor.{id}` uses `sensor_reading.view`, while REST reading actions still reach `SensorPolicy::view`, which requires `sensor.view` — so the effective REST matrix and the private-channel matrix key off different permissions (REST `latest-readings`/`readings`/`export` require `sensor.view`; the private WebSocket channel requires `sensor_reading.view`). On the frontend this divergence is now fully handled: `SensorDetailView` separates `sensor.view` (metadata, always loaded) from `sensor_reading.view` (telemetry — gates the readings request and the private subscription), with tested permission-transition coverage (grant/revoke while mounted). A metadata-only user sees a controlled "telemetry unavailable" state instead of a broken request or a stale subscription. What remains OPEN is server-side: Mac must still choose and verify ONE server authority across REST and the private channel (today the two surfaces authorize on different permissions), including live grant/revoke flows against the real backend/broadcaster. |
 | Device provisioning atomicity (B1) | CLOSED | `DeviceService::createDevice` + `store()` wrap Device row + status log in one transaction. Forced-failure test. |
 | Sensor + mapping atomicity (B2) | CLOSED | `SensorApiController::store` wraps `Sensor::create` + `mapSensor`; nested tx as savepoint, verified on real MySQL. |
 | Device update / delete atomicity (B3/B4) | CLOSED | metadata+status PUT and log+device delete each wrapped atomically. |
@@ -56,6 +71,8 @@ dependency phases are closed with tests; live-infra certification is partial
 ---
 
 ## RECONCILIATION — 2026-09-16 (Mac verification session)
+
+**HISTORICAL RECORD — NOT CURRENT RELEASE STATE.** Superseded by the RECONCILIATION — 2026-09-17 section above. Retained for audit traceability only.
 
 This section reconciles the plan against `refraccion` after the Mac verification/hardening
 session. The validated application baseline is the tip of the fixes described below (commits
@@ -319,6 +336,8 @@ These override any conflicting text below or in the `front_rebuild_plan/` compan
 > **Session status, 9 September 2026 — Stage 6/7/8 started.** Full evidence: `front_rebuild_plan/STAGE_6_7_8_SESSION_EVIDENCE_2026-09-09.md`. **DONE (code+tests, uncommitted, GAP=run-machine):** Stage 6.0 server-owned graph boundary (`PublicGraphVisibility` fail-closed sole owner + `public_monitoring_enabled` column + `/api/public/graph/{bootstrap,series}` + consumer visibility gating); Stage 6.1 DRY chart owner; Stage 6.2 live projection + graph-series recovery + **sensor polling deleted** in `SensorMonitorBoard.vue`; Stage 7 **backend** (`/api/alerts/active` → `auth:sanctum`, alert events → `PrivateChannel('alerts')`); Stage 7 **frontend** (private alerts channel `{privateChannel:true}` + `AlertResolved` listener + `markAlertResolved` store method + delete `AppLayout`/`ActiveAlertsCard` timers); Stage 8.2 email off the sync path + rate-limit-release fix. Pre-gate P1 fixes also landed: sensor realtime private/public by stored token (race fixed), `NewSensorReading` fail-closed, PAT `/broadcasting/auth` test. **Test evidence (2026-09-09):** 18 test files, 69 tests, 0 failures — `npx vitest run` confirms. Test fixes applied this session: `useAlertsRealtime.test.js` updated to expect 2 `listenOnChannel` calls per subscribe (alerts + AlertResolved), `AppLayout.test.js` timer assertions updated to 0 (polling deleted), `graphSeriesQuery.test.js` abort test uses fixed timestamps to avoid key collision. **STILL OPEN:** Stage 8.1 device status backend event dispatch + frontend realtime subscription; `GET /api/config/runtime` wiring to replace `/api/config/public`; legacy Blade alert regression (expected — deferred retirement); transitional public API retirement (`/api/config/public`, `/api/dashboard/public`, `/api/sensors/{id}/latest-readings`, `/api/devices/{device}/sensors`); Stage 0 evidence baseline + no-polling assertion; Stage G0D ownership freeze; Stages 2–5 (contracts, outbox, domain events, Echo ref-counting). `PublicGraphVisibility` **is** now wired into public delivery; the earlier "not yet wired" / "expect `private-sensor.{id}`" / `00b560c` commit-review notes are resolved.
 
 ## AUTHORITATIVE CURRENT-STATUS LEDGER — 2026-09-15
+
+**HISTORICAL RECORD — NOT CURRENT RELEASE STATE.** Despite the header, this section does not hold current authority — superseded by the RECONCILIATION — 2026-09-17 section above. Retained for audit traceability only.
 
 **Superseded by the RECONCILIATION section above.** The reconciliation section is the authoritative current-state record as of 2026-09-15. The ledger below is retained for historical traceability only.
 

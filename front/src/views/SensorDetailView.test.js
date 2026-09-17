@@ -13,6 +13,7 @@ vi.mock('@/realtime/useSensorRealtime', () => ({
     return {
       isConnected: { value: false },
       error: { value: '' },
+      realtimeStatus: { value: { connected: false, mode: 'disconnected', error: '' } },
       subscribeSensor,
       unsubscribeSensor
     };
@@ -273,7 +274,7 @@ describe('SensorDetailView shared-tail live projection', () => {
     unmount();
   });
 
-  it('telemetry permission revoked: clears sensor reading projection, releases private channel, does not reacquire', async () => {
+  it('telemetry permission revoked then re-granted: clears projection on revoke, then resubscribes and reloads telemetry on re-grant (Option A auto re-acquire)', async () => {
     const { auth, store, unmount } = await mountView();
     latestDeferred.resolve({ data: [] });
     await flush();
@@ -290,10 +291,18 @@ describe('SensorDetailView shared-tail live projection', () => {
     expect(store.readingsFor('7')).toEqual([]);
     expect(subscribeSensor).toHaveBeenCalledTimes(1);
 
+    // Re-grant after a prior revoke: Option A resubscribes AND reloads telemetry instead of
+    // leaving the view stuck on an empty projection until a manual reload.
+    latestDeferred = deferred();
     auth.user.permissions = ['sensor.view', 'sensor_reading.view'];
     await nextTick();
+    latestDeferred.resolve({ data: [{ id: 31, value: 31, reading_time: at(31) }] });
+    await flush();
+    await nextTick();
 
-    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+    expect(subscribeSensor).toHaveBeenCalledTimes(2);
+    expect(getSensorLatestReadings).toHaveBeenCalledTimes(2);
+    expect(store.readingsFor('7')).toHaveLength(1);
 
     unmount();
   });
@@ -314,6 +323,17 @@ describe('SensorDetailView shared-tail live projection', () => {
 
     expect(subscribeSensor).toHaveBeenCalledTimes(1);
     expect(el.textContent).toContain('S7');
+
+    unmount();
+  });
+
+  it('load() forwards the metadata AbortController signal to getSensor (Task 2)', async () => {
+    const { unmount } = await mountView();
+    latestDeferred.resolve({ data: [] });
+    await flush();
+    await nextTick();
+
+    expect(getSensor).toHaveBeenCalledWith('7', expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     unmount();
   });
