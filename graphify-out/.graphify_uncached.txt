@@ -1,0 +1,3 @@
+C:\Users\jvrincon\Documents\iot_platform\iot-platform-v2\.github\workflows\gate10-quality.yml
+C:\Users\jvrincon\Documents\iot_platform\iot-platform-v2\PLAN.md
+C:\Users\jvrincon\Documents\iot_platform\iot-platform-v2\docs\mac-certification-evidence.md
