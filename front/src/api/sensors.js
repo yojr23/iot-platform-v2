@@ -24,8 +24,8 @@ export function getSensorLatestReadings(sensorId, { signal, ...params } = {}) {
   return apiClient.get(`/sensors/${sensorId}/latest-readings`, { params, signal });
 }
 
-export function getSensorReadings(sensorId, params = {}) {
-  return apiClient.get(`/sensors/${sensorId}/readings`, { params });
+export function getSensorReadings(sensorId, { signal, ...params } = {}) {
+  return apiClient.get(`/sensors/${sensorId}/readings`, { params, signal });
 }
 
 export function exportSensorReadings(sensorId, params = {}) {

@@ -1,4 +1,4 @@
-import { createApp, nextTick } from 'vue';
+import { createApp, h, nextTick, ref } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,8 +46,13 @@ const mountedApps = [];
 
 function deferred() {
   let resolve;
-  const promise = new Promise((res) => { resolve = res; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  // Unhandled-rejection safety net: a stale request's guarded catch() may return before ever
+  // touching `.catch`-relevant state, but the promise itself is always awaited by the caller
+  // (loadTelemetry/filterReadings), so this is only a no-op safety net, not a real suppression.
+  promise.catch(() => {});
+  return { promise, resolve, reject };
 }
 
 async function mountView({ permissions = ['sensor.view', 'sensor_reading.view'] } = {}) {
@@ -352,6 +357,215 @@ describe('SensorDetailView shared-tail live projection', () => {
 
     expect(unsubscribeSensor).toHaveBeenCalledTimes(1);
     expect(store.readingsFor('7')).toEqual([]);
+
+    unmount();
+  });
+});
+
+// mountView() above mounts SensorDetailView with a static `id` prop, which is enough for the
+// permission-toggle regressions Task 3 already covers. The A->B navigation races need `props.id`
+// to actually change post-mount (matching real router `:id` reuse), so this wraps the view in a
+// tiny reactive-id root component instead of duplicating the whole mount/teardown harness.
+async function mountViewNav({ initialId = '7', permissions = ['sensor.view', 'sensor_reading.view'] } = {}) {
+  const { default: SensorDetailView } = await import('./SensorDetailView.vue');
+  const { useSensorReadingsStore } = await import('@/stores/sensorReadings');
+  const { useAuthStore } = await import('@/stores/auth');
+  const el = document.createElement('div');
+  const idRef = ref(initialId);
+  const Root = { render: () => h(SensorDetailView, { id: idRef.value }) };
+  const app = createApp(Root);
+  const pinia = createPinia();
+  app.use(pinia);
+  setActivePinia(pinia);
+  const auth = useAuthStore();
+  auth.user = { id: 1, permissions };
+  app.component('RouterLink', { template: '<a><slot /></a>' });
+  app.mount(el);
+  mountedApps.push(app);
+  await nextTick();
+  return {
+    el,
+    auth,
+    store: useSensorReadingsStore(),
+    setId: async (newId) => {
+      idRef.value = newId;
+      await nextTick();
+    },
+    unmount: () => {
+      app.unmount();
+      const index = mountedApps.indexOf(app);
+      if (index >= 0) mountedApps.splice(index, 1);
+    }
+  };
+}
+
+describe('SensorDetailView: A->B navigation races (Task 3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedOnReading = null;
+    latestDeferred = deferred();
+    setActivePinia(createPinia());
+    getSensor.mockImplementation((id) => Promise.resolve({ data: { id: Number(id), name: `S${id}`, unit: 'C' } }));
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it('1. delayed A latest-readings resolves after B is active: A readings never land, B store holds only B data', async () => {
+    const deferredA = deferred();
+    const deferredB = deferred();
+    getSensorLatestReadings
+      .mockImplementationOnce(() => deferredA.promise)
+      .mockImplementationOnce(() => deferredB.promise);
+
+    const { store, setId, unmount } = await mountViewNav({ initialId: '7' });
+    await setId('8');
+
+    // A's request resolves late, after B is the active sensor.
+    deferredA.resolve({ data: [{ id: 100, value: 100, reading_time: at(1) }] });
+    await flush();
+    await nextTick();
+
+    expect(store.readingsFor('7')).toEqual([]);
+    expect(store.readingsFor('8')).toEqual([]);
+
+    deferredB.resolve({ data: [{ id: 200, value: 200, reading_time: at(2) }] });
+    await flush();
+    await nextTick();
+
+    expect(store.readingsFor('8')).toHaveLength(1);
+    expect(store.readingsFor('8')[0].id).toBe(200);
+    expect(store.readingsFor('7')).toEqual([]);
+
+    unmount();
+  });
+
+  it('2. delayed A latest-readings ERROR resolves after B is active: B error stays empty', async () => {
+    const deferredA = deferred();
+    getSensorLatestReadings
+      .mockImplementationOnce(() => deferredA.promise)
+      .mockImplementationOnce(() => Promise.resolve({ data: [{ id: 300, value: 300, reading_time: at(3) }] }));
+
+    const { el, store, setId, unmount } = await mountViewNav({ initialId: '7' });
+    await setId('8');
+
+    deferredA.reject({ name: 'Error', message: 'A telemetry failed' });
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).not.toContain('No se pudieron cargar las lecturas del sensor');
+    expect(store.readingsFor('8')).toHaveLength(1);
+
+    unmount();
+  });
+
+  it('3. stale A filterReadings finally() after B is active does not flip B\'s filtering state', async () => {
+    const filterDeferredA = deferred();
+    const filterDeferredB = deferred();
+    getSensorLatestReadings.mockImplementation(() => Promise.resolve({ data: [] }));
+    getSensorReadings
+      .mockImplementationOnce(() => filterDeferredA.promise)
+      .mockImplementationOnce(() => filterDeferredB.promise);
+
+    const { el, setId, unmount } = await mountViewNav({ initialId: '7' });
+    await flush();
+    await nextTick();
+
+    // Start a historical filter for A and leave it pending.
+    el.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    await nextTick();
+
+    // Navigate to B before A's filter resolves.
+    await setId('8');
+    await flush();
+    await nextTick();
+
+    // Start B's own filter and leave it pending too.
+    el.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    await nextTick();
+
+    const filterButton = el.querySelector('button[type="submit"]');
+    expect(filterButton.disabled).toBe(true);
+
+    // A's stale filter resolves late; its finally() must not flip B's filtering flag off while
+    // B's own filter is still in flight.
+    filterDeferredA.resolve({ data: [{ id: 700, value: 700, reading_time: at(7) }] });
+    await flush();
+    await nextTick();
+
+    expect(filterButton.disabled).toBe(true);
+    expect(el.textContent).not.toContain('700');
+
+    filterDeferredB.resolve({ data: [{ id: 800, value: 800, reading_time: at(8) }] });
+    await flush();
+    await nextTick();
+
+    expect(filterButton.disabled).toBe(false);
+    expect(el.textContent).toContain('800');
+
+    unmount();
+  });
+
+  it('4. filtered-history request for A resolves after navigation to B: does not pollute B filteredReadings', async () => {
+    const filterDeferredA = deferred();
+    getSensorLatestReadings.mockImplementation(() => Promise.resolve({ data: [] }));
+    getSensorReadings.mockImplementationOnce(() => filterDeferredA.promise);
+
+    const { el, store, setId, unmount } = await mountViewNav({ initialId: '7' });
+    await flush();
+    await nextTick();
+
+    el.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    await nextTick();
+
+    await setId('8');
+    await flush();
+    await nextTick();
+
+    filterDeferredA.resolve({ data: [{ id: 900, value: 900, reading_time: at(9) }] });
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).not.toContain('900');
+
+    // B's default (unfiltered) view still reads the shared live tail correctly.
+    store.mergeReading('8', { id: 950, value: 950, reading_time: at(10) });
+    await nextTick();
+    expect(el.textContent).toContain('950');
+
+    unmount();
+  });
+
+  it('5. a reading arriving on B during the snapshot/subscription transition survives (subscribe-before-snapshot)', async () => {
+    const deferredA = deferred();
+    const deferredB = deferred();
+    getSensorLatestReadings
+      .mockImplementationOnce(() => deferredA.promise)
+      .mockImplementationOnce(() => deferredB.promise);
+
+    const { store, setId, unmount } = await mountViewNav({ initialId: '7' });
+    deferredA.resolve({ data: [] });
+    await flush();
+    await nextTick();
+
+    expect(subscribeSensor).toHaveBeenCalledTimes(1);
+
+    await setId('8');
+    // subscribeSensor() for B must already have fired (Bug 2 reorder), even though B's REST
+    // snapshot (deferredB) is still pending.
+    expect(subscribeSensor).toHaveBeenCalledTimes(2);
+
+    // A live event lands on B's channel while the snapshot request is still in flight.
+    capturedOnReading({ id: 600, sensor_id: 8, value: 600, reading_time: at(6) });
+
+    deferredB.resolve({ data: [{ id: 601, value: 601, reading_time: at(6) }] });
+    await flush();
+    await nextTick();
+
+    const ids = store.readingsFor('8').map((reading) => reading.id);
+    expect(ids).toContain(600);
+    expect(ids).toContain(601);
 
     unmount();
   });

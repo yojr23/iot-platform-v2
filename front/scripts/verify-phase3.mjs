@@ -24,8 +24,9 @@ const requiredFiles = [
   'src/components/base/BaseAlert.vue',
   'src/components/base/BaseInput.vue',
   'src/components/base/LoadingSpinner.vue',
+  // NavBar.vue was retired; AppLayout.vue now renders LabShell.vue (permission-gated nav) instead
+  // of a separate navbar component — see scripts/verify-phase4.mjs for the LabShell assertions.
   'src/components/layout/AppLayout.vue',
-  'src/components/layout/NavBar.vue',
   'src/layouts/AuthLayout.vue',
   'src/layouts/AppLayout.vue',
   'src/router/index.js',

@@ -145,26 +145,59 @@ function readingFilterParams() {
   };
 }
 
+// A->B race guard shared by loadTelemetry() and filterReadings(): both re-read props.id after
+// an await, so a request started for sensor A that resolves after navigating to B (or after
+// telemetry access is revoked) must not touch B's store/error/loading state. One counter + one
+// AbortController for both functions — starting either one supersedes/aborts the other, and
+// navigation/revoke invalidate whatever is in flight without starting a new request.
+let telemetryAbort = null;
+let telemetryGeneration = 0;
+
+function invalidateTelemetry() {
+  telemetryGeneration++;
+  telemetryAbort?.abort();
+  telemetryAbort = null;
+}
+
 async function filterReadings() {
   if (!canViewTelemetry.value) {
     return;
   }
 
+  const generation = ++telemetryGeneration;
+  const requestedId = props.id;
+  telemetryAbort?.abort();
+  telemetryAbort = new AbortController();
+  const { signal } = telemetryAbort;
+  const isStale = () => generation !== telemetryGeneration || requestedId !== props.id;
+
   filtering.value = true;
   error.value = '';
 
   try {
-    log.debug('filterReadings for sensor', props.id, readingFilterParams());
-    const response = await getSensorReadings(props.id, readingFilterParams());
+    log.debug('filterReadings for sensor', requestedId, readingFilterParams());
+    const response = await getSensorReadings(requestedId, { ...readingFilterParams(), signal });
+
+    if (isStale()) {
+      return;
+    }
+
     // Local immutable historical result for the filtered range — live events do not mutate it.
     filteredReadings.value = paginatedItems(response);
     filterActive.value = true;
     log.debug('filterReadings returned', filteredReadings.value.length, 'readings');
   } catch (requestError) {
-    log.warn('filterReadings failed:', requestError?.message);
-    error.value = getApiErrorMessage(requestError, 'No se pudieron filtrar las lecturas.');
+    if (isStale()) {
+      return;
+    }
+    if (requestError?.name !== 'CanceledError' && requestError?.code !== 'ERR_CANCELED') {
+      log.warn('filterReadings failed:', requestError?.message);
+      error.value = getApiErrorMessage(requestError, 'No se pudieron filtrar las lecturas.');
+    }
   } finally {
-    filtering.value = false;
+    if (!isStale()) {
+      filtering.value = false;
+    }
   }
 }
 
@@ -238,15 +271,27 @@ async function loadTelemetry() {
     return;
   }
 
-  try {
-    log.debug('loadTelemetry fetching latest readings for sensor', props.id);
-    const readingsResponse = await getSensorLatestReadings(props.id, { limit: 20 });
+  const generation = ++telemetryGeneration;
+  const requestedId = props.id;
+  telemetryAbort?.abort();
+  telemetryAbort = new AbortController();
+  const { signal } = telemetryAbort;
+  const isStale = () => generation !== telemetryGeneration || requestedId !== props.id;
 
-    if (canViewTelemetry.value) {
-      readingsStore.mergeReadings(props.id, unwrapData(readingsResponse) || []);
-      log.debug('loadTelemetry merged', unwrapData(readingsResponse)?.length ?? 0, 'readings');
+  try {
+    log.debug('loadTelemetry fetching latest readings for sensor', requestedId);
+    const readingsResponse = await getSensorLatestReadings(requestedId, { limit: 20, signal });
+
+    if (isStale() || !canViewTelemetry.value) {
+      return;
     }
+
+    readingsStore.mergeReadings(requestedId, unwrapData(readingsResponse) || []);
+    log.debug('loadTelemetry merged', unwrapData(readingsResponse)?.length ?? 0, 'readings');
   } catch (requestError) {
+    if (isStale()) {
+      return;
+    }
     if (requestError?.name !== 'CanceledError' && requestError?.code !== 'ERR_CANCELED') {
       log.warn('loadTelemetry failed:', requestError?.message);
       error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las lecturas del sensor.');
@@ -255,6 +300,7 @@ async function loadTelemetry() {
 }
 
 function clearTelemetryProjection() {
+  invalidateTelemetry();
   sensorRealtime.unsubscribeSensor();
   readingsStore.clearSensor(props.id);
   filteredReadings.value = [];
@@ -324,6 +370,7 @@ watch(() => props.id, async (newId, oldId) => {
 
   log.info('sensor id changed', oldId, '->', newId);
   metadataAbort?.abort();
+  invalidateTelemetry();
   sensorRealtime.unsubscribeSensor();
   readingsStore.clearSensor(oldId);
   sensor.value = null;
@@ -331,15 +378,20 @@ watch(() => props.id, async (newId, oldId) => {
   filterActive.value = false;
   error.value = '';
 
-  await load();
-
+  // Subscribe to B's live channel BEFORE the REST snapshot (Bug 2): the composable already reads
+  // props.id via () => props.id, which Vue has updated to newId by the time this watcher runs, so
+  // subscribeSensor() here targets B. Any reading emitted between now and the snapshot response
+  // lands in the shared tail store and dedups against the snapshot on merge — nothing is lost.
   if (canViewTelemetry.value) {
     sensorRealtime.subscribeSensor();
   }
+
+  await load();
 });
 
 onBeforeUnmount(() => {
   metadataAbort?.abort();
+  invalidateTelemetry();
   sensorRealtime.unsubscribeSensor();
 });
 </script>

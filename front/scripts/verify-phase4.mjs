@@ -40,22 +40,28 @@ if (!router.includes("path: 'devices'") || !router.includes("name: 'devices'")) 
   console.error('Router must include protected /devices route.');
   process.exit(1);
 }
-if (!router.includes('requiresAdmin')) {
-  console.error('Router must protect admin-only views with requiresAdmin metadata.');
+// The app migrated from a hardcoded admin role check (requiresAdmin / user.is_admin) to
+// permission-based routing (router meta.requiresPermission + authStore.can()) — verify that
+// current architecture instead of the retired admin-flag gate.
+if (!router.includes('requiresPermission')) {
+  console.error('Router must protect restricted views with requiresPermission metadata.');
   process.exit(1);
 }
-if (!router.includes('authStore.user?.is_admin')) {
-  console.error('Router must check admin role before entering admin-only views.');
+if (!router.includes('authStore.can(to.meta.requiresPermission)')) {
+  console.error('Router must check the required permission before entering a protected view.');
   process.exit(1);
 }
 
-const navbar = readFileSync(join(root, 'src/components/layout/NavBar.vue'), 'utf8');
-if (!navbar.includes('/devices')) {
-  console.error('Navbar must link to /devices.');
+// NavBar.vue was retired in favor of LabShell.vue (the sidebar/bottom-nav shell rendered by
+// AppLayout). Its nav items are gated per-permission (auth.can(...)) rather than split into a
+// static laboratory/admin bucket, so this checks the current gating mechanism instead.
+const navShell = readFileSync(join(root, 'src/components/dashboard/lab/LabShell.vue'), 'utf8');
+if (!navShell.includes('/devices')) {
+  console.error('LabShell nav must link to /devices.');
   process.exit(1);
 }
-if (!navbar.includes('laboratoryItems') || !navbar.includes('adminItems')) {
-  console.error('Navbar must separate laboratory and admin navigation items.');
+if (!navShell.includes("auth.can('device.view')") && !navShell.includes('auth.can("device.view")')) {
+  console.error('LabShell nav must gate the devices link by the device.view permission.');
   process.exit(1);
 }
 

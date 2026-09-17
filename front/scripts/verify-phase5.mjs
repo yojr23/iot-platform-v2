@@ -137,11 +137,14 @@ assertIncludes(alertToast, '<Transition', 'AlertToast must fade in/out with a Vu
 assertIncludes(alertToast, 'alert-toast-fade', 'AlertToast must define fade transition classes.');
 assertIncludes(alertToast, '9000', 'AlertToast must auto-dismiss after the configured timeout.');
 
-const navBar = read('src/components/layout/NavBar.vue');
-assertIncludes(navBar, 'realtimeStatus', 'NavBar must expose realtime status.');
-assertIncludes(navBar, 'unresolvedCount', 'NavBar must show unresolved alert count.');
+// NavBar.vue was retired; LabShell.vue (rendered by AppLayout via the router view, see
+// src/layouts/AppLayout.vue) now owns the unresolved-alert badge, and ActiveAlertsCard surfaces
+// realtime connection status directly from the alerts store instead of a navbar indicator.
+const navShell = read('src/components/dashboard/lab/LabShell.vue');
+assertIncludes(navShell, 'unresolvedCount', 'LabShell must show unresolved alert count.');
 
 const activeAlertsCard = read('src/components/dashboard/ActiveAlertsCard.vue');
+assertIncludes(activeAlertsCard, 'realtimeStatus', 'ActiveAlertsCard must expose realtime status.');
 // Gate 7 (7.3): ActiveAlertsCard is presentation-only over the alerts store; it must not fetch
 // on its own (useAlertsRealtime is the sole snapshot owner) or mount would race a second owner.
 if (activeAlertsCard.includes('fetchActiveAlerts') || activeAlertsCard.includes('onMounted')) {
