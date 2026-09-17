@@ -117,17 +117,66 @@ audit logs) — confirms MySQL migration portability from a clean database.
 
 ---
 
+## Live stack — ingestion vertical slice (HTTP tier, real running stack)
+
+Brought up the real stack: MySQL (`db`), Redis (`redis`), Laravel API (`back`,
+:8000, healthy, Laravel 12.69.2), Vue dev server (`front`, :5173). Redis
+already carries the pipeline streams (`iot.raw-events`, `iot.domain-events`,
+`iot-cdc.*`).
+
+Live HTTP ingestion trace (correlation id `e2e-trace-1789650939`):
+
+| Case | Request | Result |
+|------|---------|--------|
+| Valid event | `POST /api/ingestion/events` (valid `X-Ingestion-Token`) | **201** `event_id=5, duplicate:false`; verified `RawSensorEvent#5` + 1 `RawEventOutbox` (atomic) |
+| Duplicate `source_event_id` | replay same id, different value | **200** `duplicate:true`, same `event_id=5`, raw-event count stays **1** (idempotent, no double-insert) |
+| Wrong token | `X-Ingestion-Token: bad` | **401** |
+| Missing token | no token header | **401** |
+| Malformed payload | valid token, `{"topic":"t"}` (no `payload.sensors`) | **422** controlled |
+
+This certifies the ingestion → RawSensorEvent → RawEventOutbox tier of the
+vertical end to end on the live stack, plus the credential + idempotency +
+validation matrix. The remaining tiers (MQTT broker → Python spool, and CDC →
+Redis stream → consumers → broadcast → browser) still require the
+`workers`-profile services + an MQTT broker (see below).
+
+## Live stack — raw consumer + poison→DLQ (Phase H4, real Redis consumer group)
+
+Brought up the `raw-consumer` (and `domain-event-consumer`) worker containers.
+The `raw-process-v1` consumer group on `iot.raw-events` is live and processing.
+
+Observed real state across raw events:
+
+| Event | Node | Consumer outcome |
+|-------|------|------------------|
+| 2, 3, 4 | mapped node | `status=processed` — normalized into `SensorReading` |
+| 5 | `E2E-PUB-1` (no canonical mapping) | retried **5×** → `max_attempts_exceeded` → routed to `iot.dead-letter-events`, `status=failed` |
+
+**Phase H4 (poison → DLQ) certified live:** the unmapped event 5 was retried
+to the attempt ceiling, then dead-lettered with a full diagnostic — DLQ entry
+carries `orig_stream=iot.raw-events`, `orig_id`, `attempts=5`,
+`reason="max_attempts_exceeded: RawReadingNormalizer: no device found for
+node_id [E2E-PUB-1]"`, and the original `payload_json`. Critically, the poison
+event did **not** stall the partition — events 2/3/4 processed normally around
+it. This is the required retry → terminal-failure → DLQ → ACK-source behavior.
+
+The full MQTT→browser vertical (MQTT broker → Python spool, and the
+Debezium binlog → CDC stream relay that feeds `iot.raw-events` from the outbox)
+still requires the MQTT broker + `debezium` service; the consumer tier that
+runs after the stream is certified above.
+
 ## Phases requiring the full live stack (not yet certified here)
 
-These need the complete Docker stack (Debezium, MQTT broker, WebSocket
-broadcaster, browser automation) and, for governance, GitHub admin rights.
-They are **not** claimed as passed:
+These need infrastructure beyond the core stack (Debezium, MQTT broker,
+Pusher-compatible WebSocket server) or, for governance, GitHub admin rights.
+Honestly scoped:
 
-- **H** event-recovery fault matrix (Redis/Debezium restart, XAUTOCLAIM, poison→DLQ, broadcast crash windows)
-- **I** full MQTT→browser vertical trace
-- **J/K** live realtime + 60s no-polling browser capture (HAR)
-- **L** desktop/mobile device QA
-- **Q/R** branch protection + CI dependency gate (needs repo admin)
+- **H** event recovery — **H4 poison→DLQ certified live** (above). Redis/Debezium restart, XAUTOCLAIM worker-takeover, and broadcast crash windows still require the `debezium` service + a broadcaster and are not yet run.
+- **I** MQTT→browser — **HTTP ingestion tier + raw-consumer tier certified live** (above). The MQTT broker → Python spool front end and the Debezium CDC relay in the middle are not yet run.
+- **J/K** live realtime + 60s no-polling browser capture — in progress against the running front+back; fixed a real drift bug in the audit harness (`apiLogin` read `data.token` but the live `/api/auth/login` returns `access_token`).
+- **L** desktop/mobile device QA — mocked responsive matrix exists in CI; real-device pass not run.
+- **Q** branch protection — needs repo admin (cannot be done from the working tree).
+- **R** CI dependency-security gate — **DONE** (added to `.github/workflows/gate10-quality.yml`, see the CI-fix section).
 
 Honest status: source-fixable correctness/authorization/perf phases are done
 and tested; live-infra certification is pending a full stack run.

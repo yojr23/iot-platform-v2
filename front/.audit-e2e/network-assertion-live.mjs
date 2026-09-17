@@ -82,7 +82,10 @@ async function apiLogin() {
   });
   if (!res.ok) throw new Error(`live login failed: HTTP ${res.status}`);
   const body = await res.json();
-  const token = body?.data?.token ?? body?.token;
+  // Match the real /api/auth/login contract and the production SPA (front/src/stores/auth.js):
+  // the token is `access_token` at the top level. The older `data.token`/`token` shapes are kept
+  // as fallbacks only.
+  const token = body?.access_token ?? body?.token ?? body?.data?.token;
   if (!token) throw new Error('live login returned no token');
   return token;
 }
