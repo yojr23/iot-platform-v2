@@ -432,27 +432,47 @@ class SensorApiController extends Controller
         }
     }
 
+    /**
+     * Phase E: hard global ceiling on total rows hydrated by allReadings(), independent of how many
+     * sensors exist. Prevents a single legal request from producing sensor_count x per_sensor_limit
+     * in-memory Eloquent objects. Per-sensor limit is derived from this budget at request time.
+     */
+    public const ALL_READINGS_GLOBAL_ROW_BUDGET = 5000;
+
     public function allReadings(Request $request)
     {
         $startTime = microtime(true);
+
+        // Phase E: validate inputs -> controlled 422, not a generic 500 from Carbon::parse throwing.
+        $validated = $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:'.self::ALL_READINGS_GLOBAL_ROW_BUDGET],
+        ]);
 
         try {
             // P1: bound the query window. Without from/to, default to last 24h.
             // Hard max is 7 days to prevent accidental full-table scans.
             $maxWindow = now()->subDays(7);
-            $from = $request->input('from')
-                ? Carbon::parse($request->input('from'))->max($maxWindow)
+            $from = isset($validated['from'])
+                ? Carbon::parse($validated['from'])->max($maxWindow)
                 : now()->subDay();
-            $to = $request->input('to')
-                ? Carbon::parse($request->input('to'))
+            $to = isset($validated['to'])
+                ? Carbon::parse($validated['to'])
                 : now();
-            $limit = min((int) $request->input('limit', 1000), 5000);
+            $requestedLimit = min((int) ($validated['limit'] ?? 1000), self::ALL_READINGS_GLOBAL_ROW_BUDGET);
 
-            $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) use ($from, $to, $limit) {
+            // Phase E global budget: total work is capped at ALL_READINGS_GLOBAL_ROW_BUDGET rows across
+            // ALL sensors, not per-sensor. Split the budget evenly so more sensors -> smaller per-sensor
+            // slice, never sensor_count x limit. At least 1 row/sensor so every sensor still reports.
+            $sensorCount = max(1, Sensor::query()->count());
+            $perSensorLimit = max(1, min($requestedLimit, (int) floor(self::ALL_READINGS_GLOBAL_ROW_BUDGET / $sensorCount)));
+
+            $sensors = Sensor::with(['sensorType', 'device.lab', 'readings' => function ($query) use ($from, $to, $perSensorLimit) {
                 $query->where('reading_time', '>=', $from)
                     ->where('reading_time', '<=', $to)
                     ->orderBy('reading_time', 'desc')
-                    ->limit($limit);
+                    ->limit($perSensorLimit);
             }])->get();
 
             Log::info('All sensor readings requested', [
