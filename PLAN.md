@@ -4,6 +4,47 @@
 
 ---
 
+## RECONCILIATION — 2026-09-17 (Mac hardening + live-stack session)
+
+Continues the 2026-09-16 session. Full reproducible evidence in
+`docs/mac-certification-evidence.md`. Starting SHA `43d6f96`. Backend suite
+**448 pass / 45 skip / 1721 assertions** (SQLite) and **17/17 on real MySQL 8.0**;
+frontend **262 pass**, build + no-polling gate PASS.
+
+### Now CLOSED in source (with tests)
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| Dependency security (backend) | CLOSED | `composer audit` 44 advisories → **0**; `laravel/framework` 12.10.2 → 12.69.2 (fixes CRLF-in-email high + signed-URL confusion). `config.platform.php=8.2` pinned so CI (PHP 8.2) can install — an earlier `--with-all-dependencies` had pulled Symfony 8 (needs PHP 8.4) and broke the backend + security CI jobs. |
+| Dependency security (frontend) | CLOSED (residual accepted) | `immutable` high patched; residual `vitest`/`esbuild` moderate are dev-only (unshipped), reviewed exception. |
+| Sensor telemetry authority (SEC-RT-002) | CLOSED | WS `sensor.{id}` carried reading telemetry but gated on `sensor.view`; REST readings gate on `sensor_reading.view`. Unified via `ResourceAccessService::canViewSensorReadings()`; four-cell matrix + WS parity tests. |
+| Device provisioning atomicity (B1) | CLOSED | `DeviceService::createDevice` + `store()` wrap Device row + status log in one transaction. Forced-failure test. |
+| Sensor + mapping atomicity (B2) | CLOSED | `SensorApiController::store` wraps `Sensor::create` + `mapSensor`; nested tx as savepoint, verified on real MySQL. |
+| Device update / delete atomicity (B3/B4) | CLOSED | metadata+status PUT and log+device delete each wrapped atomically. |
+| `allReadings` global bound + validation | CLOSED | `ALL_READINGS_GLOBAL_ROW_BUDGET=5000`, per-sensor = floor(budget/sensorCount); 422 on malformed/reversed/zero. EXPLAIN ANALYZE on real MySQL: index range scan, 833 rows in 2.5ms. |
+| MySQL mapping concurrency (Phase D) | CLOSED | Real-MySQL harness `back/tests/concurrency/`: 100/100 iterations, COUNT(open)=1 every time (InnoDB gap locks serialize the empty-set race). |
+| CI dependency-security gate (Phase R) | CLOSED | `dependency-security` job added to `gate10-quality.yml`. |
+
+### Live-stack evidence (partial certification)
+
+- **Ingestion HTTP tier:** valid=201 + atomic RawSensorEvent+outbox; duplicate `source_event_id`=200 idempotent (no double-insert); wrong/missing token=401; malformed=422.
+- **Phase H4 poison→DLQ (live):** unmapped-node event retried 5× → `max_attempts_exceeded` → `iot.dead-letter-events` with full diagnostic, without stalling the partition (other events processed normally).
+- **Audit harness bug fixed:** live no-polling script read `data.token`; real `/api/auth/login` returns `access_token` (matches SPA). Fixed.
+
+### Still OPEN (need infra beyond core stack, or repo admin)
+
+- Full MQTT→browser vertical (MQTT broker → Python spool; Debezium CDC relay).
+- Redis/Debezium restart + XAUTOCLAIM worker-takeover + broadcast crash windows.
+- Live 60s no-polling browser capture (in progress; harness fixed, run pending).
+- Real-device desktop/mobile QA (Phase L).
+- Branch protection (Phase Q) — needs GitHub admin.
+
+**Gate 9: OPEN. Gate 10: OPEN. PLAN: OPEN.** Correctness/authorization/perf/
+dependency phases are closed with tests; live-infra certification is partial
+(ingestion + consumer + poison→DLQ done; MQTT/CDC/broadcaster/browser pending).
+
+---
+
 ## RECONCILIATION — 2026-09-16 (Mac verification session)
 
 This section reconciles the plan against `refraccion` after the Mac verification/hardening
@@ -184,10 +225,10 @@ excluded as it needs an external MQTT broker — events injected via `POST /api/
 | Responsive E2E failing | P1 | ✅ FIXED | 35/35 mocked matrix pass; audit admin-route list corrected (commit `c6daf18`). |
 | Sensor-mapping cutover/backfill | P0 | PASS PREVIOUSLY | `migrate:fresh` passed on MySQL 8.4 + SQLite; rerun on the final candidate only if database or migration-path code changes. |
 | Temporal mapping concurrency | P1 | ⚠️ PARTIALLY VERIFIED | `mapSensor()` locks the identity rows; still needs a genuine concurrent-connection MySQL race test (M6). |
-| `allReadings` endpoint unbounded | P1 | ⚠️ PARTIALLY FIXED / OPEN | Has a 7-day window + per-sensor limit, but the real bound is `sensors × per_sensor_limit` (no global budget), and `Carbon::parse()` on bad dates can 500 instead of 422. Still needs M7. |
+| `allReadings` endpoint unbounded | P1 | ✅ CLOSED (2026-09-17) | Global `ALL_READINGS_GLOBAL_ROW_BUDGET=5000`, per-sensor = floor(budget/sensorCount); 422 on malformed/reversed/zero. See 2026-09-17 reconciliation. |
 | `api_key_hash` missing index | P2 | ✅ VERIFIED | `UNIQUE(api_key_hash)` applied cleanly in `migrate:fresh` on MySQL 8.4. |
 | RBAC dual authority (`is_admin` + `role_id`) | P2 | ⚠️ CODED_NOT_VERIFIED | `is_admin` retained as migration bridge; caller migration + removal still pending (M8). |
-| Live Gate 9/10 evidence | P0 | OPEN | Core event-processing Docker stack verified; Redis restart, Debezium restart, poison-to-DLQ, browser reconnect, real 35-second no-polling capture, MySQL EXPLAIN, and dependency audit remain open. |
+| Live Gate 9/10 evidence | P0 | ⚠️ PARTIAL (2026-09-17) | Now done: poison→DLQ (live), ingestion HTTP tier (live), MySQL EXPLAIN, dependency audit, MySQL mapping concurrency. Still open: Redis/Debezium restart, XAUTOCLAIM, MQTT→browser, live 60s no-polling capture (harness fixed). See 2026-09-17 reconciliation. |
 | MySQL upgrade/backfill path | P1 | PASS PREVIOUSLY | M9 ran `migrate --force` over a populated legacy fixture and backfilled canonical mappings without data loss; rerun on the final candidate only if database or migration-path code changes. |
 
 ### What the reviewer asked for (correction order)
