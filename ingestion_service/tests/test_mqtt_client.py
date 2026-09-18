@@ -15,6 +15,7 @@ def _settings() -> Settings:
         mqtt_password=None,
         mqtt_client_id="test-client",
         mqtt_qos=1,
+        mqtt_clean_session=False,
         backend_base_url="http://localhost:8000",
         backend_ingestion_token="token",
         log_level="INFO",
@@ -94,4 +95,50 @@ def test_valid_message_is_enqueued_and_creates_no_quarantine_record(tmp_path):
 
     assert len(spool.claim_due(limit=10)) == 1
     assert spool.quarantined() == []
+    spool.close()
+
+
+def test_client_uses_persistent_session_and_stable_id(tmp_path):
+    """Persistent session contract: stable non-empty client id + clean_session=False so the broker
+    queues QoS-1 messages for us while the subscriber is offline."""
+    import paho.mqtt.client as mqtt
+
+    settings = _settings()
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    client = MQTTIngestionClient(settings, spool)
+
+    assert settings.mqtt_client_id  # non-empty, stable
+    assert settings.mqtt_clean_session is False
+    # paho v2 stores clean_session on the client; verify persistent session was requested.
+    assert client._mqtt._clean_session is False
+    assert client._mqtt._client_id.decode() == settings.mqtt_client_id
+    spool.close()
+
+
+def test_on_connect_resubscribes_with_configured_qos(tmp_path):
+    """Every (re)connect must re-establish the QoS-1 subscription so a reconnect resumes delivery."""
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    client = MQTTIngestionClient(_settings(), spool)
+
+    subscribed = []
+    fake_client = SimpleNamespace(subscribe=lambda topic, qos: subscribed.append((topic, qos)))
+    ok = SimpleNamespace(is_failure=False)
+
+    client._on_connect(fake_client, None, None, ok)
+
+    assert subscribed == [("iot/+/readings", 1)]
+    spool.close()
+
+
+def test_on_connect_failure_does_not_subscribe(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    client = MQTTIngestionClient(_settings(), spool)
+
+    subscribed = []
+    fake_client = SimpleNamespace(subscribe=lambda topic, qos: subscribed.append((topic, qos)))
+    fail = SimpleNamespace(is_failure=True)
+
+    client._on_connect(fake_client, None, None, fail)
+
+    assert subscribed == []
     spool.close()

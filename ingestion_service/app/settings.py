@@ -29,6 +29,7 @@ class Settings:
     mqtt_password: Optional[str]
     mqtt_client_id: str
     mqtt_qos: int
+    mqtt_clean_session: bool
     backend_base_url: str
     backend_ingestion_token: str
     log_level: str
@@ -50,6 +51,9 @@ def get_settings() -> Settings:
         mqtt_password=getenv("MQTT_PASSWORD"),
         mqtt_client_id=getenv("MQTT_CLIENT_ID", "iot-platform-v2-ingestion"),
         mqtt_qos=_env_int("MQTT_QOS", 1),
+        # Persistent broker session by default: the broker keeps QoS-1 messages queued for this
+        # client id while the subscriber is offline, so a subscriber-down window loses nothing.
+        mqtt_clean_session=getenv("MQTT_CLEAN_SESSION", "false").lower() in ("1", "true", "yes"),
         backend_base_url=getenv("BACKEND_BASE_URL", "http://localhost:8000"),
         backend_ingestion_token=getenv("BACKEND_INGESTION_TOKEN", ""),
         log_level=getenv("LOG_LEVEL", "INFO").upper(),

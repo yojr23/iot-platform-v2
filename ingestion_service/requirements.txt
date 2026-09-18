@@ -2,4 +2,4 @@ requests
 pydantic
 python-dotenv
 pytest
-paho-mqtt
+paho-mqtt>=2.1,<3
