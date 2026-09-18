@@ -94,3 +94,57 @@ describe('SensorsView device_id preselect (D5)', () => {
     unmount();
   });
 });
+
+describe('SensorsView server-side search/status', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentQuery = {};
+    setActivePinia(createPinia());
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  const waitDebounce = () => new Promise((resolve) => setTimeout(resolve, 350));
+
+  it('sends the search term to the server (not just filtering loaded rows)', async () => {
+    const { el, unmount } = await mountView();
+    getSensors.mockClear();
+
+    const filterInput = el.querySelector('input[aria-label="Buscar sensores"]');
+    expect(filterInput).not.toBeNull();
+    filterInput.value = 'temperature';
+    filterInput.dispatchEvent(new Event('input'));
+    await nextTick();
+
+    await waitDebounce();
+    await flush();
+
+    expect(getSensors).toHaveBeenCalled();
+    const params = getSensors.mock.calls.at(-1)[0];
+    expect(params.search).toBe('temperature');
+    expect(params.page).toBe(1);
+
+    unmount();
+  });
+
+  it('sends the status filter to the server', async () => {
+    const { el, unmount } = await mountView();
+    getSensors.mockClear();
+
+    const statusSelect = el.querySelector('select[aria-label="Estado del sensor"]');
+    expect(statusSelect).not.toBeNull();
+    statusSelect.value = 'inactive';
+    statusSelect.dispatchEvent(new Event('change'));
+    await nextTick();
+
+    await waitDebounce();
+    await flush();
+
+    const params = getSensors.mock.calls.at(-1)[0];
+    expect(params.status).toBe('inactive');
+
+    unmount();
+  });
+});

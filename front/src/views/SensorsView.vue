@@ -19,7 +19,7 @@
     <LoadingSpinner v-if="loading" label="Cargando sensores..." />
     <SensorList
       v-if="!loading"
-      :sensors="filteredSensors"
+      :sensors="sensors"
       @edit="openEdit"
       @delete="deleteSelectedSensor"
       @export="exportSelectedSensor"
@@ -148,21 +148,19 @@ const formDevicesLoading = formDeviceList.loading;
 const formDevicesHasMore = formDeviceList.hasMore;
 const formDevicesTotal = formDeviceList.total;
 
-const formDevicesSearch = ref('');
+// Server handles the name search; here we only keep the "selectable device" rule (active).
+const filteredFormDevices = computed(() =>
+  formDevices.value.filter((d) => d.status && d.is_active)
+);
 
-const filteredFormDevices = computed(() => {
-  const list = formDevices.value.filter((d) => d.status && d.is_active);
-  if (!formDevicesSearch.value.trim()) {
-    return list;
-  }
-  const term = formDevicesSearch.value.trim().toLowerCase();
-  return list.filter((d) => d.name?.toLowerCase().includes(term));
-});
-
+let deviceSearchDebounce = null;
 watch(deviceSearch, () => {
-  formDevicesSearch.value = deviceSearch.value;
-  formDeviceList.reset();
-  formDeviceList.loadFirstPage({ per_page: 20, search: deviceSearch.value.trim() });
+  clearTimeout(deviceSearchDebounce);
+  deviceSearchDebounce = setTimeout(() => {
+    formDeviceList.reset();
+    const term = deviceSearch.value.trim();
+    formDeviceList.loadFirstPage(term ? { search: term } : {});
+  }, 300);
 });
 
 function defaultSensorForm() {
@@ -175,24 +173,20 @@ function defaultSensorForm() {
   };
 }
 
-const filteredSensors = computed(() => {
-  const term = search.value.trim().toLowerCase();
-
-  return sensors.value.filter((sensor) => {
-    const matchesStatus = statusFilter.value === 'all'
-      || (statusFilter.value === 'active' && sensor.status)
-      || (statusFilter.value === 'inactive' && !sensor.status);
-
-    const haystack = [
-      sensor.name,
-      sensor.sensor_type?.name,
-      sensor.device?.name,
-      sensor.unit
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return matchesStatus && (!term || haystack.includes(term));
-  });
-});
+// Single source of truth for sensor list params — used by page 1, page 2+, and refresh so
+// server-side search/status stay consistent across pages (a match on an unfetched page is
+// no longer hidden by a client-only filter).
+function sensorListParams() {
+  const params = {};
+  const term = search.value.trim();
+  if (term) {
+    params.search = term;
+  }
+  if (statusFilter.value === 'active' || statusFilter.value === 'inactive') {
+    params.status = statusFilter.value;
+  }
+  return params;
+}
 
 async function load() {
   loading.value = true;
@@ -202,7 +196,7 @@ async function load() {
     log.info('load: fetching sensors');
     const shouldLoadAdminData = Boolean(authStore.can('sensor.create'));
     const [, , typesResponse] = await Promise.all([
-      sensorList.loadFirstPage(),
+      sensorList.loadFirstPage(sensorListParams()),
       shouldLoadAdminData ? formDeviceList.loadFirstPage() : Promise.resolve(),
       shouldLoadAdminData ? getSensorTypes() : Promise.resolve({ data: [] })
     ]);
@@ -215,6 +209,15 @@ async function load() {
     loading.value = false;
   }
 }
+
+let searchDebounce = null;
+watch([search, statusFilter], () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    sensorList.reset();
+    load();
+  }, 300);
+});
 
 async function loadMoreDevices() {
   if (formDeviceList.loadingMore.value || !formDeviceList.hasMore.value) {
