@@ -7,6 +7,7 @@ use App\Events\DeviceStatusUpdated;
 use App\Events\NewAlertTriggered;
 use App\Events\NewSensorReading;
 use App\Models\DomainEventOutbox;
+use App\Models\Sensor;
 use App\Models\SensorReading;
 use App\Services\Ingestion\Concerns\UsesRawRedisCommands;
 use App\Services\Monitoring\EventPipelineMetricsService;
@@ -298,34 +299,86 @@ class DomainEventBroadcastConsumer
 
     private function broadcastSensorReadingCreated(DomainEventOutbox $outbox): void
     {
-        $readingId = data_get($outbox->payload, 'reading_id');
+        $payload = $outbox->payload;
+        $readingId = data_get($payload, 'reading_id');
+
+        // P1 (durable self-contained event): prefer the live row when present (freshest relations),
+        // but if it has since been deleted, reconstruct the reading + its sensor/type/device/lab
+        // entirely from the immutable outbox payload so the fact is STILL delivered. A vanished
+        // SensorReading must not silently drop a durable event.
         $reading = SensorReading::query()
             ->with(['sensor.sensorType', 'sensor.device.lab'])
             ->find($readingId);
 
-        if (! $reading) {
-            Log::warning('DomainEventBroadcastConsumer: sensor.reading.created target no longer exists', [
-                'outbox_id' => $outbox->id,
-                'reading_id' => $readingId,
-            ]);
+        $publicAtOccurrence = data_get($payload, 'public_at_occurrence');
 
-            return;
+        if (! $reading) {
+            // Legacy payloads (written before this field existed) can't be reconstructed and have no
+            // recorded audience — fall back to the old behavior of skipping, since we can neither
+            // rebuild the metadata nor honor event-time visibility.
+            if (! array_key_exists('sensor_name', $payload)) {
+                Log::warning('DomainEventBroadcastConsumer: sensor.reading.created target gone and payload is pre-enrichment', [
+                    'outbox_id' => $outbox->id,
+                    'reading_id' => $readingId,
+                ]);
+
+                return;
+            }
+
+            $reading = $this->hydrateReadingFromPayload($payload);
         }
 
-        // Stage 6.0: this is the real dispatch site, so the audience decision lives here (not
-        // inside the event, which stays fail-closed and query-free). The public flag is now the
-        // explicit, fail-closed `PublicGraphVisibility::isPublic()` decision instead of a literal
-        // `true` — a restricted sensor's queued fact still gets acked/delivered (terminal success),
-        // it just never reaches the public channel. The private channel is unaffected: authorized
-        // viewers of a restricted sensor keep realtime via the private `sensor.{id}` channel added
-        // in preflight.
+        // Event-time audience: use the decision captured when the reading occurred
+        // (`public_at_occurrence`). Only for legacy payloads that predate the field do we fall back
+        // to the current-time `PublicGraphVisibility::isPublic()` decision.
+        $includePublic = $publicAtOccurrence === null
+            ? $this->publicVisibility->isPublic($reading->sensor)
+            : (bool) $publicAtOccurrence;
+
         $event = new NewSensorReading(
             $reading,
-            includePublicChannel: $this->publicVisibility->isPublic($reading->sensor),
+            includePublicChannel: $includePublic,
             includePrivateChannel: true,
         );
 
         event($this->seedFromOutbox($event, $outbox));
+    }
+
+    /**
+     * Rebuild an in-memory (never persisted) SensorReading and its sensor/type/device/lab relations
+     * purely from the enriched outbox payload, so NewSensorReading::broadcastWith() can render the
+     * event even though the original SensorReading row is gone. Nothing here touches the DB.
+     *
+     * @param  array<string,mixed>  $payload
+     */
+    private function hydrateReadingFromPayload(array $payload): SensorReading
+    {
+        $sensorType = new \App\Models\SensorType([
+            'name' => data_get($payload, 'sensor_type'),
+            'unit' => data_get($payload, 'unit'),
+        ]);
+
+        $lab = new \App\Models\Lab(['name' => data_get($payload, 'lab_name')]);
+        $lab->id = data_get($payload, 'lab_id');
+
+        $device = new \App\Models\Device(['name' => data_get($payload, 'device_name')]);
+        $device->id = data_get($payload, 'device_id');
+        $device->setRelation('lab', $lab);
+
+        $sensor = new Sensor(['name' => data_get($payload, 'sensor_name')]);
+        $sensor->id = data_get($payload, 'sensor_id');
+        $sensor->setRelation('sensorType', $sensorType);
+        $sensor->setRelation('device', $device);
+
+        $reading = new SensorReading([
+            'value' => data_get($payload, 'value'),
+            'reading_time' => data_get($payload, 'reading_time'),
+        ]);
+        $reading->id = data_get($payload, 'reading_id');
+        $reading->sensor_id = data_get($payload, 'sensor_id');
+        $reading->setRelation('sensor', $sensor);
+
+        return $reading;
     }
 
     /**

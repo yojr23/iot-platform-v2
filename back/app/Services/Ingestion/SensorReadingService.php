@@ -4,6 +4,7 @@ namespace App\Services\Ingestion;
 
 use App\Models\Sensor;
 use App\Models\SensorReading;
+use App\Services\Monitoring\PublicGraphVisibility;
 use App\Services\ReadingProvenanceService;
 use Carbon\Carbon;
 use DateTimeInterface;
@@ -16,6 +17,7 @@ class SensorReadingService
         private DomainEventRecorder $recorder,
         private SensorReadingProjectionService $projection,
         private ReadingProvenanceService $provenance,
+        private PublicGraphVisibility $publicVisibility = new PublicGraphVisibility(),
     ) {
     }
 
@@ -54,6 +56,22 @@ class SensorReadingService
                 $provenance['normalizer_version'] ?? 'v1',
             );
 
+            // Load sub-relations onto the already-attached sensor (sensor_types/devices/labs),
+            // without re-selecting `sensors` — the sensor model is already in memory. Done BEFORE
+            // recording so the durable event payload can capture the denormalized fields.
+            $reading->sensor->loadMissing('sensorType', 'device.lab');
+
+            // P1 (durable self-contained event): capture every immutable fact the broadcast needs —
+            // denormalized sensor/device/lab metadata AND the audience decision AT EVENT TIME
+            // (`public_at_occurrence`) — so DomainEventBroadcastConsumer can deliver without a
+            // SensorReading::find() re-read and without re-evaluating current visibility. This
+            // resolves the audit's event-time-vs-delivery-time visibility ambiguity in favor of
+            // EVENT-TIME: whether the sensor was public when the reading occurred is what governs
+            // the public channel, not whatever the sensor row says at delivery.
+            $sensorType = $sensor->sensorType;
+            $device = $sensor->device;
+            $lab = $device?->lab;
+
             $this->recorder->record(
                 eventType: 'sensor.reading.created',
                 aggregateType: 'sensor_reading',
@@ -63,12 +81,17 @@ class SensorReadingService
                     'sensor_id' => $sensor->id,
                     'value' => $value,
                     'reading_time' => $reading->reading_time?->toIso8601String(),
+                    // Denormalized, immutable-at-event-time delivery fields:
+                    'sensor_name' => $sensor->name,
+                    'sensor_type' => $sensorType?->name,
+                    'unit' => $sensorType?->unit,
+                    'device_id' => $device?->id,
+                    'device_name' => $device?->name,
+                    'lab_id' => $lab?->id,
+                    'lab_name' => $lab?->name,
+                    'public_at_occurrence' => $this->publicVisibility->isPublic($sensor),
                 ],
             );
-
-            // Load sub-relations onto the already-attached sensor (sensor_types/devices/labs),
-            // without re-selecting `sensors` — the sensor model is already in memory.
-            $reading->sensor->loadMissing('sensorType', 'device.lab');
 
             DB::afterCommit(fn () => $this->projection->append($reading));
 
