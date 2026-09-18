@@ -14,19 +14,76 @@ from uuid import uuid4
 
 QUARANTINE_SNIPPET_LIMIT = 2000
 
-# Redact secret-looking values before a rejected payload is written to SQLite. Truncation alone
-# ("text[:2000]") is not sanitization — a malformed message carrying an api_key/token/password in
-# the first 2000 chars would otherwise land in the quarantine table in the clear. Matches both
-# JSON ("api_key":"...") and query/kv (api_key=...) forms, case-insensitive.
-_SECRET_KEY_RE = re.compile(
-    r'(?i)("?\b(?:api[_-]?key|token|access[_-]?token|refresh[_-]?token|password|passwd|secret|'
-    r'authorization|auth|x-device-key|bearer)\b"?\s*[:=]\s*"?)([^"\s,;&}]+)'
-)
+REDACTED = "[REDACTED]"
+
+# Exact normalized secret keys, plus substring markers so variants like `authToken` or
+# `x_api_key` are still caught. Normalization strips separators and lowercases.
+_SECRET_KEYS = frozenset({
+    "apikey", "token", "accesstoken", "refreshtoken", "password", "passwd",
+    "secret", "authorization", "auth", "xdevicekey", "bearer",
+})
+_SECRET_MARKERS = ("token", "password", "passwd", "secret", "apikey", "bearer")
+
+
+def _normalize_key(key: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", key.lower())
+
+
+def _is_secret_key(key: str) -> bool:
+    n = _normalize_key(key)
+    return n in _SECRET_KEYS or any(marker in n for marker in _SECRET_MARKERS)
+
+
+def _redact_obj(obj: Any) -> Any:
+    """Recursively replace values under secret-looking keys with [REDACTED]."""
+    if isinstance(obj, dict):
+        return {
+            k: (REDACTED if _is_secret_key(str(k)) else _redact_obj(v))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact_obj(v) for v in obj]
+    return obj
+
+
+# Fallback (malformed / non-JSON) sanitizers. Quoted-pair first so multi-word secret VALUES
+# (which contain spaces) are captured whole, then Authorization/Bearer header lines, then bare
+# kv pairs. Each is deliberately conservative — it only rewrites the value it is sure is a secret.
+_QUOTED_PAIR_RE = re.compile(r'"([^"]+)"\s*:\s*"((?:\\.|[^"\\])*)"')
+_AUTH_LINE_RE = re.compile(r"(?im)^(\s*authorization\s*[:=]\s*).+$")
+_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/\-]+=*")
+_KV_RE = re.compile(r"([A-Za-z0-9_\-]+)(\s*[:=]\s*)([^\"\s,;&}]+)")
+
+
+def _redact_text_fallback(text: str) -> str:
+    def quoted(m: re.Match) -> str:
+        return f'"{m.group(1)}":"{REDACTED}"' if _is_secret_key(m.group(1)) else m.group(0)
+
+    text = _QUOTED_PAIR_RE.sub(quoted, text)
+    text = _AUTH_LINE_RE.sub(lambda m: m.group(1) + REDACTED, text)
+    text = _BEARER_RE.sub("bearer " + REDACTED, text)
+
+    def kv(m: re.Match) -> str:
+        return m.group(1) + m.group(2) + REDACTED if _is_secret_key(m.group(1)) else m.group(0)
+
+    return _KV_RE.sub(kv, text)
 
 
 def redact_secrets(text: str) -> str:
-    """Replace values of known secret-bearing keys with [REDACTED], leaving structure intact."""
-    return _SECRET_KEY_RE.sub(lambda m: m.group(1) + "[REDACTED]", text)
+    """Replace values of known secret-bearing keys with [REDACTED], leaving structure intact.
+
+    Prefers structural JSON redaction (walks dicts/lists so multi-word and nested secret values
+    are fully masked); falls back to a conservative text sanitizer for malformed input.
+    """
+    stripped = text.strip()
+    if stripped and stripped[0] in "{[":
+        try:
+            parsed = json.loads(stripped)
+        except (ValueError, TypeError):
+            parsed = None
+        if parsed is not None:
+            return json.dumps(_redact_obj(parsed), separators=(",", ":"))
+    return _redact_text_fallback(text)
 
 
 @dataclass(frozen=True)

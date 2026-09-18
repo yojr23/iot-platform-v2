@@ -207,6 +207,86 @@ def test_quarantine_redacts_secrets_before_persisting(tmp_path):
     spool.close()
 
 
+def test_redact_multi_word_and_nested_secrets():
+    # Multi-word secret VALUE (spaces) must be fully masked, not just the first token.
+    masked = redact_secrets('{"password":"correct horse battery staple","value":1}')
+    assert "correct" not in masked
+    assert "staple" not in masked
+    assert "1" in masked
+
+    # Nested secret.
+    nested = redact_secrets('{"outer":{"api_key":"secret with spaces"}}')
+    assert "secret with spaces" not in nested
+    assert "with" not in nested
+
+    # Secret inside a list of objects.
+    listed = redact_secrets('{"items":[{"token":"aaa bbb ccc"},{"value":2}]}')
+    assert "aaa bbb ccc" not in listed
+    assert "bbb" not in listed
+    assert "2" in listed
+
+
+def test_redact_bearer_and_mixed_case_authorization():
+    masked = redact_secrets('{"authorization":"Bearer eyJhbGciOi.payload.sig"}')
+    assert "eyJhbGciOi.payload.sig" not in masked
+
+    upper = redact_secrets('{"Authorization":"Bearer tok123"}')
+    assert "tok123" not in upper
+
+    # Malformed / header-style (not JSON) fallback still strips the bearer token.
+    header = redact_secrets("Authorization: Bearer eyJhbGciOi.payload.sig\nx-other: keep")
+    assert "eyJhbGciOi.payload.sig" not in header
+    assert "keep" in header
+
+
+def test_redact_device_key_variants_and_escaped_json():
+    for key in ("x-device-key", "api-key", "api_key", "X-Device-Key"):
+        masked = redact_secrets('{"%s":"secret with spaces"}' % key)
+        assert "secret with spaces" not in masked, key
+
+    # Escaped JSON string value must not leak.
+    escaped = redact_secrets('{"token":"a\\"b c d"}')
+    assert "b c d" not in escaped
+
+
+def test_redact_malformed_json_with_authorization():
+    # Missing closing brace — not valid JSON, must use conservative fallback.
+    masked = redact_secrets('{"password":"multi word secret", "value": 3')
+    assert "multi word secret" not in masked
+
+
+def test_quarantine_multi_word_secret_does_not_survive(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    secrets = ["correct horse battery staple", "eyJhbGciOi.payload.sig", "dev key with spaces"]
+    payload = (
+        '{"password":"correct horse battery staple",'
+        '"authorization":"Bearer eyJhbGciOi.payload.sig",'
+        '"x-device-key":"dev key with spaces","value":42}'
+    ).encode()
+
+    spool.quarantine(topic="t", reason="invalid_json", raw_payload=payload)
+    snippet = spool.quarantined()[0]["payload_snippet"]
+
+    for secret in secrets:
+        assert secret not in snippet
+    for word in ("horse", "battery", "staple", "payload", "spaces"):
+        assert word not in snippet
+    assert "42" in snippet
+    spool.close()
+
+
+def test_quarantine_50k_payload_stays_bounded_after_sanitizing(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    payload = ('{"password":"' + "s" * 50_000 + '"}').encode()
+
+    spool.quarantine(topic="t", reason="invalid_json", raw_payload=payload)
+    record = spool.quarantined()[0]
+
+    assert len(record["payload_snippet"]) <= 2000
+    assert "sssss" not in record["payload_snippet"]
+    spool.close()
+
+
 def test_mark_failed_does_not_dead_letter_below_max_attempts(tmp_path):
     now = [100.0]
     spool = DurableEventSpool(
