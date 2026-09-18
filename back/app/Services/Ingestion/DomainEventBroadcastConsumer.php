@@ -297,6 +297,45 @@ class DomainEventBroadcastConsumer
         event($this->seedFromOutbox($event, $outbox));
     }
 
+    /**
+     * Every field a COMPLETE enriched sensor.reading.created payload must carry. Presence of the
+     * full set is the schema discriminator — not just `sensor_name` (which a half-written payload
+     * could also carry while missing device/lab identity, producing a fabricated null-riddled fact).
+     */
+    private const ENRICHED_REQUIRED_FIELDS = [
+        'reading_id', 'sensor_id', 'value', 'reading_time',
+        'sensor_name', 'sensor_type', 'unit',
+        'device_id', 'device_name', 'lab_id', 'lab_name',
+        'public_at_occurrence',
+    ];
+
+    /**
+     * Classify a payload as 'enriched' (all required fields present), 'legacy' (none of the
+     * enrichment fields — a pre-enrichment payload that legitimately predates denormalization), or
+     * 'half' (some enrichment fields but not the complete set — a corrupt/partial write we must NOT
+     * turn into a fact).
+     *
+     * @param  array<string,mixed>  $payload
+     * @return 'enriched'|'legacy'|'half'
+     */
+    private function classifyReadingPayload(array $payload): string
+    {
+        $present = array_filter(
+            self::ENRICHED_REQUIRED_FIELDS,
+            static fn (string $field): bool => array_key_exists($field, $payload),
+        );
+
+        if (count($present) === count(self::ENRICHED_REQUIRED_FIELDS)) {
+            return 'enriched';
+        }
+
+        // No enrichment fields at all → a genuine legacy payload (its only key is reading_id etc.).
+        $enrichmentOnly = array_diff(self::ENRICHED_REQUIRED_FIELDS, ['reading_id', 'sensor_id', 'value', 'reading_time']);
+        $hasAnyEnrichment = array_intersect($enrichmentOnly, array_keys($payload)) !== [];
+
+        return $hasAnyEnrichment ? 'half' : 'legacy';
+    }
+
     private function broadcastSensorReadingCreated(DomainEventOutbox $outbox): void
     {
         $payload = $outbox->payload;
@@ -308,7 +347,19 @@ class DomainEventBroadcastConsumer
         // so a later sensor rename/move or visibility flip can't rewrite an already-recorded fact
         // ("Sala A" stays "Sala A", not "Sala de Calderas"). Only LEGACY pre-enrichment payloads
         // (no denormalized fields) fall back to the live SensorReading row for compatibility.
-        if (array_key_exists('sensor_name', $payload)) {
+        $shape = $this->classifyReadingPayload($payload);
+
+        if ($shape === 'half') {
+            // A partially-enriched payload cannot be trusted to reconstruct the fact and must not be
+            // silently fabricated with null names/ids. Throw so handleMessage() retries and, past
+            // MAX_ATTEMPTS, dead-letters it with a diagnostic instead of broadcasting garbage.
+            $missing = array_values(array_diff(self::ENRICHED_REQUIRED_FIELDS, array_keys($payload)));
+            throw new \RuntimeException(
+                'half_enriched_sensor_reading_payload: missing ['.implode(',', $missing).']'
+            );
+        }
+
+        if ($shape === 'enriched') {
             $reading = $this->hydrateReadingFromPayload($payload);
             // Enriched payloads always carry the event-time audience decision.
             $includePublic = (bool) data_get($payload, 'public_at_occurrence', false);

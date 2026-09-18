@@ -143,4 +143,78 @@ class DurableReadingEventSelfContainedTest extends TestCase
             return true;
         });
     }
+
+    /**
+     * A HALF-enriched payload (carries sensor_name but is missing other required enrichment fields)
+     * must NOT be broadcast as a fabricated null-riddled fact — it retries and dead-letters instead.
+     * Requires real Redis (skipped as ENVIRONMENT_CONSTRAINT otherwise).
+     */
+    public function test_half_enriched_payload_is_dead_lettered_not_fabricated(): void
+    {
+        $host = env('TEST_REDIS_HOST', '127.0.0.1');
+        $port = (int) env('TEST_REDIS_PORT', 6399);
+        $redis = new RedisManager(app(), 'predis', [
+            'client' => 'predis',
+            'default' => ['host' => $host, 'port' => $port, 'database' => 15],
+        ]);
+        try {
+            $conn = $redis->connection('default');
+            $conn->client()->executeRaw(['PING']);
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('ENVIRONMENT_CONSTRAINT: no Redis at '.$host.':'.$port);
+        }
+
+        $stream = 'test.durable-domain-events-half';
+        $dlq = 'test.durable-dlq-half';
+        $group = 'browser-delivery-v1';
+        $conn->client()->executeRaw(['DEL', $stream]);
+        $conn->client()->executeRaw(['DEL', $dlq]);
+        try {
+            $conn->client()->executeRaw(['XGROUP', 'CREATE', $stream, $group, '0', 'MKSTREAM']);
+        } catch (\Throwable $e) {
+            // group may already exist
+        }
+
+        $sensor = Sensor::factory()->create(['name' => 'Half']);
+        $reading = app(SensorReadingService::class)->createReading($sensor, 7.0);
+        $outbox = DomainEventOutbox::query()
+            ->where('aggregate_id', (string) $reading->id)
+            ->where('event_type', 'sensor.reading.created')
+            ->firstOrFail();
+
+        // Corrupt the stored payload into a half-enriched shape: keep sensor_name, drop the rest.
+        $outbox->forceFill(['payload' => [
+            'reading_id' => $reading->id,
+            'sensor_id' => $sensor->id,
+            'value' => 7.0,
+            'reading_time' => now()->toIso8601String(),
+            'sensor_name' => 'Half',
+            // intentionally missing: sensor_type, unit, device_id, device_name, lab_id, lab_name, public_at_occurrence
+        ]])->save();
+
+        $conn->client()->executeRaw([
+            'XADD', $stream, '*',
+            'event_id', (string) $outbox->id,
+            'event_type', 'sensor.reading.created', 'event_version', '1',
+        ]);
+
+        Event::fake([NewSensorReading::class]);
+
+        $consumer = new DomainEventBroadcastConsumer(
+            connection: $conn,
+            stream: $stream,
+            group: $group,
+            deadLetterStream: $dlq,
+        );
+        // Exhaust attempts so the half-enriched message reaches the DLQ deterministically.
+        for ($i = 0; $i < DomainEventBroadcastConsumer::MAX_ATTEMPTS + 1; $i++) {
+            $consumer->runOnce('worker-half', 10, 10, 0);
+        }
+
+        Event::assertNotDispatched(NewSensorReading::class);
+
+        $dlqLen = $conn->client()->executeRaw(['XLEN', $dlq]);
+        $this->assertGreaterThanOrEqual(1, (int) $dlqLen, 'half-enriched payload must be dead-lettered');
+        $this->assertNull($outbox->fresh()->delivered_at, 'a fabricated fact must never be marked delivered');
+    }
 }
