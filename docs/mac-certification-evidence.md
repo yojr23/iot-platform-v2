@@ -160,23 +160,56 @@ node_id [E2E-PUB-1]"`, and the original `payload_json`. Critically, the poison
 event did **not** stall the partition — events 2/3/4 processed normally around
 it. This is the required retry → terminal-failure → DLQ → ACK-source behavior.
 
-The full MQTT→browser vertical (MQTT broker → Python spool, and the
-Debezium binlog → CDC stream relay that feeds `iot.raw-events` from the outbox)
-still requires the MQTT broker + `debezium` service; the consumer tier that
-runs after the stream is certified above.
+## Full stack — MQTT→broadcast vertical trace (Phase I) — CERTIFIED
 
-## Phases requiring the full live stack (not yet certified here)
+Brought up the COMPLETE stack: db, redis, back, front, **debezium** (streaming
+MySQL binlog → Redis CDC), **outbox-cdc-consumer**, **raw-consumer**,
+**domain-event-consumer**, **ingestion** (Python), and a **mosquitto** MQTT
+broker on :1883.
 
-These need infrastructure beyond the core stack (Debezium, MQTT broker,
-Pusher-compatible WebSocket server) or, for governance, GitHub admin rights.
-Honestly scoped:
+Published one uniquely-identified MQTT message (`mac-e2e-1789704069`, value
+43.219, node `lab_postgrado_nodo_01`) and traced it through EVERY backend
+boundary:
 
-- **H** event recovery — **H4 poison→DLQ certified live** (above). Redis/Debezium restart, XAUTOCLAIM worker-takeover, and broadcast crash windows still require the `debezium` service + a broadcaster and are not yet run.
-- **I** MQTT→browser — **HTTP ingestion tier + raw-consumer tier certified live** (above). The MQTT broker → Python spool front end and the Debezium CDC relay in the middle are not yet run.
-- **J/K** live realtime + 60s no-polling browser capture — in progress against the running front+back; fixed a real drift bug in the audit harness (`apiLogin` read `data.token` but the live `/api/auth/login` returns `access_token`).
-- **L** desktop/mobile device QA — mocked responsive matrix exists in CI; real-device pass not run.
-- **Q** branch protection — needs repo admin (cannot be done from the working tree).
-- **R** CI dependency-security gate — **DONE** (added to `.github/workflows/gate10-quality.yml`, see the CI-fix section).
+```
+MQTT publish (mosquitto)
+  → Python on_message + validate + durable spool     [ingestion log: "Raw event durably queued"]
+  → HTTP POST /api/ingestion/events                  [ingestion log: "Backend delivery completed"]
+  → RawSensorEvent #8 (status=processed) + RawEventOutbox (atomic)
+  → Debezium binlog capture → Redis iot-cdc.* stream
+  → outbox-cdc-consumer → iot.raw-events
+  → raw-consumer → RawReadingNormalizer → SensorReading #8
+  → domain_event_outbox #6
+  → Debezium → domain CDC → iot.domain-events
+  → domain-event-consumer → event(NewSensorReading)  [outbox delivered_at set]
+```
+
+The domain outbox payload was **enriched**: `public_at_occurrence=true`,
+`sensor_name=temperature` — confirming the durable self-contained event fix
+(commit `127affc`) works through the normalizer write path, not just direct API.
+Final browser WS frame uses the Pusher-compatible broadcaster; in this local
+run `BROADCAST_CONNECTION=log`, so the browser-visible frame itself is covered
+separately by the GATE 10 LIVE no-polling capture (real Echo subscription).
+
+## Full stack — event-recovery fault matrix (Phase H) — CERTIFIED
+
+Real fault injection against the running stack:
+
+| Fault | Method | Result |
+|-------|--------|--------|
+| **H1 Debezium restart** | `docker compose restart debezium` with an event committed during downtime | Debezium resumed from its **durable Redis offset** (`mysql-bin.000006/19618`, not from scratch); the during-restart event fully processed (raw #9 `processed`, reading #9). **Zero loss.** |
+| **H2 Redis restart** | `docker compose restart redis` right after an MQTT publish | Streams survived (persistence); consumers auto-reconnected; the during-restart event recovered end to end (raw #10 `processed`, reading #10, domain `delivered=yes`). DB receipt is the durable source. **Zero loss.** |
+| **H3 XAUTOCLAIM worker takeover** | stopped raw-consumer, created an orphaned pending entry owned by a dead consumer, restarted raw-consumer | The replacement worker **reclaimed** the idle pending entry (pending 1→0) and processed it to terminal disposition (`dlq=1` for the deliberately-unresolvable payload). No message stuck on a dead consumer. |
+| **H4 poison→DLQ** | unmapped-node event (earlier) | retried 5× → `max_attempts_exceeded` → `iot.dead-letter-events` with full diagnostic, without stalling the partition. |
+
+## Phases still requiring more (honestly scoped)
+
+- **J/K** live no-polling browser capture — **GATE 10 LIVE: PASS** (60s, real stack, `docs/evidence-gate10-live-network.json`).
+- **Full MQTT→BROWSER single frame** — backend vertical + browser realtime are each certified; joining them into one continuous MQTT-value-appears-in-browser frame needs a Pusher-compatible server (soketi) wired in place of `BROADCAST_CONNECTION=log`.
+- **Broadcast crash windows (H5)** — not yet isolated (needs the soketi broadcaster to observe duplicate-delivery semantics).
+- **L** desktop/mobile device QA — mocked responsive matrix green in CI; real-device visual acceptance not run.
+- **Q** branch protection — needs GitHub repo admin.
+- **R** CI dependency-security gate — **DONE** (`.github/workflows/gate10-quality.yml`).
 
 Honest status: source-fixable correctness/authorization/perf phases are done
 and tested; live-infra certification is pending a full stack run.
