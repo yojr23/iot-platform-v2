@@ -690,6 +690,53 @@ class DomainEventBroadcastConsumerTest extends TestCase
         Event::assertNotDispatched(AlertResolved::class);
     }
 
+    /**
+     * H5 crash window: a crash AFTER the broadcast succeeds but BEFORE delivered_at is written
+     * leaves the message pending (at-least-once). On recovery XAUTOCLAIM redelivers and the fact is
+     * broadcast a SECOND physical time, but with the SAME stable event envelope identity — so an
+     * idempotent browser projection collapses both frames to one logical effect. Here we prove the
+     * transport contract: first delivery broadcasts then "crashes" (hook throws) with delivered_at
+     * still null and the message still pending; a clean rerun redelivers, marks delivered_at, and
+     * drains XPENDING to 0 without dead-lettering. Both physical frames carry the same event_id.
+     */
+    public function test_h5_crash_after_broadcast_before_delivered_at_recovers_with_stable_identity(): void
+    {
+        $dispatched = [];
+        Event::listen(AlertResolved::class, function (AlertResolved $e) use (&$dispatched): void {
+            $dispatched[] = $e->envelopeEventId();
+        });
+
+        $outbox = $this->resolvedAlertOutbox();
+        $this->xadd($outbox->id, 'alert.resolved');
+
+        // First delivery: broadcast succeeds, then the fault hook throws to simulate a crash before
+        // delivered_at is written.
+        $crashingConsumer = new DomainEventBroadcastConsumer(
+            $this->conn, $this->stream, $this->group, $this->dlq,
+            faultInjectionHook: function (): void {
+                throw new \RuntimeException('simulated crash after broadcast, before delivered_at');
+            },
+        );
+        $stats = $crashingConsumer->runOnce('worker-crash', 10, 100, 0);
+
+        $this->assertSame(1, $stats['pending'], 'crash leaves the message pending, not acked');
+        $this->assertNull($outbox->fresh()->delivered_at, 'delivered_at must not be set on a crash');
+        $this->assertCount(1, $dispatched, 'first physical frame was broadcast before the crash');
+
+        // Recovery: a clean consumer reclaims the idle-pending message (idle 0) and completes it.
+        $recovered = $this->consumer();
+        $recovered->runOnce('worker-recover', 10, 100, 0);
+
+        $this->assertNotNull($outbox->fresh()->delivered_at, 'recovery marks delivered_at');
+        $this->assertCount(2, $dispatched, 'recovery re-broadcasts a second physical frame');
+        $this->assertSame($dispatched[0], $dispatched[1], 'both frames share one stable event_id');
+
+        // Stream fully drained, nothing dead-lettered.
+        $pending = $this->conn->client()->executeRaw(['XPENDING', $this->stream, $this->group]);
+        $this->assertSame(0, (int) ($pending[0] ?? 0), 'XPENDING must be 0 after recovery');
+        $this->assertSame(0, (int) $this->conn->client()->executeRaw(['XLEN', $this->dlq]), 'no DLQ');
+    }
+
     /** @return array<string,string> */
     private function latestDeadLetterFields(): array
     {

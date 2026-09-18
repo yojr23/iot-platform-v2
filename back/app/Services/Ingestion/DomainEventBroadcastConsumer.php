@@ -50,7 +50,30 @@ class DomainEventBroadcastConsumer
         private string $group,
         private string $deadLetterStream,
         private PublicGraphVisibility $publicVisibility = new PublicGraphVisibility(),
+        private ?\Closure $faultInjectionHook = null,
     ) {
+    }
+
+    /**
+     * H5 fault injection is deliberately limited to local/test processes. The live harness uses
+     * this pause to open the otherwise-unobservable "broadcast succeeded but delivered_at not yet
+     * written" crash window, then kills the worker inside it. Production ignores the variable even
+     * if it leaks into a container env. Mirrors CdcOutboxStreamConsumer::faultInjectionPauseAfterPublishMs.
+     */
+    public static function faultInjectionPauseAfterBroadcastMs(): int
+    {
+        if (! app()->environment(['local', 'testing'])) {
+            return 0;
+        }
+
+        $configured = getenv('GATE10_BROADCAST_PAUSE_AFTER_MS');
+
+        if (! is_string($configured) || ! ctype_digit($configured)) {
+            return 0;
+        }
+
+        // Bounded so a mistaken local setting can't wedge a worker indefinitely.
+        return min((int) $configured, 60000);
     }
 
     public function ensureGroup(): void
@@ -180,6 +203,19 @@ class DomainEventBroadcastConsumer
             // If this throws, the message stays unacked for retry — no data loss.
             $this->broadcastFact($outbox);
             EventPipelineMetricsService::increment('domain_broadcast_success');
+
+            // H5 crash window: the frame is now on the wire but delivered_at is not yet set. A crash
+            // here leaves the message pending, so XAUTOCLAIM redelivers and the browser sees a
+            // SECOND physical frame — at-least-once transport. The test/live hook makes this window
+            // observable (pause, then the harness kills the worker). Inert outside local/testing.
+            if ($this->faultInjectionHook !== null) {
+                ($this->faultInjectionHook)($id, $outbox);
+            }
+
+            $pauseMs = self::faultInjectionPauseAfterBroadcastMs();
+            if ($pauseMs > 0) {
+                usleep($pauseMs * 1000);
+            }
 
             // Step 2: claim delivery atomically (mark delivered_at under lock) then XACK.
             // The XACK must follow the broadcast so that a broadcast failure leaves the
