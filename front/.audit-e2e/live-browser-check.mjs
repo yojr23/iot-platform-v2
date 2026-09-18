@@ -1,12 +1,32 @@
 // Live browser check against the running Docker stack (front:5173 + real API:8000).
 // Logs in via the real login form, then captures dashboard desktop (1440) + mobile (390),
 // and asserts the private sensor's history loads (the new /api/sensors/{id}/series path).
+import { mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
 import { chromium } from '@playwright/test';
 
-const BASE = process.env.BASE_URL || 'http://localhost:5173';
-const OUT = process.env.OUT_DIR || '/private/tmp/claude-501/-Users-j-rinconc-Desktop-ing-sistemas-Sistemas-Unab--iot-platform-v2/6777ffd0-7e74-450a-a45e-f616d6c81d15/scratchpad';
-const EMAIL = 'admin@example.com';
-const PASSWORD = 'password';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Reproducible from a clean checkout: every input is an env var, credentials have NO insecure
+// default (fail fast if absent), and the output dir is created if missing.
+const BASE = process.env.AUDIT_BASE_URL || process.env.BASE_URL || 'http://localhost:5173';
+const OUT = process.env.AUDIT_OUTPUT_DIR || process.env.OUT_DIR || resolve(__dirname, 'results');
+const EMAIL = process.env.AUDIT_E2E_EMAIL;
+const PASSWORD = process.env.AUDIT_E2E_PASSWORD;
+
+const missing = [
+  ['AUDIT_E2E_EMAIL', EMAIL],
+  ['AUDIT_E2E_PASSWORD', PASSWORD],
+].filter(([, v]) => !v).map(([k]) => k);
+if (missing.length) {
+  console.error(`live-browser-check: missing required env var(s): ${missing.join(', ')}. ` +
+    `Set AUDIT_E2E_EMAIL / AUDIT_E2E_PASSWORD (no defaults, credentials are never committed).`);
+  process.exit(2);
+}
+
+mkdirSync(OUT, { recursive: true });
 
 const browser = await chromium.launch();
 const results = [];
