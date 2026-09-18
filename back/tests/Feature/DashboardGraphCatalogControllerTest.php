@@ -94,7 +94,11 @@ class DashboardGraphCatalogControllerTest extends TestCase
     {
         $user = User::factory()->create();
         $type = SensorType::factory()->create(['unit' => '°C']);
-        $devices = Device::factory()->count(101)->create();
+        // Deterministic serials — faker's unique()->numerify('SN-#####') can collide across the
+        // 101 devices here plus every other Device created earlier in the same test process.
+        $devices = Device::factory()->count(101)
+            ->sequence(fn ($sequence) => ['serial_number' => 'GRAPH-CAT-'.$sequence->index])
+            ->create();
 
         foreach ($devices as $device) {
             Sensor::factory()->create([
