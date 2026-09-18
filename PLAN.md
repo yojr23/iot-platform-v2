@@ -2,17 +2,55 @@
 
 ## Current state — read this first
 
-- Current repository HEAD (application tip): `d3b2664e` — `test(dashboard): deterministic device serials in graph-catalog test`, on top of the durable-event + live-certification work (`108b6a8`, `eb79ee1`, `127affc`, `a406451`).
-- Documented-green CI baseline: **GitHub Actions run `35306217551`** at `d3b2664e` — backend **524 pass**, frontend **299 pass**, ingestion **38 pass**, responsive E2E (mocked) **35/35 pass**. This is the last observed all-green run; the 2026-09-18 Windows edits below are ON TOP of it and are PENDING a fresh CI run.
-- Application SHA vs docs/Graphify SHA (kept separate per `docs/graphify-strategy.md`): the last Graphify/docs regeneration is `672421b`; every application commit since is application/plan only.
-- CI as executor: PHP/Redis and Python are unreachable on this Windows machine, so backend + ingestion changes are executed by **GitHub Actions on push** (not Mac). They are PENDING CI EXECUTION, not "never executed". The frontend, however, IS fully executable on Windows (vitest/build/structural/no-polling) and is verified here.
-- Windows verification (2026-09-18 session): frontend COMPLETE and Windows-verified — full vitest **307 pass / 0 fail** (299 baseline + pagination composable + regressions), `vite build` clean, `test:structure` PASS, `audit:no-polling:source` PASS. Backend + ingestion source edits (durable-event immutable-payload preference, MQTT quarantine redaction) = source-only, PENDING CI EXECUTION.
-- Mac live certification: PARTIAL / OPEN (reserved for real MySQL/Redis/MQTT/Debezium/WebSocket/rendered-browser only — not for running unit/feature suites, which CI covers).
-- Gate 9: OPEN.
-- Gate 10 release certification: OPEN.
+- Current repository HEAD (application tip): `f119697` — `test(gate10): certify the H5 broadcast crash window`, on top of the 2026-09-18 Mac closure work (`a987986`, `de8296f`, `8df4fab`, `8a61395`, `38ae95f`, `3a866a7`, `9f53a5c`). Starting audited SHA for this session was `462840e`.
+- Application SHA vs docs/Graphify SHA (kept separate per `docs/graphify-strategy.md`): the last Graphify/docs regeneration is `672421b`; every application commit since is application/plan only. Graphify regeneration against `f119697` is still PENDING (see Phase 17 / §24).
+- Execution environment: this is now the **Mac** (real PHP 8.5, MySQL 9.3, Redis, Docker 27, Mosquitto, Node 18). Backend/ingestion suites and live infra are executed here directly, not deferred to CI.
+- Gate 9: OPEN (production-build responsive matrix + visual review not yet done — Phases 14/15).
+- Gate 10 release certification: PARTIAL — the code-level closures below are done and tested; the full live A–E fault matrix + continuous MQTT→browser E2E (Phases 11/12) are NOT yet run to evidence on `f119697`.
 - PLAN: OPEN.
 
-Exactly one section below is authoritative for current release state: **RECONCILIATION — 2026-09-18 (Windows pagination + event/quarantine hardening)**, immediately following this block. Every other RECONCILIATION/ledger/status section further down is marked **HISTORICAL RECORD — NOT CURRENT RELEASE STATE** and is retained for audit traceability only, not as a competing source of truth.
+Exactly one section below is authoritative for current release state: **RECONCILIATION — 2026-09-18 (Mac closure: pagination race-safety, MQTT/session/quarantine, Reverb, event contract, H5)**, immediately following this block. Every other RECONCILIATION/ledger/status section further down (including the earlier Windows one) is **HISTORICAL RECORD — NOT CURRENT RELEASE STATE**, retained for audit traceability only.
+
+---
+
+## RECONCILIATION — 2026-09-18 (Mac closure) — AUTHORITATIVE
+
+**Tested SHA:** `f119697ed42f8394c0af5c299eb8927d8e42c38d` (`f119697`). **Date:** 2026-09-18. **Machine:** Mac (Darwin 23.5.0). **Tool versions:** PHP 8.5.2, Node 18.20.8, Python 3.11.10 (ingestion venv), Docker 27.3.1, Redis 8.10.1 (server 7-alpine in Docker), MySQL 9.3.0 client, Laravel Reverb 1.11, paho-mqtt 2.1.0, Vitest 3.2.7.
+
+All nine commits below are pushed to `origin/refraccion`. Each closure has a test that was run and passed on this machine.
+
+### CLOSED this session (with evidence)
+
+| # | Item | Commit | Evidence (command → result) |
+|---|------|--------|------------------------------|
+| P1 | Pagination stale-response race | `9f53a5c` | Generation token in `usePaginatedList`; `reset()` invalidates in-flight, `loadNextPage()` reuses page-1 params. `vitest run usePaginatedList.test.js` → **14/14 pass** (6 new race cases). |
+| P1 | Sensors main search page-local + no debounce | `38ae95f` | `SensorsView` now server-searches via `sensorListParams()` (search+status) with a 300ms debounced watch; renders `sensors` from the server. `vitest run SensorsView.test.js` → **4/4 pass** (2 new: server receives search / status). |
+| P1 | Sensor-create device selector loses filter on page 2 | `9f53a5c`+`38ae95f` | Device dropdown debounced + server-searched; page 2 inherits search via the race-safe composable (activeParams). Client contradictory filter removed. |
+| P2 | Sensor pagination non-deterministic order + `addslashes` LIKE | `3a866a7` | `orderBy('sensors.id')` before paginate; server-side `status` filter; `addslashes`→`addcslashes($s,'\\%_')` + explicit `ESCAPE '\'` on both Sensor and Device search (MySQL+SQLite portable). New `SensorIndexPaginationTest` → **5/5 pass** (deterministic pages, search beyond page 1, status filter, literal-wildcard, per_page clamp). |
+| P1 sec | Quarantine leaks multi-word secrets | `8a61395` | `redact_secrets()` now parses JSON and walks dicts/lists (multi-word/nested/list values fully masked); conservative fallback for malformed JSON (quoted-pair, Authorization, Bearer). `pytest test_spool.py` → **23/23 pass** (7 new). |
+| P1 | MQTT subscriber-down recovery not implemented | `8df4fab` | paho Callback API v2, stable client id, `clean_session=False` (new `MQTT_CLEAN_SESSION`), bounded auto-reconnect, resubscribe on every connect; `paho-mqtt>=2.1,<3` pinned. `pytest test_mqtt_client.py` → **7/7 pass** (persistent-session config, resubscribe QoS1, no-subscribe-on-failure). Full ingestion suite **49/49**. |
+| P2 | Enriched event detection too weak (`sensor_name` only) | `de8296f` | `classifyReadingPayload()` requires all 12 fields for `enriched`; `legacy`→live-row fallback; `half`→throw→retry→DLQ (never fabricate). New Redis-backed test: half-enriched dead-lettered, not dispatched, `delivered_at` stays null. `DomainEventBroadcastConsumer` class → **21/21 pass**. |
+| P2 | Live-browser harness machine-specific | `aa40f5d` | `live-browser-check.mjs` now env-driven (`AUDIT_BASE_URL`/`AUDIT_OUTPUT_DIR`/`AUDIT_E2E_EMAIL`/`AUDIT_E2E_PASSWORD`), no hardcoded creds/paths, `mkdirSync(recursive)`, exits **2** with a clear message when creds absent (verified). |
+| P1 | No real WebSocket server (BROADCAST=log) | `a987986` | Laravel Reverb added; `reverb` service in Compose (published 127.0.0.1:8080); `back` + worker_env carry `BROADCAST_CONNECTION=reverb`+`REVERB_*`; front points browser at 127.0.0.1:8080. `routes/channels.php` unchanged. **Live-verified:** `reverb:start` boots and a pusher-js client completes the WS handshake (socket_id issued) both on host and through the **Docker published 8080** (`DOCKER_WS_CONNECTED`). |
+| H5 | Broadcast crash window uncertified | `f119697` | Guarded local/testing fault hook after broadcast, before `delivered_at` (mirrors CDC hook; `GATE10_BROADCAST_PAUSE_AFTER_MS`, inert outside local/testing). New Redis test: crash → message pending, `delivered_at` null, 1 frame; recovery → 2nd physical frame with **same event_id**, `delivered_at` set, XPENDING 0, no DLQ. **8 assertions pass.** Contract documented as at-least-once transport + stable identity + idempotent projection (NOT exactly-once). |
+
+### Live infrastructure brought up on `f119697` (partial evidence)
+
+- `docker compose up -d db redis back reverb` + workers: db/redis **healthy**, back **healthy** (`/api/health`), raw-consumer / outbox-cdc-consumer / domain-event-consumer / debezium **running**, reverb **running** (`Starting server on 0.0.0.0:8080`). ingestion restarts only because the host Mosquitto broker is not running (external to Compose by design), not a code defect.
+- Note: the `back_vendor` named volume had to be refreshed (`docker compose run --rm --no-deps back composer install`) after `composer require laravel/reverb`, or the container raised `Class "Laravel\Reverb\ReverbServiceProvider" not found`. Recorded here so a fresh checkout does the vendor refresh before relying on the reverb service.
+
+### STILL OPEN (not done this session)
+
+| # | Item | Why still open | Required to close |
+|---|------|----------------|-------------------|
+| 11 | Gate 10 A–E live fault matrix on `f119697` | Not yet run to evidence — needs full Debezium topology + `GATE10_*` config + a mapped device serial; multi-minute live run. | `python scripts/gate10/fault_injection.py --scenario all` → `.audit-e2e/results/gate10-faults-f119697.json` all PASS. |
+| 12 | Continuous MQTT→browser E2E | Harness `front/.audit-e2e/mqtt-to-browser-live.mjs` not yet built; needs host Mosquitto + Playwright + full stack. | One evidence file tracing one reading mosquitto_pub → … → rendered browser value, no gap. |
+| 13 | Live no-polling network assertion on `f119697` | Not re-run against the live Reverb stack. | `npm run audit:network:live` → `gate10-live-network.json` PASS. |
+| 14/15 | Gate 9 production-build responsive matrix + visual review | Production preview bundle + Playwright matrix + manual screenshot inspection not done. | Full matrix (incl. `/alerts`) + inspected screenshots, no blocker. |
+| 16 | Vite/esbuild dev-dep advisory | Not addressed this session (Node 18; Vite 6 bump deferred). | `npm audit` clean or documented dev-only exception. |
+| 17/24 | Graphify regeneration against `f119697` | Not regenerated. | Isolated `chore(graphify)` commit for the final application SHA. |
+
+**Phase Q — branch protection: N/A / explicitly excluded by repository owner. Not part of PLAN.md closure or release certification. Do not treat as work.**
 
 ---
 
@@ -22,7 +60,7 @@ Exactly one section below is authoritative for current release state: **RECONCIL
 
 ## RECONCILIATION — 2026-09-18 (Windows pagination + event/quarantine hardening)
 
-Authoritative section. Pinned to HEAD `d3b2664e` / CI run `35306217551` (524 backend, 299 frontend, 38 ingestion, 35/35 responsive E2E — all green). The edits in this session are on top and PENDING a fresh CI run for the backend/ingestion parts; the frontend parts are Windows-verified here.
+**HISTORICAL RECORD — NOT CURRENT RELEASE STATE.** Superseded by the Mac closure reconciliation above (the Mac session re-did and live-verified this work on real infra at `f119697`). Retained for audit traceability only. Pinned to the then-HEAD `d3b2664e` / CI run `35306217551`.
 
 ### Now CLOSED (this session)
 
