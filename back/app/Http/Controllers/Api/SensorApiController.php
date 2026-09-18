@@ -638,15 +638,28 @@ class SensorApiController extends Controller
             // extra query via the hasOneOfMany relation, no N+1.
             $perPage = min(max((int) $request->integer('per_page', 50), 1), 100);
             $search = $request->query('search');
-            $query = Sensor::with(['sensorType', 'device.lab', 'latestReading']);
+            $status = $request->query('status');
+            // Deterministic order so paginated pages never overlap or drop rows across requests.
+            $query = Sensor::with(['sensorType', 'device.lab', 'latestReading'])
+                ->orderBy('sensors.id');
 
             if ($search && is_string($search)) {
-                $safeSearch = addslashes($search);
-                $query->where(function ($q) use ($safeSearch): void {
-                    $q->where('sensors.name', 'like', "%{$safeSearch}%")
-                        ->orWhereHas('sensorType', fn ($tq) => $tq->where('name', 'like', "%{$safeSearch}%"))
-                        ->orWhereHas('device', fn ($dq) => $dq->where('name', 'like', "%{$safeSearch}%"));
+                // Laravel binds the value, so SQL injection is handled; we escape the LIKE
+                // metacharacters (\ % _) and declare an explicit ESCAPE clause so wildcards are
+                // literal on both MySQL and SQLite (SQLite has no default LIKE escape char).
+                $like = '%'.addcslashes($search, '\\%_').'%';
+                $query->where(function ($q) use ($like): void {
+                    $q->whereRaw("sensors.name LIKE ? ESCAPE '\\'", [$like])
+                        ->orWhereHas('sensorType', fn ($tq) => $tq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]))
+                        ->orWhereHas('device', fn ($dq) => $dq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]));
                 });
+            }
+
+            // Server-side status filter so a matching sensor on an unfetched page stays visible.
+            if ($status === 'active') {
+                $query->where('sensors.status', true);
+            } elseif ($status === 'inactive') {
+                $query->where('sensors.status', false);
             }
 
             $sensors = $query->paginate($perPage);

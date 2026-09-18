@@ -54,12 +54,14 @@ class DeviceApiController extends Controller
                 ->orderBy('id');
 
             if ($search && is_string($search)) {
-                $safeSearch = addslashes($search);
-                $query->where(function ($q) use ($safeSearch): void {
-                    $q->where('devices.name', 'like', "%{$safeSearch}%")
-                        ->orWhere('devices.serial_number', 'like', "%{$safeSearch}%")
-                        ->orWhereHas('deviceType', fn ($dq) => $dq->where('name', 'like', "%{$safeSearch}%"))
-                        ->orWhereHas('lab', fn ($lq) => $lq->where('name', 'like', "%{$safeSearch}%"));
+                // Binding handles SQL injection; escape LIKE metacharacters and declare an
+                // explicit ESCAPE clause so wildcards are literal on both MySQL and SQLite.
+                $like = '%'.addcslashes($search, '\\%_').'%';
+                $query->where(function ($q) use ($like): void {
+                    $q->whereRaw("devices.name LIKE ? ESCAPE '\\'", [$like])
+                        ->orWhereRaw("devices.serial_number LIKE ? ESCAPE '\\'", [$like])
+                        ->orWhereHas('deviceType', fn ($dq) => $dq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]))
+                        ->orWhereHas('lab', fn ($lq) => $lq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]));
                 });
             }
 
