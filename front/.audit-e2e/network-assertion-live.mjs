@@ -47,7 +47,13 @@ function recordRequests(page) {
   const log = [];
   page.on('request', (req) => {
     const url = new URL(req.url());
-    if (url.pathname.includes('/api/')) log.push({ pathname: url.pathname, method: req.method(), t: Date.now() });
+    // Count only real backend API calls. The old `includes('/api/')` also matched the Vite dev
+    // server's on-demand ES-module fetches for the SPA's OWN source files (front/src/api/*.js),
+    // which are not REST traffic and only exist in an unbundled `vite dev` server, not a prod build.
+    // Anchor to a real API path: the pathname must contain the '/api/' segment AND not be a
+    // source-module request under '/src/'.
+    const isBackendApi = url.pathname.includes('/api/') && !url.pathname.startsWith('/src/');
+    if (isBackendApi) log.push({ pathname: url.pathname, method: req.method(), t: Date.now() });
   });
   return log;
 }
@@ -102,8 +108,12 @@ async function guestScenario(browser) {
   await context.close();
 
   const anonPaths = [...new Set(log.filter((r) => r.method === 'GET').map((r) => r.pathname))];
-  const unexpectedAnon = anonPaths.filter((p) => !ALLOWED_ANON.some((re) => re.test(p)));
-  const leaks = anonPaths.filter((p) => LEAK_ENDPOINTS.some((re) => re.test(p)));
+  const isAllowedAnon = (p) => ALLOWED_ANON.some((re) => re.test(p));
+  const unexpectedAnon = anonPaths.filter((p) => !isAllowedAnon(p));
+  // A path explicitly on the anonymous allowlist (e.g. the intentionally-public graph series
+  // endpoint) is not a leak of itself — exclude allowed paths before applying the leak patterns,
+  // otherwise ALLOWED_ANON's /public/graph/sensors/{id}/series double-counts under /sensors(\/|$)/.
+  const leaks = anonPaths.filter((p) => !isAllowedAnon(p) && LEAK_ENDPOINTS.some((re) => re.test(p)));
 
   return {
     observedMs: end - start,

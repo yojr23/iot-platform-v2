@@ -1,0 +1,53 @@
+{
+  "guest": {
+    "observedMs": 60004,
+    "totalApiRequests": 2,
+    "anonPaths": [
+      "/api/public/graph/bootstrap",
+      "/api/public/graph/sensors/1/series"
+    ],
+    "unexpectedAnon": [],
+    "leaks": [],
+    "recurringOffenders": [],
+    "pass": true
+  },
+  "authenticated": {
+    "steady": {
+      "offenders": [],
+      "pass": true
+    },
+    "visibilityRecovery": {
+      "burstRequests": 2,
+      "boundedBurst": true,
+      "afterQuietPass": true
+    },
+    "reconnectRecovery": {
+      "burstRequests": 0,
+      "boundedBurst": true,
+      "afterQuietPass": true
+    },
+    "logoutIsolation": {
+      "logoutStatus": 200,
+      "staleTokenStatus": 401,
+      "pass": true
+    },
+    "pass": true
+  },
+  "visibilityRecovery": {
+    "burstRequests": 2,
+    "boundedBurst": true,
+    "afterQuietPass": true
+  },
+  "reconnectRecovery": {
+    "burstRequests": 0,
+    "boundedBurst": true,
+    "afterQuietPass": true
+  },
+  "logoutIsolation": {
+    "logoutStatus": 200,
+    "staleTokenStatus": 401,
+    "pass": true
+  },
+  "recurringOffenders": [],
+  "pass": true
+}
