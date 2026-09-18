@@ -37,6 +37,9 @@
       @edit="openEdit"
       @delete="deleteRule"
     />
+    <div v-if="!loading && hasMore" class="text-center mt-3">
+      <BaseButton variant="outline-secondary" :loading="loadingMore" @click="loadNextPageWithFilter">Cargar más</BaseButton>
+    </div>
 
     <AlertRuleModal :show="modalOpen" :title="selectedRule ? 'Editar regla' : 'Nueva regla'" @close="closeModal">
       <BaseAlert v-if="formError" variant="danger" :message="formError" />
@@ -67,11 +70,12 @@ import AlertRuleForm from '@/components/alert-rules/AlertRuleForm.vue';
 import AlertRuleList from '@/components/alert-rules/AlertRuleList.vue';
 import AlertRuleModal from '@/components/alert-rules/AlertRuleModal.vue';
 import BaseAlert from '@/components/base/BaseAlert.vue';
+import BaseButton from '@/components/base/BaseButton.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import I from '@/components/dashboard/lab/LabIcon.vue';
+import { usePaginatedList } from '@/composables/usePaginatedList';
 import { paginatedItems } from '@/utils/formatters';
 
-const rules = ref([]);
 const loading = ref(false);
 const metadataLoading = ref(false);
 const saving = ref(false);
@@ -89,23 +93,42 @@ const metadata = ref({
   sensors: []
 });
 
+const rulesList = usePaginatedList(
+  (params) => getAlertRules(params),
+  { perPage: 50 }
+);
+const rules = rulesList.items;
+const hasMore = rulesList.hasMore;
+const loadingMore = rulesList.loadingMore;
+const loadNextPage = rulesList.loadNextPage;
+
 async function load() {
   loading.value = true;
   error.value = '';
   success.value = '';
 
   try {
-    const params = { per_page: 50 };
+    const extraParams = {};
     if (selectedDeviceId.value) {
-      params.device_id = selectedDeviceId.value;
+      extraParams.device_id = selectedDeviceId.value;
     }
-    const response = await getAlertRules(params);
-    rules.value = paginatedItems(response);
+    await rulesList.loadFirstPage(extraParams);
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las reglas de alerta.');
   } finally {
     loading.value = false;
   }
+}
+
+async function loadNextPageWithFilter() {
+  if (rulesList.loadingMore.value || !rulesList.hasMore.value) {
+    return;
+  }
+  const extraParams = {};
+  if (selectedDeviceId.value) {
+    extraParams.device_id = selectedDeviceId.value;
+  }
+  await rulesList.loadNextPage(extraParams);
 }
 
 async function loadMetadata() {

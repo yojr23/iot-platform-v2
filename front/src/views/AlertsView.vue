@@ -20,6 +20,9 @@
     <LoadingSpinner v-if="loading" label="Cargando alertas..." />
 
     <AlertList v-if="!loading" :alerts="alerts" :resolving-id="resolvingId" @resolve="handleResolve" />
+    <div v-if="!loading && hasMore" class="text-center mt-3">
+      <BaseButton variant="outline-secondary" :loading="loadingMore" @click="loadNextPage">Cargar más</BaseButton>
+    </div>
   </section>
 </template>
 
@@ -31,18 +34,33 @@ import { getApiErrorMessage } from '@/api/client';
 import AlertFilters from '@/components/alerts/AlertFilters.vue';
 import AlertList from '@/components/alerts/AlertList.vue';
 import BaseAlert from '@/components/base/BaseAlert.vue';
+import BaseButton from '@/components/base/BaseButton.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import { useAlertsStore } from '@/stores/alerts';
+import { usePaginatedList } from '@/composables/usePaginatedList';
 import { paginatedItems } from '@/utils/formatters';
 
 const alertsStore = useAlertsStore();
-const alerts = ref([]);
 const loading = ref(false);
 const error = ref('');
 const success = ref('');
 const filter = ref('all');
 const resolvingId = ref(null);
 const resolvingAll = ref(false);
+
+const alertsList = usePaginatedList(
+  (params) => {
+    if (filter.value === 'unresolved') {
+      return getUnresolvedAlerts({ per_page: 50, ...params });
+    }
+    return getAlerts({ per_page: 50, ...params });
+  },
+  { perPage: 50 }
+);
+const alerts = alertsList.items;
+const hasMore = alertsList.hasMore;
+const loadingMore = alertsList.loadingMore;
+const loadNextPage = alertsList.loadNextPage;
 
 async function load({ preserveSuccess = false } = {}) {
   loading.value = true;
@@ -54,15 +72,14 @@ async function load({ preserveSuccess = false } = {}) {
   try {
     if (filter.value === 'active') {
       const response = await getActiveAlerts();
+      // reset() FIRST — it clears items (which is the same ref as `alerts`) plus page metadata so
+      // no "Cargar más" shows for this non-paginated call. Assigning after avoids reset wiping it.
+      alertsList.reset();
       alerts.value = response.data?.alerts || [];
       return;
     }
 
-    const response = filter.value === 'unresolved'
-      ? await getUnresolvedAlerts({ per_page: 50 })
-      : await getAlerts({ per_page: 50 });
-
-    alerts.value = paginatedItems(response);
+    await alertsList.loadFirstPage();
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las alertas.');
   } finally {
@@ -116,7 +133,7 @@ function mergeRealtimeAlert(alert) {
   const exists = alerts.value.some((item) => Number(item.id) === Number(alert.id));
   alerts.value = exists
     ? alerts.value.map((item) => (Number(item.id) === Number(alert.id) ? { ...item, ...alert } : item))
-    : [alert, ...alerts.value].slice(0, 50);
+    : [alert, ...alerts.value];
 }
 
 // DOCX / PLAN.md Stage 7: AlertResolved from another client must update the local list

@@ -24,6 +24,9 @@
       @delete="deleteSelectedSensor"
       @export="exportSelectedSensor"
     />
+    <div v-if="!loading && hasMore" class="text-center mt-3">
+      <BaseButton variant="outline-secondary" :loading="loadingMore" @click="loadNextPage">Cargar más</BaseButton>
+    </div>
 
     <BaseModal
       :show="showForm"
@@ -39,10 +42,23 @@
             </div>
             <div class="col-12 col-lg-6">
               <label class="form-label" for="sensor_device_id">Dispositivo</label>
+              <input
+                v-if="showForm"
+                v-model="deviceSearch"
+                type="search"
+                class="form-control form-control-sm mb-1"
+                placeholder="Buscar dispositivo..."
+                aria-label="Buscar dispositivo para sensor"
+              />
               <select id="sensor_device_id" v-model="sensorForm.device_id" class="form-select" :class="{ 'is-invalid': fieldError('device_id') }" required>
                 <option value="">Seleccione dispositivo</option>
-                <option v-for="device in devices" :key="device.id" :value="device.id">{{ device.name }}</option>
+                <option v-for="device in filteredFormDevices" :key="device.id" :value="device.id">{{ device.name }}</option>
               </select>
+              <div v-if="formDevicesLoading" class="form-text">Cargando dispositivos...</div>
+              <div v-if="formDevicesHasMore && !formDevicesLoading" class="form-text">
+                Mostrando {{ formDevices.length }} de {{ formDevicesTotal }} dispositivos
+              </div>
+              <BaseButton variant="outline-secondary" v-if="!formDevicesLoading && formDevicesHasMore" :loading="formDeviceList.loadingMore" @click="loadMoreDevices">Cargar más dispositivos</BaseButton>
               <div v-if="fieldError('device_id')" class="invalid-feedback">{{ fieldError('device_id') }}</div>
             </div>
             <div class="col-12 col-lg-6">
@@ -77,7 +93,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { getSensorTypes } from '@/api/catalogs';
@@ -93,6 +109,7 @@ import I from '@/components/dashboard/lab/LabIcon.vue';
 import SensorFilters from '@/components/sensors/SensorFilters.vue';
 import SensorList from '@/components/sensors/SensorList.vue';
 import { useAuthStore } from '@/stores/auth';
+import { usePaginatedList } from '@/composables/usePaginatedList';
 import { asArray, paginatedItems, validationMessage } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 
@@ -100,8 +117,6 @@ const log = createLogger('SensorsView');
 
 const authStore = useAuthStore();
 const route = useRoute();
-const sensors = ref([]);
-const devices = ref([]);
 const sensorTypes = ref([]);
 const loading = ref(false);
 const error = ref('');
@@ -113,6 +128,42 @@ const saving = ref(false);
 const editingSensorId = ref(null);
 const validationErrors = ref({});
 const sensorForm = ref(defaultSensorForm());
+const deviceSearch = ref('');
+
+const sensorList = usePaginatedList(
+  (params) => getSensors({ per_page: 50, ...params }),
+  { perPage: 50 }
+);
+const sensors = sensorList.items;
+const hasMore = sensorList.hasMore;
+const loadingMore = sensorList.loadingMore;
+const loadNextPage = sensorList.loadNextPage;
+
+const formDeviceList = usePaginatedList(
+  (params) => getDevices({ per_page: 20, ...params }),
+  { perPage: 20 }
+);
+const formDevices = formDeviceList.items;
+const formDevicesLoading = formDeviceList.loading;
+const formDevicesHasMore = formDeviceList.hasMore;
+const formDevicesTotal = formDeviceList.total;
+
+const formDevicesSearch = ref('');
+
+const filteredFormDevices = computed(() => {
+  const list = formDevices.value.filter((d) => d.status && d.is_active);
+  if (!formDevicesSearch.value.trim()) {
+    return list;
+  }
+  const term = formDevicesSearch.value.trim().toLowerCase();
+  return list.filter((d) => d.name?.toLowerCase().includes(term));
+});
+
+watch(deviceSearch, () => {
+  formDevicesSearch.value = deviceSearch.value;
+  formDeviceList.reset();
+  formDeviceList.loadFirstPage({ per_page: 20, search: deviceSearch.value.trim() });
+});
 
 function defaultSensorForm() {
   return {
@@ -150,15 +201,13 @@ async function load() {
   try {
     log.info('load: fetching sensors');
     const shouldLoadAdminData = Boolean(authStore.can('sensor.create'));
-    const [sensorsResponse, devicesResponse, typesResponse] = await Promise.all([
-      getSensors({ per_page: 50 }),
-      shouldLoadAdminData ? getDevices({ per_page: 100 }) : Promise.resolve({ data: [] }),
+    const [, , typesResponse] = await Promise.all([
+      sensorList.loadFirstPage(),
+      shouldLoadAdminData ? formDeviceList.loadFirstPage() : Promise.resolve(),
       shouldLoadAdminData ? getSensorTypes() : Promise.resolve({ data: [] })
     ]);
-    sensors.value = asArray(unwrapData(sensorsResponse));
-    devices.value = paginatedItems(devicesResponse).filter((device) => device.status && device.is_active);
     sensorTypes.value = asArray(unwrapData(typesResponse));
-    log.debug('load: sensors=', sensors.value.length, 'devices=', devices.value.length);
+    log.debug('load: sensors=', sensors.value.length);
   } catch (requestError) {
     log.warn('load failed:', requestError?.message);
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los sensores.');
@@ -167,10 +216,18 @@ async function load() {
   }
 }
 
+async function loadMoreDevices() {
+  if (formDeviceList.loadingMore.value || !formDeviceList.hasMore.value) {
+    return;
+  }
+  await formDeviceList.loadNextPage();
+}
+
 function openCreate() {
   editingSensorId.value = null;
   validationErrors.value = {};
   sensorForm.value = defaultSensorForm();
+  deviceSearch.value = '';
   showForm.value = true;
 }
 

@@ -5,6 +5,7 @@ import hashlib
 import json
 from os import PathLike
 from pathlib import Path
+import re
 import sqlite3
 import threading
 import time
@@ -12,6 +13,20 @@ from typing import Any, Callable
 from uuid import uuid4
 
 QUARANTINE_SNIPPET_LIMIT = 2000
+
+# Redact secret-looking values before a rejected payload is written to SQLite. Truncation alone
+# ("text[:2000]") is not sanitization — a malformed message carrying an api_key/token/password in
+# the first 2000 chars would otherwise land in the quarantine table in the clear. Matches both
+# JSON ("api_key":"...") and query/kv (api_key=...) forms, case-insensitive.
+_SECRET_KEY_RE = re.compile(
+    r'(?i)("?\b(?:api[_-]?key|token|access[_-]?token|refresh[_-]?token|password|passwd|secret|'
+    r'authorization|auth|x-device-key|bearer)\b"?\s*[:=]\s*"?)([^"\s,;&}]+)'
+)
+
+
+def redact_secrets(text: str) -> str:
+    """Replace values of known secret-bearing keys with [REDACTED], leaving structure intact."""
+    return _SECRET_KEY_RE.sub(lambda m: m.group(1) + "[REDACTED]", text)
 
 
 @dataclass(frozen=True)
@@ -254,8 +269,11 @@ class DurableEventSpool:
             text = raw_payload.decode("utf-8", errors="replace")
         else:
             text = raw_payload
+        # Hash the true payload (irreversible fingerprint for dedup/inspection), but store only a
+        # secret-redacted, bounded snippet — redact BEFORE truncating so a secret straddling the
+        # 2000-char boundary can't leak a partial value.
         payload_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        snippet = text[:QUARANTINE_SNIPPET_LIMIT]
+        snippet = redact_secrets(text)[:QUARANTINE_SNIPPET_LIMIT]
 
         with self._lock:
             self._connection.execute(

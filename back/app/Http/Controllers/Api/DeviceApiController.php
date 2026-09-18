@@ -49,9 +49,21 @@ class DeviceApiController extends Controller
         }
 
         try {
-            $devices = Device::with(['deviceType', 'lab', 'sensors.sensorType'])
-                ->orderBy('id')
-                ->paginate($perPage);
+            $search = $request->query('search');
+            $query = Device::with(['deviceType', 'lab', 'sensors.sensorType'])
+                ->orderBy('id');
+
+            if ($search && is_string($search)) {
+                $safeSearch = addslashes($search);
+                $query->where(function ($q) use ($safeSearch): void {
+                    $q->where('devices.name', 'like', "%{$safeSearch}%")
+                        ->orWhere('devices.serial_number', 'like', "%{$safeSearch}%")
+                        ->orWhereHas('deviceType', fn ($dq) => $dq->where('name', 'like', "%{$safeSearch}%"))
+                        ->orWhereHas('lab', fn ($lq) => $lq->where('name', 'like', "%{$safeSearch}%"));
+                });
+            }
+
+            $devices = $query->paginate($perPage);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

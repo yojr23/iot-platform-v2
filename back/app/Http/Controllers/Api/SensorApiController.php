@@ -637,8 +637,19 @@ class SensorApiController extends Controller
             // SensorResource's `latest_reading` is populated on the global list too — single
             // extra query via the hasOneOfMany relation, no N+1.
             $perPage = min(max((int) $request->integer('per_page', 50), 1), 100);
-            $sensors = Sensor::with(['sensorType', 'device.lab', 'latestReading'])
-                ->paginate($perPage);
+            $search = $request->query('search');
+            $query = Sensor::with(['sensorType', 'device.lab', 'latestReading']);
+
+            if ($search && is_string($search)) {
+                $safeSearch = addslashes($search);
+                $query->where(function ($q) use ($safeSearch): void {
+                    $q->where('sensors.name', 'like', "%{$safeSearch}%")
+                        ->orWhereHas('sensorType', fn ($tq) => $tq->where('name', 'like', "%{$safeSearch}%"))
+                        ->orWhereHas('device', fn ($dq) => $dq->where('name', 'like', "%{$safeSearch}%"));
+                });
+            }
+
+            $sensors = $query->paginate($perPage);
 
             Log::info('Sensors listed successfully', [
                 'count' => $sensors->count(),

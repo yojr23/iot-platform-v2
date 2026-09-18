@@ -2,16 +2,17 @@
 
 ## Current state — read this first
 
-- Current repository HEAD (application tip): `3672e9b` — `fix(ingest)` identity contract + MQTT quarantine [PENDING CI], on top of `d5b5322` `fix(back)` and `b440a44` `fix(front)` (2026-09-17 session 3).
-- Application SHA vs docs/Graphify SHA (kept separate per `docs/graphify-strategy.md`): the last Graphify/docs regeneration is `672421b` (a mixed commit — the reason the isolation rule now exists); every commit since (`2e92f74`, `9583230`, `49fdad0`, `b440a44`, `d5b5322`, `3672e9b`) is application/plan only, no `graphify-out/` churn.
-- CI as executor: PHP/Redis and Python are unreachable on this Windows machine, so backend + ingestion changes are executed by **GitHub Actions on push** (not Mac). They are PENDING CI EXECUTION, not "never executed". `gh` is not installed here, so the exact-tip CI result is not observable from this session — confirm in the Actions tab / via `gh run list` before treating any backend/ingestion finding as closed.
-- Windows/source verification (session 3): frontend COMPLETE and Windows-verified — full vitest **299 pass / 0 fail**, realtime+detail **×3 zero flakes**, `vite build` clean, all four `test:phase*` structural scripts updated to permission-based routing and passing, polling audit clean, authorization call-site audit done. Backend (`d5b5322`) + ingestion (`3672e9b`) = source-only, PENDING CI EXECUTION.
+- Current repository HEAD (application tip): `d3b2664e` — `test(dashboard): deterministic device serials in graph-catalog test`, on top of the durable-event + live-certification work (`108b6a8`, `eb79ee1`, `127affc`, `a406451`).
+- Documented-green CI baseline: **GitHub Actions run `35306217551`** at `d3b2664e` — backend **524 pass**, frontend **299 pass**, ingestion **38 pass**, responsive E2E (mocked) **35/35 pass**. This is the last observed all-green run; the 2026-09-18 Windows edits below are ON TOP of it and are PENDING a fresh CI run.
+- Application SHA vs docs/Graphify SHA (kept separate per `docs/graphify-strategy.md`): the last Graphify/docs regeneration is `672421b`; every application commit since is application/plan only.
+- CI as executor: PHP/Redis and Python are unreachable on this Windows machine, so backend + ingestion changes are executed by **GitHub Actions on push** (not Mac). They are PENDING CI EXECUTION, not "never executed". The frontend, however, IS fully executable on Windows (vitest/build/structural/no-polling) and is verified here.
+- Windows verification (2026-09-18 session): frontend COMPLETE and Windows-verified — full vitest **307 pass / 0 fail** (299 baseline + pagination composable + regressions), `vite build` clean, `test:structure` PASS, `audit:no-polling:source` PASS. Backend + ingestion source edits (durable-event immutable-payload preference, MQTT quarantine redaction) = source-only, PENDING CI EXECUTION.
 - Mac live certification: PARTIAL / OPEN (reserved for real MySQL/Redis/MQTT/Debezium/WebSocket/rendered-browser only — not for running unit/feature suites, which CI covers).
 - Gate 9: OPEN.
 - Gate 10 release certification: OPEN.
 - PLAN: OPEN.
 
-Exactly one section below is authoritative for current release state: **RECONCILIATION — 2026-09-17 (Mac hardening + live-stack session)**, immediately following this block. Every other RECONCILIATION/ledger/status section further down is marked **HISTORICAL RECORD — NOT CURRENT RELEASE STATE** and is retained for audit traceability only, not as a competing source of truth.
+Exactly one section below is authoritative for current release state: **RECONCILIATION — 2026-09-18 (Windows pagination + event/quarantine hardening)**, immediately following this block. Every other RECONCILIATION/ledger/status section further down is marked **HISTORICAL RECORD — NOT CURRENT RELEASE STATE** and is retained for audit traceability only, not as a competing source of truth.
 
 ---
 
@@ -19,7 +20,42 @@ Exactly one section below is authoritative for current release state: **RECONCIL
 
 ---
 
+## RECONCILIATION — 2026-09-18 (Windows pagination + event/quarantine hardening)
+
+Authoritative section. Pinned to HEAD `d3b2664e` / CI run `35306217551` (524 backend, 299 frontend, 38 ingestion, 35/35 responsive E2E — all green). The edits in this session are on top and PENDING a fresh CI run for the backend/ingestion parts; the frontend parts are Windows-verified here.
+
+### Now CLOSED (this session)
+
+| Item | Where | Status | Evidence |
+|------|-------|--------|----------|
+| Frontend list pagination correctness | `Sensors`, `Alerts`, `AlertRules` views | CLOSED (Windows-verified) | All three now consume one reusable `usePaginatedList` composable (`items/page/lastPage/hasMore/loading/loadingMore`, `loadFirstPage/loadNextPage/reset`) with a "Cargar más" control — no more silent `per_page:50` page-1-only truncation that hid 20 of 70 sensors. 8 composable regressions (51+ items, page-2 append, no-dup-in-flight, empty page, load-more failure, extra-param passthrough) + existing view tests. |
+| Sensor-create device selector 100-cap | `SensorsView` | CLOSED (Windows-verified) | Device dropdown is now server-paginated (`per_page:20`) + server-searched via a debounced `search` param, so device 101+ is reachable; no arbitrary client cap. |
+| Devices search semantics | `DevicesView` + `DeviceApiController::index` | CLOSED (Windows-verified) | Search is now server-side (`search` param → name/serial/type/lab `LIKE`), debounced with `reset()`; a device on an unfetched page is no longer invisible to search. Matching server-side `search` also added to `SensorApiController::index`. |
+| Durable reading event uses immutable payload consistently | `DomainEventBroadcastConsumer::broadcastSensorReadingCreated` | SOURCE FIXED — PENDING CI | A NEW enriched `sensor.reading.created` event is now ALWAYS broadcast from its immutable outbox payload (never re-reads the live row), so a sensor rename/move between record and delivery can't rewrite the fact ("Sala A" stays "Sala A"). Only LEGACY pre-enrichment payloads fall back to the DB row. New PHPUnit regression `test_enriched_reading_broadcast_uses_immutable_payload_not_renamed_live_row` (needs Redis → runs in CI). |
+| MQTT quarantine redaction | `ingestion_service/app/spool.py` | SOURCE FIXED — PENDING CI | `quarantine()` was storing `text[:2000]` (truncated, NOT sanitized) — an api_key/token/password in the first 2000 chars would land in SQLite in the clear. Now `redact_secrets()` masks known secret keys (api_key/token/password/authorization/x-device-key/bearer…) in both JSON and kv forms BEFORE truncation; hash still fingerprints the true payload. 2 new pytest cases + a redaction unit test (run in ingestion CI; logic verified locally via direct import). |
+
+### Evaluated, not changed
+
+- **Dev-tool dependency security:** `vitest` is already at `3.2.7` (current 3.x). The residual moderate is `esbuild < 0.25` pulled transitively by `vite 5.4.x`; closing it needs a `vite 5 → 6` major bump + reinstall + full re-test. The registry is unreachable from this offline Windows machine (`npm audit` / `npm install` both fail), so a controlled upgrade is BLOCKED here and deferred to a networked session. No `npm audit fix --force` applied (dev-only, unshipped — reviewed exception, unchanged from the 2026-09-17 accepted residual).
+
+### Still OPEN (Mac / infra / repo-admin only)
+
+- MQTT → real WebSocket transport → rendered browser (Soketi/Reverb, live Echo/Pusher frame).
+- MQTT subscriber-down / persistent-session recovery.
+- Broadcast crash-window **H5** (crash between broadcast success and `delivered_at`/XACK under real broadcaster).
+- Real production-mode rendered visual QA + real-device payload validation (Phase L).
+- Branch protection (Phase Q) — required checks: `backend`, `frontend`, `ingestion`, `architecture`, `dependency-security`, `frontend-responsive-e2e-mocked`. Needs GitHub admin.
+- Remaining dev-tool security debt (esbuild-via-vite moderate) — needs network (see "Evaluated, not changed").
+
+**Previously OPEN, now CLOSED by live certification (run `35306217551` + `108b6a8`/`127affc`):** Debezium restart (H1), Redis restart (H2), XAUTOCLAIM worker-takeover (H3), poison→DLQ (H4), live 60s no-polling browser capture, durable self-contained reading event, full backend MQTT→broadcast vertical. These are no longer open items.
+
+**Gate 9: OPEN. Gate 10: OPEN. PLAN: OPEN.** Correctness/authorization/perf/dependency/frontend-pagination phases are closed with tests; the remaining live-infra certification (real WS transport, subscriber-down, H5, production visual/device QA) is Mac-only.
+
+---
+
 ## RECONCILIATION — 2026-09-17 (Mac hardening + live-stack session)
+
+**HISTORICAL RECORD — NOT CURRENT RELEASE STATE.** Superseded by the RECONCILIATION — 2026-09-18 section above. Retained for audit traceability only.
 
 Continues the 2026-09-16 session. Full reproducible evidence in
 `docs/mac-certification-evidence.md`. Starting SHA `43d6f96`. Backend suite

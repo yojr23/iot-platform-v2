@@ -1,6 +1,6 @@
 import time
 
-from app.spool import DurableEventSpool
+from app.spool import DurableEventSpool, redact_secrets
 
 
 def event(source_event_id: str = "event-1") -> dict:
@@ -177,6 +177,33 @@ def test_quarantine_evicts_oldest_past_capacity(tmp_path):
     assert len(records) == 2
     # Oldest (reason-0) was evicted; the two most recent survive.
     assert [r["reason"] for r in records] == ["reason-1", "reason-2"]
+
+
+def test_redact_secrets_masks_json_and_kv_forms():
+    masked = redact_secrets('{"api_key":"SECRET123","value":22.5,"token":"abc.def"}')
+    assert "SECRET123" not in masked
+    assert "abc.def" not in masked
+    assert "22.5" in masked  # non-secret fields untouched
+
+    kv = redact_secrets("api_key=SECRET123&value=22.5&password=hunter2")
+    assert "SECRET123" not in kv
+    assert "hunter2" not in kv
+    assert "value=22.5" in kv
+
+
+def test_quarantine_redacts_secrets_before_persisting(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3")
+    payload = b'{"api_key":"SUPERSECRETKEY","value":99,"x-device-key":"dev-secret"}'
+
+    spool.quarantine(topic="iot/lab-01/readings", reason="invalid_json", raw_payload=payload)
+
+    record = spool.quarantined()[0]
+    assert "SUPERSECRETKEY" not in record["payload_snippet"]
+    assert "dev-secret" not in record["payload_snippet"]
+    assert "[REDACTED]" in record["payload_snippet"]
+    # Hash is of the true payload, so it still fingerprints the original for dedup/inspection.
+    assert len(record["payload_hash"]) == 64
+    spool.close()
     spool.close()
 
 

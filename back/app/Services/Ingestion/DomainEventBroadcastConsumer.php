@@ -302,21 +302,22 @@ class DomainEventBroadcastConsumer
         $payload = $outbox->payload;
         $readingId = data_get($payload, 'reading_id');
 
-        // P1 (durable self-contained event): prefer the live row when present (freshest relations),
-        // but if it has since been deleted, reconstruct the reading + its sensor/type/device/lab
-        // entirely from the immutable outbox payload so the fact is STILL delivered. A vanished
-        // SensorReading must not silently drop a durable event.
-        $reading = SensorReading::query()
-            ->with(['sensor.sensorType', 'sensor.device.lab'])
-            ->find($readingId);
+        // Event-driven contract (matches alert.triggered / device.status.changed): a NEW enriched
+        // event is ALWAYS broadcast from its own immutable payload — never re-read from the live row.
+        // The payload captured the sensor/device/lab names AND the event-time audience at record time,
+        // so a later sensor rename/move or visibility flip can't rewrite an already-recorded fact
+        // ("Sala A" stays "Sala A", not "Sala de Calderas"). Only LEGACY pre-enrichment payloads
+        // (no denormalized fields) fall back to the live SensorReading row for compatibility.
+        if (array_key_exists('sensor_name', $payload)) {
+            $reading = $this->hydrateReadingFromPayload($payload);
+            // Enriched payloads always carry the event-time audience decision.
+            $includePublic = (bool) data_get($payload, 'public_at_occurrence', false);
+        } else {
+            $reading = SensorReading::query()
+                ->with(['sensor.sensorType', 'sensor.device.lab'])
+                ->find($readingId);
 
-        $publicAtOccurrence = data_get($payload, 'public_at_occurrence');
-
-        if (! $reading) {
-            // Legacy payloads (written before this field existed) can't be reconstructed and have no
-            // recorded audience — fall back to the old behavior of skipping, since we can neither
-            // rebuild the metadata nor honor event-time visibility.
-            if (! array_key_exists('sensor_name', $payload)) {
+            if (! $reading) {
                 Log::warning('DomainEventBroadcastConsumer: sensor.reading.created target gone and payload is pre-enrichment', [
                     'outbox_id' => $outbox->id,
                     'reading_id' => $readingId,
@@ -325,15 +326,10 @@ class DomainEventBroadcastConsumer
                 return;
             }
 
-            $reading = $this->hydrateReadingFromPayload($payload);
+            // Legacy payloads predate `public_at_occurrence` — the current row's visibility is the
+            // only signal available.
+            $includePublic = $this->publicVisibility->isPublic($reading->sensor);
         }
-
-        // Event-time audience: use the decision captured when the reading occurred
-        // (`public_at_occurrence`). Only for legacy payloads that predate the field do we fall back
-        // to the current-time `PublicGraphVisibility::isPublic()` decision.
-        $includePublic = $publicAtOccurrence === null
-            ? $this->publicVisibility->isPublic($reading->sensor)
-            : (bool) $publicAtOccurrence;
 
         $event = new NewSensorReading(
             $reading,

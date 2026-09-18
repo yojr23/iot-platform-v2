@@ -91,7 +91,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 import { getDeviceTypes, getLabs } from '@/api/catalogs';
 import { createDevice, deleteDevice, getDevices, updateDevice, updateDeviceStatus } from '@/api/devices';
@@ -108,6 +108,7 @@ import DeviceList from '@/components/devices/DeviceList.vue';
 import DeviceRealtimeStatus from '@/components/devices/DeviceRealtimeStatus.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDeviceStatusesStore } from '@/stores/deviceStatuses';
+import { usePaginatedList } from '@/composables/usePaginatedList';
 import { asArray, paginatedItems, validationMessage } from '@/utils/formatters';
 import { createLogger } from '@/utils/logger';
 
@@ -115,7 +116,6 @@ const log = createLogger('DevicesView');
 
 const authStore = useAuthStore();
 const deviceStatuses = useDeviceStatusesStore();
-const devices = ref([]);
 const labs = ref([]);
 const deviceTypes = ref([]);
 const loading = ref(false);
@@ -128,14 +128,17 @@ const editingDeviceId = ref(null);
 const validationErrors = ref({});
 const deviceForm = ref(defaultDeviceForm());
 const search = ref('');
-const page = ref(1);
-const lastPage = ref(1);
-const loadingMore = ref(false);
-const hasMore = computed(() => page.value < lastPage.value);
-const DEVICES_PER_PAGE = 50;
-// Plaintext keys are intentionally component-local and are cleared as soon as their one-time
-// handoff modal closes. Never put them in a Pinia store or browser storage.
 const oneTimeApiKey = ref('');
+
+const deviceList = usePaginatedList(
+  (params) => getDevices(params),
+  { perPage: 50 }
+);
+const devices = deviceList.items;
+const page = deviceList.page;
+const lastPage = deviceList.lastPage;
+const loadingMore = deviceList.loadingMore;
+const hasMore = deviceList.hasMore;
 
 function defaultDeviceForm() {
   return {
@@ -149,19 +152,6 @@ function defaultDeviceForm() {
   };
 }
 
-// Reads Laravel's paginate() meta (current_page/last_page) straight off the response body —
-// same body paginatedItems() already reads the `data` array out of, no new util needed.
-function applyDevicesPage(response, { append = false } = {}) {
-  const items = paginatedItems(response);
-  const meta = response?.data ?? {};
-  page.value = meta.current_page ?? page.value;
-  lastPage.value = meta.last_page ?? page.value;
-  devices.value = append ? [...devices.value, ...items] : items;
-  // Gate 8.5: seed the shared status projection from this authenticated device metadata
-  // snapshot; event_sequence 0 so a subsequent realtime DeviceStatusUpdated always wins.
-  deviceStatuses.applySnapshot(items);
-}
-
 async function load() {
   loading.value = true;
   error.value = '';
@@ -169,12 +159,12 @@ async function load() {
   try {
     log.info('load: fetching devices, page 1');
     const shouldLoadCatalogs = Boolean(authStore.can('device.create'));
-    const [devicesResponse, labsResponse, typesResponse] = await Promise.all([
-      getDevices({ per_page: DEVICES_PER_PAGE, page: 1 }),
+    const extraParams = search.value.trim() ? { search: search.value.trim() } : {};
+    const [, labsResponse, typesResponse] = await Promise.all([
+      deviceList.loadFirstPage(extraParams),
       shouldLoadCatalogs ? getLabs() : Promise.resolve({ data: [] }),
       shouldLoadCatalogs ? getDeviceTypes() : Promise.resolve({ data: [] })
     ]);
-    applyDevicesPage(devicesResponse);
     labs.value = asArray(unwrapData(labsResponse));
     deviceTypes.value = asArray(unwrapData(typesResponse));
     log.debug('load: devices=', devices.value.length, 'labs=', labs.value.length);
@@ -190,19 +180,22 @@ async function loadMore() {
   if (loadingMore.value || !hasMore.value) {
     return;
   }
-
-  loadingMore.value = true;
-  error.value = '';
-
+  const extraParams = search.value.trim() ? { search: search.value.trim() } : {};
   try {
-    const response = await getDevices({ per_page: DEVICES_PER_PAGE, page: page.value + 1 });
-    applyDevicesPage(response, { append: true });
+    await deviceList.loadNextPage(extraParams);
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar más dispositivos.');
-  } finally {
-    loadingMore.value = false;
   }
 }
+
+let searchDebounce = null;
+watch(search, () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    deviceList.reset();
+    load();
+  }, 300);
+});
 
 // Gate 8.5: overlay the shared realtime/snapshot projection over the metadata list fetched by
 // load() — the projection (not this list) owns the current status/is_active.
@@ -212,6 +205,12 @@ function effectiveDevice(device) {
 }
 
 const effectiveDevices = computed(() => devices.value.map(effectiveDevice));
+
+watch(devices, (newDevices) => {
+  if (newDevices.length) {
+    deviceStatuses.applySnapshot(newDevices);
+  }
+});
 
 const filteredDevices = computed(() => {
   const term = search.value.trim().toLowerCase();

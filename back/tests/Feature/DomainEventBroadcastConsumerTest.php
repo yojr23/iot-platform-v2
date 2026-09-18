@@ -618,6 +618,64 @@ class DomainEventBroadcastConsumerTest extends TestCase
         $this->assertNotNull($outbox->fresh()->delivered_at);
     }
 
+    /**
+     * Event-driven contract: an ENRICHED sensor.reading.created fact is broadcast from its immutable
+     * payload, so renaming the sensor (or flipping its visibility) after the event is recorded must
+     * NOT rewrite the delivered fact — "Sala A" stays "Sala A", never "Sala de Calderas".
+     */
+    public function test_enriched_reading_broadcast_uses_immutable_payload_not_renamed_live_row(): void
+    {
+        Event::fake([NewSensorReading::class]);
+
+        $lab = Lab::factory()->create(['name' => 'Sala A']);
+        $device = Device::factory()->create(['name' => 'Nodo A', 'lab_id' => $lab->id]);
+        $type = SensorType::factory()->create(['name' => 'Temperatura', 'unit' => 'C']);
+        $sensor = Sensor::factory()->create([
+            'name' => 'Sensor A',
+            'device_id' => $device->id,
+            'sensor_type_id' => $type->id,
+            'public_monitoring_enabled' => true,
+        ]);
+        $reading = SensorReading::factory()->create(['sensor_id' => $sensor->id, 'value' => 21.0]);
+
+        $outbox = DomainEventOutbox::factory()->create([
+            'event_type' => 'sensor.reading.created',
+            'aggregate_type' => 'sensor_reading',
+            'aggregate_id' => (string) $reading->id,
+            'payload' => [
+                'reading_id' => $reading->id,
+                'sensor_id' => $sensor->id,
+                'value' => 21.0,
+                'reading_time' => $reading->reading_time?->toIso8601String(),
+                'sensor_name' => 'Sensor A',
+                'sensor_type' => 'Temperatura',
+                'unit' => 'C',
+                'device_id' => $device->id,
+                'device_name' => 'Nodo A',
+                'lab_id' => $lab->id,
+                'lab_name' => 'Sala A',
+                'public_at_occurrence' => true,
+            ],
+            'status' => 'published',
+        ]);
+
+        // Rename everything AFTER the fact was recorded — the live row now disagrees with the payload.
+        $sensor->update(['name' => 'Sensor renombrado']);
+        $device->update(['name' => 'Nodo renombrado']);
+        $lab->update(['name' => 'Sala de Calderas']);
+
+        $this->xadd($outbox->id, 'sensor.reading.created');
+        $this->consumer()->runOnce('worker-A', 10, 100);
+
+        Event::assertDispatched(NewSensorReading::class, function (NewSensorReading $event) {
+            $wire = $event->broadcastWith();
+            $this->assertSame('Sensor A', $wire['sensor_name']);
+            $this->assertSame(21.0, $wire['value']);
+
+            return true;
+        });
+    }
+
     public function test_already_delivered_outbox_row_is_skipped_without_rebroadcast(): void
     {
         Event::fake([AlertResolved::class]);
