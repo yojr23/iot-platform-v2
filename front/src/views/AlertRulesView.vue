@@ -56,7 +56,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 import {
   createAlertRule,
@@ -124,11 +124,11 @@ async function loadNextPageWithFilter() {
   if (rulesList.loadingMore.value || !rulesList.hasMore.value) {
     return;
   }
-  const extraParams = {};
-  if (selectedDeviceId.value) {
-    extraParams.device_id = selectedDeviceId.value;
+  try {
+    await rulesList.loadNextPage();
+  } catch (requestError) {
+    error.value = getApiErrorMessage(requestError, 'No se pudieron cargar más reglas.');
   }
-  await rulesList.loadNextPage(extraParams);
 }
 
 async function loadMetadata() {

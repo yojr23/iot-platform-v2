@@ -93,7 +93,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { getSensorTypes } from '@/api/catalogs';
@@ -137,7 +137,19 @@ const sensorList = usePaginatedList(
 const sensors = sensorList.items;
 const hasMore = sensorList.hasMore;
 const loadingMore = sensorList.loadingMore;
-const loadNextPage = sensorList.loadNextPage;
+
+// Wrapper for loadNextPage with error handling
+async function loadNextPage() {
+  if (sensorList.loadingMore.value || !sensorList.hasMore.value) {
+    return;
+  }
+  try {
+    await sensorList.loadNextPage();
+  } catch (requestError) {
+    log.warn('loadNextPage failed:', requestError?.message);
+    error.value = getApiErrorMessage(requestError, 'No se pudieron cargar más sensores.');
+  }
+}
 
 const formDeviceList = usePaginatedList(
   (params) => getDevices({ per_page: 20, ...params }),
@@ -159,7 +171,9 @@ watch(deviceSearch, () => {
   deviceSearchDebounce = setTimeout(() => {
     formDeviceList.reset();
     const term = deviceSearch.value.trim();
-    formDeviceList.loadFirstPage(term ? { search: term } : {});
+    formDeviceList.loadFirstPage(term ? { search: term } : {}).catch((err) => {
+      log.warn('device search failed:', err?.message);
+    });
   }, 300);
 });
 
@@ -188,26 +202,45 @@ function sensorListParams() {
   return params;
 }
 
-async function load() {
+async function loadSensorList() {
   loading.value = true;
   error.value = '';
 
   try {
-    log.info('load: fetching sensors');
-    const shouldLoadAdminData = Boolean(authStore.can('sensor.create'));
-    const [, , typesResponse] = await Promise.all([
-      sensorList.loadFirstPage(sensorListParams()),
-      shouldLoadAdminData ? formDeviceList.loadFirstPage() : Promise.resolve(),
-      shouldLoadAdminData ? getSensorTypes() : Promise.resolve({ data: [] })
-    ]);
-    sensorTypes.value = asArray(unwrapData(typesResponse));
-    log.debug('load: sensors=', sensors.value.length);
+    log.info('loadSensorList: fetching sensors');
+    await sensorList.loadFirstPage(sensorListParams());
+    log.debug('loadSensorList: sensors=', sensors.value.length);
   } catch (requestError) {
-    log.warn('load failed:', requestError?.message);
+    log.warn('loadSensorList failed:', requestError?.message);
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los sensores.');
   } finally {
     loading.value = false;
   }
+}
+
+async function loadSensorFormCatalogs() {
+  const shouldLoadAdminData = Boolean(authStore.can('sensor.create'));
+  if (!shouldLoadAdminData) {
+    return;
+  }
+  try {
+    log.info('loadSensorFormCatalogs: fetching form catalogs');
+    const [, typesResponse] = await Promise.all([
+      formDeviceList.loadFirstPage(),
+      getSensorTypes()
+    ]);
+    sensorTypes.value = asArray(unwrapData(typesResponse));
+    log.debug('loadSensorFormCatalogs: done');
+  } catch (requestError) {
+    log.warn('loadSensorFormCatalogs failed:', requestError?.message);
+  }
+}
+
+async function load() {
+  await Promise.all([
+    loadSensorList(),
+    loadSensorFormCatalogs()
+  ]);
 }
 
 let searchDebounce = null;
@@ -215,7 +248,7 @@ watch([search, statusFilter], () => {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => {
     sensorList.reset();
-    load();
+    loadSensorList();
   }, 300);
 });
 
@@ -223,7 +256,12 @@ async function loadMoreDevices() {
   if (formDeviceList.loadingMore.value || !formDeviceList.hasMore.value) {
     return;
   }
-  await formDeviceList.loadNextPage();
+  try {
+    await formDeviceList.loadNextPage();
+  } catch (requestError) {
+    log.warn('loadMoreDevices failed:', requestError?.message);
+    error.value = getApiErrorMessage(requestError, 'No se pudieron cargar más dispositivos.');
+  }
 }
 
 function openCreate() {
@@ -340,7 +378,16 @@ onMounted(async () => {
 
   if (deviceId && authStore.can('sensor.create')) {
     openCreate();
-    sensorForm.value.device_id = Number(deviceId);
+    sensorForm.value.device_id = String(deviceId);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (searchDebounce) {
+    clearTimeout(searchDebounce);
+  }
+  if (deviceSearchDebounce) {
+    clearTimeout(deviceSearchDebounce);
   }
 });
 </script>

@@ -91,7 +91,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { getDeviceTypes, getLabs } from '@/api/catalogs';
 import { createDevice, deleteDevice, getDevices, updateDevice, updateDeviceStatus } from '@/api/devices';
@@ -152,37 +152,55 @@ function defaultDeviceForm() {
   };
 }
 
-async function load() {
+async function loadDeviceList() {
   loading.value = true;
   error.value = '';
 
   try {
-    log.info('load: fetching devices, page 1');
-    const shouldLoadCatalogs = Boolean(authStore.can('device.create'));
+    log.info('loadDeviceList: fetching devices, page 1');
     const extraParams = search.value.trim() ? { search: search.value.trim() } : {};
-    const [, labsResponse, typesResponse] = await Promise.all([
-      deviceList.loadFirstPage(extraParams),
-      shouldLoadCatalogs ? getLabs() : Promise.resolve({ data: [] }),
-      shouldLoadCatalogs ? getDeviceTypes() : Promise.resolve({ data: [] })
-    ]);
-    labs.value = asArray(unwrapData(labsResponse));
-    deviceTypes.value = asArray(unwrapData(typesResponse));
-    log.debug('load: devices=', devices.value.length, 'labs=', labs.value.length);
+    await deviceList.loadFirstPage(extraParams);
+    log.debug('loadDeviceList: devices=', devices.value.length);
   } catch (requestError) {
-    log.warn('load failed:', requestError?.message);
+    log.warn('loadDeviceList failed:', requestError?.message);
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los dispositivos.');
   } finally {
     loading.value = false;
   }
 }
 
+async function loadDeviceFormCatalogs() {
+  const shouldLoadCatalogs = Boolean(authStore.can('device.create'));
+  if (!shouldLoadCatalogs) {
+    return;
+  }
+  try {
+    log.info('loadDeviceFormCatalogs: fetching catalogs');
+    const [labsResponse, typesResponse] = await Promise.all([
+      getLabs(),
+      getDeviceTypes()
+    ]);
+    labs.value = asArray(unwrapData(labsResponse));
+    deviceTypes.value = asArray(unwrapData(typesResponse));
+    log.debug('loadDeviceFormCatalogs: labs=', labs.value.length, 'types=', deviceTypes.value.length);
+  } catch (requestError) {
+    log.warn('loadDeviceFormCatalogs failed:', requestError?.message);
+  }
+}
+
+async function load() {
+  await Promise.all([
+    loadDeviceList(),
+    loadDeviceFormCatalogs()
+  ]);
+}
+
 async function loadMore() {
   if (loadingMore.value || !hasMore.value) {
     return;
   }
-  const extraParams = search.value.trim() ? { search: search.value.trim() } : {};
   try {
-    await deviceList.loadNextPage(extraParams);
+    await deviceList.loadNextPage();
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar más dispositivos.');
   }
@@ -193,7 +211,7 @@ watch(search, () => {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => {
     deviceList.reset();
-    load();
+    loadDeviceList();
   }, 300);
 });
 
@@ -347,4 +365,10 @@ function fieldError(field) {
 }
 
 onMounted(load);
+
+onBeforeUnmount(() => {
+  if (searchDebounce) {
+    clearTimeout(searchDebounce);
+  }
+});
 </script>

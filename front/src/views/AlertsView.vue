@@ -27,7 +27,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { getActiveAlerts, getAlerts, getUnresolvedAlerts } from '@/api/alerts';
 import { getApiErrorMessage } from '@/api/client';
@@ -50,17 +50,33 @@ const resolvingAll = ref(false);
 
 const alertsList = usePaginatedList(
   (params) => {
+    const extraParams = { per_page: 50, ...params };
     if (filter.value === 'unresolved') {
-      return getUnresolvedAlerts({ per_page: 50, ...params });
+      return getUnresolvedAlerts(extraParams);
     }
-    return getAlerts({ per_page: 50, ...params });
+    if (filter.value === 'active') {
+      // active filter uses non-paginated endpoint
+      return getActiveAlerts(extraParams);
+    }
+    return getAlerts(extraParams);
   },
   { perPage: 50 }
 );
 const alerts = alertsList.items;
 const hasMore = alertsList.hasMore;
 const loadingMore = alertsList.loadingMore;
-const loadNextPage = alertsList.loadNextPage;
+
+// Wrapper for loadNextPage with error handling
+async function loadNextPage() {
+  if (alertsList.loadingMore.value || !alertsList.hasMore.value) {
+    return;
+  }
+  try {
+    await alertsList.loadNextPage();
+  } catch (requestError) {
+    error.value = getApiErrorMessage(requestError, 'No se pudieron cargar más alertas.');
+  }
+}
 
 async function load({ preserveSuccess = false } = {}) {
   loading.value = true;
@@ -79,7 +95,11 @@ async function load({ preserveSuccess = false } = {}) {
       return;
     }
 
-    await alertsList.loadFirstPage();
+    const extraParams = {};
+    if (filter.value === 'unresolved') {
+      extraParams.status = 'unresolved';
+    }
+    await alertsList.loadFirstPage(extraParams);
   } catch (requestError) {
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar las alertas.');
   } finally {
