@@ -323,7 +323,14 @@ SELECT JSON_OBJECT(
                 change = json.loads(fields.get("value", ""))
             except json.JSONDecodeError:
                 continue
-            if change.get("after", {}).get("id") == outbox_id:
+            if not isinstance(change, dict):
+                continue
+            after = change.get("after")
+            # Debezium change envelopes carry `after: null` for deletes/tombstones; guard
+            # against None before indexing (a null `after` is simply not our insert).
+            if not isinstance(after, dict):
+                continue
+            if after.get("id") == outbox_id:
                 entries.append({"id": str(entry[0]), "fields": fields})
         return entries
 
@@ -542,7 +549,7 @@ class FaultHarness:
             pending_after_kill = self.compose.pending_entry(Compose.RAW_CDC_STREAM, stream_id)
             require(isinstance(pending_after_kill, list) and len(pending_after_kill) == 1, "killed CDC entry was not retained pending")
             self.compose.run_cdc_once(f"{self.run_id}-b-reclaimer", claim_idle_ms=self.config.claim_idle_ms)
-            self.compose.wait_for_logical_reading_once(source_event_id, baseline)
+            self.wait_for_logical_reading_once(source_event_id, baseline)
             self.compose.wait_for("Scenario B CDC acknowledgement", lambda: self.compose.pending_entry(Compose.RAW_CDC_STREAM, stream_id) == [])
         finally:
             self.compose.start("outbox-cdc-consumer")
@@ -562,7 +569,7 @@ class FaultHarness:
             self.compose.start("redis")
             self.compose.wait_for("Redis health after Scenario C", lambda: self.compose.service_state("redis").get("Health", {}).get("Status") == "healthy")
             self.compose.start("outbox-cdc-consumer")
-            self.compose.wait_for_logical_reading_once(source_event_id, baseline)
+            self.wait_for_logical_reading_once(source_event_id, baseline)
         finally:
             self.compose.start("redis", "outbox-cdc-consumer")
         return {"accepted_response": response, "outbox_id": outbox_id, "durable_during_outage": durable_during_outage, "assertion": "committed DB state drained after Redis recovery"}
@@ -595,7 +602,7 @@ class FaultHarness:
             outbox_id, stream_id, paused_id = self._create_dead_pending_cdc(source_event_id, "e")
             self.compose.kill_and_remove(paused_id)
             self.compose.run_cdc_once(f"{self.run_id}-e-reclaimer", claim_idle_ms=self.config.claim_idle_ms)
-            self.compose.wait_for_logical_reading_once(source_event_id, baseline)
+            self.wait_for_logical_reading_once(source_event_id, baseline)
             self.compose.wait_for("Scenario E XAUTOCLAIM acknowledgement", lambda: self.compose.pending_entry(Compose.RAW_CDC_STREAM, stream_id) == [])
         finally:
             self.compose.start("outbox-cdc-consumer")
