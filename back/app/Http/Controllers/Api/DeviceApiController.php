@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\EscapesLikeSearch;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DeviceResource;
 use App\Http\Resources\DeviceStatusSnapshotResource;
@@ -20,9 +21,10 @@ use Throwable;
 
 class DeviceApiController extends Controller
 {
-    public function __construct(private DeviceService $deviceService)
-    {
-    }
+    use EscapesLikeSearch;
+
+    public function __construct(private DeviceService $deviceService) {}
+
     public function index(Request $request)
     {
         $this->authorize('viewAny', Device::class);
@@ -54,14 +56,16 @@ class DeviceApiController extends Controller
                 ->orderBy('id');
 
             if ($search && is_string($search)) {
-                // Binding handles SQL injection; escape LIKE metacharacters and declare an
-                // explicit ESCAPE clause so wildcards are literal on both MySQL and SQLite.
-                $like = '%'.addcslashes($search, '\\%_').'%';
+                // Binding handles SQL injection; escape LIKE metacharacters with `~` and declare an
+                // explicit ESCAPE '~' clause so wildcards are literal on both MySQL and SQLite. A
+                // backslash escape char (ESCAPE '\') is reprocessed by MySQL's string-literal parser
+                // into an unterminated literal (1064 syntax error); `~` avoids that on both drivers.
+                $like = '%'.self::escapeLike($search).'%';
                 $query->where(function ($q) use ($like): void {
-                    $q->whereRaw("devices.name LIKE ? ESCAPE '\\'", [$like])
-                        ->orWhereRaw("devices.serial_number LIKE ? ESCAPE '\\'", [$like])
-                        ->orWhereHas('deviceType', fn ($dq) => $dq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]))
-                        ->orWhereHas('lab', fn ($lq) => $lq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]));
+                    $q->whereRaw("devices.name LIKE ? ESCAPE '~'", [$like])
+                        ->orWhereRaw("devices.serial_number LIKE ? ESCAPE '~'", [$like])
+                        ->orWhereHas('deviceType', fn ($dq) => $dq->whereRaw("name LIKE ? ESCAPE '~'", [$like]))
+                        ->orWhereHas('lab', fn ($lq) => $lq->whereRaw("name LIKE ? ESCAPE '~'", [$like]));
                 });
             }
 
@@ -628,8 +632,8 @@ class DeviceApiController extends Controller
     }
 
     /**
-     * @param array<string,mixed> $payload
-     * @param array<int,string> $allowedFields
+     * @param  array<string,mixed>  $payload
+     * @param  array<int,string>  $allowedFields
      * @return array<int,string>
      */
     private function detectUnexpectedFields(array $payload, array $allowedFields): array

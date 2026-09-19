@@ -20,25 +20,46 @@ class SensorReadingRangeIndexTest extends TestCase
 
     public function test_composite_range_index_exists_with_correct_column_order(): void
     {
-        $indexes = collect(DB::select("PRAGMA index_list('sensor_readings')"));
+        $columns = DB::getDriverName() === 'mysql'
+            ? $this->mysqlIndexColumns('sensor_readings', 'sensor_readings_sensor_time_id_idx')
+            : $this->sqliteIndexColumns('sensor_readings_sensor_time_id_idx');
 
-        $target = $indexes->firstWhere('name', 'sensor_readings_sensor_time_id_idx');
-
-        $this->assertNotNull(
-            $target,
+        $this->assertNotEmpty(
+            $columns,
             'Expected index sensor_readings_sensor_time_id_idx to exist on sensor_readings.'
         );
-
-        $columns = collect(DB::select("PRAGMA index_info('sensor_readings_sensor_time_id_idx')"))
-            ->sortBy('seqno')
-            ->pluck('name')
-            ->values()
-            ->all();
 
         $this->assertSame(
             ['sensor_id', 'reading_time', 'id'],
             $columns,
             'Composite index must cover (sensor_id, reading_time, id) in that exact order.'
         );
+    }
+
+    /** @return array<int,string> */
+    private function sqliteIndexColumns(string $index): array
+    {
+        $exists = collect(DB::select("PRAGMA index_list('sensor_readings')"))
+            ->firstWhere('name', $index);
+
+        if ($exists === null) {
+            return [];
+        }
+
+        return collect(DB::select("PRAGMA index_info('{$index}')"))
+            ->sortBy('seqno')
+            ->pluck('name')
+            ->values()
+            ->all();
+    }
+
+    /** @return array<int,string> */
+    private function mysqlIndexColumns(string $table, string $index): array
+    {
+        return collect(DB::select('SHOW INDEX FROM `'.$table.'` WHERE Key_name = ?', [$index]))
+            ->sortBy('Seq_in_index')
+            ->pluck('Column_name')
+            ->values()
+            ->all();
     }
 }

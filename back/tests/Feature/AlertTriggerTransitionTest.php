@@ -120,7 +120,9 @@ class AlertTriggerTransitionTest extends TestCase
             ->where('aggregate_id', (string) $alert->id)
             ->firstOrFail();
 
-        $this->assertSame([
+        // JSON column key order is not guaranteed across drivers (MySQL reorders); assert the
+        // payload content, not its serialized key order.
+        $this->assertEqualsCanonicalizing([
             'alert_id' => $alert->id,
             'message' => 'Mensaje original',
             'severity' => 'danger',

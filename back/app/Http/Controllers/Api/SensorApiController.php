@@ -2,20 +2,21 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\EscapesLikeSearch;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SensorResource;
 use App\Models\Device;
 use App\Models\Sensor;
-use App\Services\Ingestion\SensorReadingService;
 use App\Services\Ingestion\SensorReadingProjectionService;
+use App\Services\Ingestion\SensorReadingService;
 use App\Services\Monitoring\PublicGraphSeriesService;
 use App\Services\Monitoring\RuleToGraphZones;
 use App\Services\SensorMappingService;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -23,18 +24,20 @@ use Throwable;
 
 class SensorApiController extends Controller
 {
+    use EscapesLikeSearch;
+
     private const MAX_GRAPH_WINDOW_SECONDS = 24 * 60 * 60;
 
     /** SEC-EXPORT-001: hard bounds on reading exports. */
     private const EXPORT_MAX_WINDOW_DAYS = 31;
+
     private const EXPORT_MAX_ROWS = 50000;
 
     public function __construct(
         private SensorReadingService $readingService,
         private SensorReadingProjectionService $readingProjection,
         private SensorMappingService $mappingService,
-    ) {
-    }
+    ) {}
 
     public function store(Request $request, Sensor $sensor)
     {
@@ -117,10 +120,10 @@ class SensorApiController extends Controller
         try {
             // Crear nueva lectura
             $reading = $this->readingService->createReading(
-            $sensor,
-            $numericValue,
-            $validated['reading_time'] ?? null,
-        );
+                $sensor,
+                $numericValue,
+                $validated['reading_time'] ?? null,
+            );
 
             Log::info('Sensor reading stored successfully', $context + [
                 'reading_id' => $reading->id,
@@ -389,8 +392,8 @@ class SensorApiController extends Controller
                     ->orderBy('id', 'desc')
                     ->limit($limit)
                     ->get()
-                      ->map(fn ($reading) => $this->readingProjection->format($reading))
-                      ->values();
+                    ->map(fn ($reading) => $this->readingProjection->format($reading))
+                    ->values();
 
                 $this->readingProjection->warm($sensor->id, $readings);
             }
@@ -645,13 +648,15 @@ class SensorApiController extends Controller
 
             if ($search && is_string($search)) {
                 // Laravel binds the value, so SQL injection is handled; we escape the LIKE
-                // metacharacters (\ % _) and declare an explicit ESCAPE clause so wildcards are
-                // literal on both MySQL and SQLite (SQLite has no default LIKE escape char).
-                $like = '%'.addcslashes($search, '\\%_').'%';
+                // metacharacters (~ % _) with `~` and declare an explicit ESCAPE '~' clause so
+                // wildcards are literal on both MySQL and SQLite. A backslash escape char would be
+                // reprocessed by MySQL's string-literal parser (ESCAPE '\' becomes an unterminated
+                // literal → 1064 syntax error); `~` needs no such escaping in either dialect.
+                $like = '%'.self::escapeLike($search).'%';
                 $query->where(function ($q) use ($like): void {
-                    $q->whereRaw("sensors.name LIKE ? ESCAPE '\\'", [$like])
-                        ->orWhereHas('sensorType', fn ($tq) => $tq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]))
-                        ->orWhereHas('device', fn ($dq) => $dq->whereRaw("name LIKE ? ESCAPE '\\'", [$like]));
+                    $q->whereRaw("sensors.name LIKE ? ESCAPE '~'", [$like])
+                        ->orWhereHas('sensorType', fn ($tq) => $tq->whereRaw("name LIKE ? ESCAPE '~'", [$like]))
+                        ->orWhereHas('device', fn ($dq) => $dq->whereRaw("name LIKE ? ESCAPE '~'", [$like]));
                 });
             }
 
@@ -914,7 +919,7 @@ class SensorApiController extends Controller
     /**
      * Prioriza X-Device-Key para evitar exponer credenciales en payloads.
      *
-     * @param array<string,mixed> $payload
+     * @param  array<string,mixed>  $payload
      */
     private function extractProvidedApiKey(Request $request, array &$payload): string
     {
@@ -976,8 +981,8 @@ class SensorApiController extends Controller
     }
 
     /**
-     * @param array<string,mixed> $payload
-     * @param array<int,string> $allowedFields
+     * @param  array<string,mixed>  $payload
+     * @param  array<int,string>  $allowedFields
      * @return array<int,string>
      */
     private function detectUnexpectedFields(array $payload, array $allowedFields): array

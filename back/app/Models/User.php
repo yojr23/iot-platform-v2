@@ -2,22 +2,23 @@
 
 namespace App\Models;
 
-use App\Models\DashboardPreference;
 use App\Notifications\ResetPasswordNotification;
 use App\Notifications\VerifyEmailNotification;
+use Database\Factories\UserFactory;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
@@ -63,6 +64,15 @@ class User extends Authenticatable implements MustVerifyEmail
                 $user->is_admin = false;
             }
 
+            // The MySQL is_admin protection trigger (2026_04_26_180000) rejects any
+            // is_admin=1 INSERT unless the connection has explicitly authorized it. The
+            // console (seeders/artisan) is a trusted actor, so lift the DB guard for the
+            // upcoming write; `saved` resets it. Direct raw SQL outside the model never
+            // sets this flag and still hits the trigger (defense-in-depth intact).
+            if ($user->is_admin && app()->runningInConsole()) {
+                self::allowAdminRoleChange();
+            }
+
             if ($user->role_id !== null || ! Schema::hasTable('roles')) {
                 return;
             }
@@ -83,6 +93,9 @@ class User extends Authenticatable implements MustVerifyEmail
             }
 
             if (app()->runningInConsole() && ! Auth::check()) {
+                // Trusted console actor (seeders/artisan): authorize the DB write.
+                self::allowAdminRoleChange();
+
                 return;
             }
 
@@ -90,7 +103,36 @@ class User extends Authenticatable implements MustVerifyEmail
             if (! $actor || ! $actor->hasAnyRole(['admin', 'superadmin'])) {
                 throw new AuthorizationException('No autorizado para modificar el rol de administrador.');
             }
+
+            // App-level authorization passed — lift the DB trigger guard for this write.
+            self::allowAdminRoleChange();
         });
+
+        static::saved(function (self $user): void {
+            self::resetAdminRoleChangeGuard();
+        });
+    }
+
+    /**
+     * Authorize the upcoming is_admin write against the MySQL protection trigger by
+     * setting the connection session flag. No-op on non-MySQL drivers (SQLite/CI).
+     */
+    private static function allowAdminRoleChange(): void
+    {
+        $connection = (new self)->getConnection();
+
+        if ($connection->getDriverName() === 'mysql') {
+            $connection->statement('SET @allow_admin_role_change = 1');
+        }
+    }
+
+    private static function resetAdminRoleChangeGuard(): void
+    {
+        $connection = (new self)->getConnection();
+
+        if ($connection->getDriverName() === 'mysql') {
+            $connection->statement('SET @allow_admin_role_change = 0');
+        }
     }
 
     public function role(): BelongsTo
@@ -116,7 +158,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function sendEmailVerificationNotification(): void
     {
-        $this->notify(new VerifyEmailNotification());
+        $this->notify(new VerifyEmailNotification);
     }
 
     public function sendPasswordResetNotification(#[\SensitiveParameter] $token): void
@@ -164,9 +206,9 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Get all permissions for the user.
      *
-     * @return \Illuminate\Support\Collection<int, string>
+     * @return Collection<int, string>
      */
-    public function getAllPermissions(): \Illuminate\Support\Collection
+    public function getAllPermissions(): Collection
     {
         if (! $this->role) {
             return collect();
