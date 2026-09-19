@@ -18,20 +18,18 @@ class SecuritySqlInjectionTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $sensorType = SensorType::factory()->create();
 
-        $response = $this->actingAs($admin)
-            ->from(route('alert-rules.create'))
-            ->post(route('alert-rules.store'), [
+        $this->actingAs($admin)
+            ->postJson('/api/alert-rules', [
                 'sensor_type_id' => "{$sensorType->id} OR 1=1",
-                'device_id' => "1; DROP TABLE users; --",
-                'sensor_id' => "1 UNION SELECT * FROM users",
+                'device_id' => '1; DROP TABLE users; --',
+                'sensor_id' => '1 UNION SELECT * FROM users',
                 'min_value' => 10,
                 'max_value' => 20,
                 'severity' => 'warning',
                 'message' => 'SQLi attempt',
-            ]);
-
-        $response->assertRedirect(route('alert-rules.create'));
-        $response->assertSessionHasErrors(['sensor_type_id', 'device_id', 'sensor_id']);
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['sensor_type_id', 'device_id', 'sensor_id']);
 
         $this->assertDatabaseCount('alert_rules', 0);
     }
@@ -54,7 +52,7 @@ class SecuritySqlInjectionTest extends TestCase
         config(['app.api_key' => 'valid-key']);
 
         $sensor = Sensor::factory()->create([
-            'device_id' => \App\Models\Device::factory()->create([
+            'device_id' => Device::factory()->create([
                 'is_active' => true,
                 'status' => true,
             ])->id,

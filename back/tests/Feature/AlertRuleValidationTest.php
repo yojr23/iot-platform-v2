@@ -9,6 +9,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * BACK-01 (PLAN Mac M3): alert-rule creation is owned solely by the JSON API
+ * (StoreAlertRuleRequest -> ApiAlertRuleController). The legacy Blade write path
+ * was retired; these guard the same validation invariants through the canonical
+ * endpoint.
+ */
 class AlertRuleValidationTest extends TestCase
 {
     use RefreshDatabase;
@@ -18,18 +24,17 @@ class AlertRuleValidationTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $sensorType = SensorType::factory()->create();
 
-        $response = $this->actingAs($admin)
-            ->from(route('alert-rules.create'))
-            ->post(route('alert-rules.store'), [
+        $this->actingAs($admin)
+            ->postJson('/api/alert-rules', [
                 'sensor_type_id' => $sensorType->id,
                 'severity' => 'warning',
                 'message' => 'Regla inválida',
                 'min_value' => null,
                 'max_value' => null,
-            ]);
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['min_value']);
 
-        $response->assertRedirect(route('alert-rules.create'));
-        $response->assertSessionHasErrors(['min_value']);
         $this->assertDatabaseCount('alert_rules', 0);
     }
 
@@ -40,9 +45,8 @@ class AlertRuleValidationTest extends TestCase
         $sensor = Sensor::factory()->create();
         $anotherDevice = Device::factory()->create();
 
-        $response = $this->actingAs($admin)
-            ->from(route('alert-rules.create'))
-            ->post(route('alert-rules.store'), [
+        $this->actingAs($admin)
+            ->postJson('/api/alert-rules', [
                 'sensor_type_id' => $sensor->sensor_type_id,
                 'device_id' => $anotherDevice->id,
                 'sensor_id' => $sensor->id,
@@ -50,10 +54,10 @@ class AlertRuleValidationTest extends TestCase
                 'max_value' => 20,
                 'severity' => 'warning',
                 'message' => 'Regla inválida',
-            ]);
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['sensor_id']);
 
-        $response->assertRedirect(route('alert-rules.create'));
-        $response->assertSessionHasErrors(['sensor_id']);
         $this->assertDatabaseCount('alert_rules', 0);
     }
 
@@ -64,19 +68,18 @@ class AlertRuleValidationTest extends TestCase
         $sensor = Sensor::factory()->create();
         $otherType = SensorType::factory()->create();
 
-        $response = $this->actingAs($admin)
-            ->from(route('alert-rules.create'))
-            ->post(route('alert-rules.store'), [
+        $this->actingAs($admin)
+            ->postJson('/api/alert-rules', [
                 'sensor_type_id' => $otherType->id,
                 'sensor_id' => $sensor->id,
                 'min_value' => 10,
                 'max_value' => 20,
                 'severity' => 'warning',
                 'message' => 'Regla inválida',
-            ]);
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['sensor_type_id']);
 
-        $response->assertRedirect(route('alert-rules.create'));
-        $response->assertSessionHasErrors(['sensor_type_id']);
         $this->assertDatabaseCount('alert_rules', 0);
     }
 }

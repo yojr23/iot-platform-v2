@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
@@ -68,7 +69,7 @@ class AuthSecurityTest extends TestCase
         // Superadmin actor: only a superadmin may change another admin's role (RBAC
         // canManageRole/canAssignRole). The target is a regular admin being demoted to user.
         $actingAdmin = User::factory()->create(['is_admin' => true]);
-        $actingAdmin->role_id = \App\Models\Role::where('code', 'superadmin')->value('id');
+        $actingAdmin->role_id = Role::where('code', 'superadmin')->value('id');
         $actingAdmin->saveQuietly();
         $targetAdmin = User::factory()->create(['is_admin' => true]);
 
@@ -102,26 +103,7 @@ class AuthSecurityTest extends TestCase
             ->count());
     }
 
-    public function test_web_admin_downgrade_revokes_target_user_tokens(): void
-    {
-        // Blade/web counterpart of the API role-change controller — same vulnerability class,
-        // same fix (App\Http\Controllers\UserRoleController::update()).
-        $actingAdmin = User::factory()->create(['is_admin' => true]);
-        $targetAdmin = User::factory()->create(['is_admin' => true]);
-
-        $targetAdmin->createToken('admin-client', ['*']);
-
-        $this->actingAs($actingAdmin)
-            ->patch("/config/user-roles/{$targetAdmin->id}", [
-                'is_admin' => false,
-            ])
-            ->assertRedirect();
-
-        $this->assertFalse((bool) $targetAdmin->fresh()->is_admin);
-
-        $this->assertSame(0, PersonalAccessToken::query()
-            ->where('tokenable_type', User::class)
-            ->where('tokenable_id', $targetAdmin->id)
-            ->count());
-    }
+    // BACK-01 (PLAN Mac M3): the legacy Blade role-change path was retired. Its
+    // token-revocation-on-downgrade invariant is now proven directly against the
+    // canonical API endpoint by test_admin_downgrade_revokes_target_user_tokens above.
 }

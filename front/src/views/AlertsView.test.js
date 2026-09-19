@@ -152,3 +152,55 @@ describe('AlertsView syncResolvedFromStore regression', () => {
     expect(host.textContent).toContain('Humedad baja');
   });
 });
+
+describe('AlertsView load-more continuation (FRONT-02)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => mountedApps.splice(0).forEach((app) => app.unmount()));
+
+  it('keeps the unresolved filter across loadNextPage (page 2 still requests status=unresolved)', async () => {
+    const page1 = { data: { data: [alert], current_page: 1, last_page: 2, total: 2, per_page: 1 } };
+    const page2 = { data: { data: [{ ...alert, id: 2 }], current_page: 2, last_page: 2, total: 2, per_page: 1 } };
+    getUnresolvedAlerts.mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
+
+    const { host } = await mountAlertsView();
+
+    [...host.querySelectorAll('button')].find((button) => button.textContent.trim() === 'No resueltas')
+      .dispatchEvent(new Event('click', { bubbles: true }));
+    await flush();
+    await nextTick();
+
+    getUnresolvedAlerts.mockClear();
+    getUnresolvedAlerts.mockResolvedValueOnce(page2);
+
+    const loadMoreButton = [...host.querySelectorAll('button')].find((button) => button.textContent.includes('Cargar más'));
+    expect(loadMoreButton).not.toBeUndefined();
+    loadMoreButton.dispatchEvent(new Event('click', { bubbles: true }));
+    await flush();
+    await nextTick();
+
+    expect(getUnresolvedAlerts).toHaveBeenCalledTimes(1);
+    const params = getUnresolvedAlerts.mock.calls.at(-1)[0];
+    expect(params.status).toBe('unresolved');
+    expect(params.page).toBe(2);
+  });
+
+  it('surfaces a controlled error when load-more fails (no unhandled rejection)', async () => {
+    const page1 = { data: { data: [alert], current_page: 1, last_page: 2, total: 2, per_page: 1 } };
+    getAlerts.mockResolvedValueOnce(page1).mockRejectedValueOnce(new Error('network error'));
+
+    const { host } = await mountAlertsView();
+
+    const loadMoreButton = [...host.querySelectorAll('button')].find((button) => button.textContent.includes('Cargar más'));
+    expect(loadMoreButton).not.toBeUndefined();
+    loadMoreButton.dispatchEvent(new Event('click', { bubbles: true }));
+    await flush();
+    await nextTick();
+
+    // getApiErrorMessage() surfaces the underlying error message (falling back to the
+    // Spanish default only when the error itself carries none) -- either way it must render
+    // as a controlled BaseAlert, not an unhandled rejection.
+    expect(host.textContent).toContain('network error');
+    // The original row must still be present -- a failed load-more must not wipe the list.
+    expect(host.textContent).toContain('Temperatura alta');
+  });
+});

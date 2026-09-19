@@ -118,7 +118,6 @@ const authStore = useAuthStore();
 const deviceStatuses = useDeviceStatusesStore();
 const labs = ref([]);
 const deviceTypes = ref([]);
-const loading = ref(false);
 const error = ref('');
 const success = ref('');
 const updatingId = ref(null);
@@ -139,6 +138,10 @@ const page = deviceList.page;
 const lastPage = deviceList.lastPage;
 const loadingMore = deviceList.loadingMore;
 const hasMore = deviceList.hasMore;
+// Gen-safe loading owned by usePaginatedList; don't shadow it with a view-level ref (that
+// second, non-generation-aware flag is exactly what let a stale request's `finally` flip
+// loading back to false while a newer request was still in flight).
+const loading = deviceList.loading;
 
 function defaultDeviceForm() {
   return {
@@ -153,7 +156,6 @@ function defaultDeviceForm() {
 }
 
 async function loadDeviceList() {
-  loading.value = true;
   error.value = '';
 
   try {
@@ -164,8 +166,6 @@ async function loadDeviceList() {
   } catch (requestError) {
     log.warn('loadDeviceList failed:', requestError?.message);
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los dispositivos.');
-  } finally {
-    loading.value = false;
   }
 }
 

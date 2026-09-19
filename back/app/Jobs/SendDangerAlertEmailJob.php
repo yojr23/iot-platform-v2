@@ -27,16 +27,26 @@ use Illuminate\Support\Facades\Log;
  * `NotificationService::notifyDangerAlertByEmail()` synchronously; it now dispatches this job
  * `afterCommit()`. `NotificationService` remains the sole owner of notification policy/mapping.
  * Compatibility window: none — `AlertObserver::created()` is the only dispatch site.
+ *
+ * EVT-04: `tries`/`backoff()` added, and `handle()` now calls
+ * `NotificationService::notifyDangerAlertByEmailOrFail()` instead of the plain bool-returning
+ * `notifyDangerAlertByEmail()`. That method (unchanged policy, see its docblock) only throws
+ * `DangerAlertEmailDeliveryException` when an email was actually attempted and the send failed —
+ * never for an intentional no-op (not danger / no reading / rate limited) — so this job retries a
+ * real delivery failure without retrying (or logging as a failure) a clean no-op.
  */
 class SendDangerAlertEmailJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
-    public function __construct(public int $alertId)
+    public function backoff(): array
     {
+        return [10, 30, 60];
     }
+
+    public function __construct(public int $alertId) {}
 
     public function handle(NotificationService $notificationService): void
     {
@@ -53,10 +63,11 @@ class SendDangerAlertEmailJob implements ShouldQueue
                 'alert_id' => $this->alertId,
                 'duration_ms' => $durationMs,
             ]);
+
             return;
         }
 
-        $notificationService->notifyDangerAlertByEmail($alert);
+        $notificationService->notifyDangerAlertByEmailOrFail($alert);
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         Log::info('SendDangerAlertEmailJob: completed', [

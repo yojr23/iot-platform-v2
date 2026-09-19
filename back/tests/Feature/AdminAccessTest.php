@@ -2,53 +2,52 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
+/**
+ * BACK-01 (PLAN Mac M3): admin-only product/config surfaces are owned by the
+ * permission-gated JSON API (legacy Blade config/roles/metrics writes retired).
+ * These guard that a non-privileged user is denied config/role management while
+ * still reaching the endpoints their role permits.
+ */
 class AdminAccessTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_non_admin_cannot_access_user_role_management()
+    public function test_non_admin_cannot_access_user_role_management(): void
     {
         $user = User::factory()->create(['is_admin' => false]);
 
-        $response = $this->actingAs($user)->get(route('config.user-roles.index'));
-
-        $response->assertForbidden();
+        // /api/users is gated by permission:user.view — a standard user lacks it.
+        $this->actingAs($user)->getJson('/api/users')->assertForbidden();
     }
 
-    public function test_non_admin_cannot_update_config()
+    public function test_non_admin_cannot_update_config(): void
     {
         $user = User::factory()->create(['is_admin' => false]);
 
-        $response = $this->actingAs($user)->post(route('config.update'), [
-            'app_name' => 'Test',
-            'app_url' => 'https://example.com',
+        $this->actingAs($user)->putJson('/api/config/alerts', [
             'alert_threshold' => 5,
-            'sensor_update_interval' => 2000,
-            'mail_enabled' => 1,
-        ]);
-
-        $response->assertForbidden();
+            'mail_enabled' => true,
+        ])->assertForbidden();
     }
 
-    public function test_standard_user_can_access_legacy_metrics_reads(): void
+    public function test_standard_user_can_access_metrics_reads(): void
     {
         $user = User::factory()->create(['is_admin' => false]);
 
-        $this->actingAs($user)->get(route('metrics.index'))->assertOk();
-        $this->actingAs($user)->getJson(route('metrics.data'))
-            ->assertOk()
-            ->assertJsonStructure(['generated_at', 'snapshot']);
+        // /api/metrics only needs auth:sanctum+verified, not admin.
+        $this->actingAs($user)->getJson('/api/metrics')->assertOk();
     }
 
-    public function test_standard_user_cannot_access_legacy_configuration(): void
+    public function test_non_admin_cannot_view_admin_configuration(): void
     {
         $user = User::factory()->create(['is_admin' => false]);
 
-        $this->actingAs($user)->get(route('config.index'))->assertForbidden();
+        // config read is gated by permission:system_setting.view.
+        $this->actingAs($user)->getJson('/api/config/alerts')->assertForbidden();
     }
 
     public function test_internal_api_metrics_require_admin_authentication(): void

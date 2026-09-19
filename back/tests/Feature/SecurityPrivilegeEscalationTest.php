@@ -2,14 +2,30 @@
 
 namespace Tests\Feature;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * BACK-01 (PLAN Mac M3): role management is owned by the RBAC JSON API
+ * (ApiUserRoleController), which enforces self-demotion and last-superadmin
+ * protection inside a locked transaction. The legacy Blade role write path was
+ * retired; these guard the same privilege-escalation invariants through the
+ * canonical endpoint.
+ */
 class SecurityPrivilegeEscalationTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function asSuperadmin(User $user): User
+    {
+        $user->role_id = Role::where('code', 'superadmin')->value('id');
+        $user->saveQuietly();
+
+        return $user;
+    }
 
     public function test_mass_assignment_cannot_set_is_admin_on_user_create(): void
     {
@@ -23,30 +39,35 @@ class SecurityPrivilegeEscalationTest extends TestCase
         $this->assertFalse((bool) $user->fresh()->is_admin);
     }
 
-    public function test_admin_cannot_demote_himself_from_user_role_management(): void
+    public function test_superadmin_cannot_demote_himself(): void
     {
-        $admin = User::factory()->create(['is_admin' => true]);
-        $otherAdmin = User::factory()->create(['is_admin' => true]);
+        $admin = $this->asSuperadmin(User::factory()->create(['is_admin' => true]));
+        // A second superadmin so the last-superadmin guard is NOT what blocks this —
+        // self-demotion must be rejected on its own.
+        $this->asSuperadmin(User::factory()->create(['is_admin' => true]));
 
-        $response = $this->actingAs($admin)->patch(route('config.user-roles.update', $admin), [
-            'is_admin' => false,
-        ]);
+        $this->actingAs($admin)->patchJson("/api/users/{$admin->id}/role", [
+            'role_code' => 'user',
+        ])->assertStatus(422)->assertJsonValidationErrors('role_code');
 
-        $response->assertSessionHasErrors('is_admin');
         $this->assertTrue((bool) $admin->fresh()->is_admin);
-        $this->assertTrue((bool) $otherAdmin->fresh()->is_admin);
     }
 
-    public function test_admin_can_demote_another_admin_when_platform_keeps_at_least_one_admin(): void
+    public function test_superadmin_can_demote_a_lower_admin(): void
     {
-        $admin = User::factory()->create(['is_admin' => true]);
+        $admin = $this->asSuperadmin(User::factory()->create(['is_admin' => true]));
+        // Target is a plain `admin` (lower level than superadmin) — a superadmin can
+        // manage it. (RBAC canManageRole forbids managing a same-level peer, which is
+        // why superadmin↔superadmin demotion is rejected; that peer rule is exercised
+        // by test_superadmin_cannot_demote_himself indirectly and by SpaParityApiTest.)
         $targetAdmin = User::factory()->create(['is_admin' => true]);
+        $targetAdmin->role_id = Role::where('code', 'admin')->value('id');
+        $targetAdmin->saveQuietly();
 
-        $response = $this->actingAs($admin)->patch(route('config.user-roles.update', $targetAdmin), [
-            'is_admin' => false,
-        ]);
+        $this->actingAs($admin)->patchJson("/api/users/{$targetAdmin->id}/role", [
+            'role_code' => 'user',
+        ])->assertOk();
 
-        $response->assertRedirect(route('config.user-roles.index'));
         $this->assertTrue((bool) $admin->fresh()->is_admin);
         $this->assertFalse((bool) $targetAdmin->fresh()->is_admin);
     }

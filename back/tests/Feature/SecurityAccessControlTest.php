@@ -3,36 +3,45 @@
 namespace Tests\Feature;
 
 use App\Models\Device;
+use App\Models\DeviceType;
+use App\Models\Lab;
+use App\Models\Sensor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * BACK-01 (PLAN Mac M3): product mutation is owned solely by the permission-gated
+ * JSON API (legacy Blade product CRUD retired). These guard that a guest and a
+ * non-privileged authenticated user cannot create/update devices or alert rules
+ * through the canonical endpoints.
+ */
 class SecurityAccessControlTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_guest_is_redirected_when_trying_to_access_protected_web_route(): void
+    public function test_guest_cannot_access_protected_device_api(): void
     {
-        $response = $this->get(route('devices.create'));
-
-        $response->assertRedirect(route('login'));
+        // Unauthenticated device create is rejected before any permission check.
+        $this->postJson('/api/devices', [
+            'name' => 'Guest Device',
+            'serial_number' => 'GUEST-001',
+        ])->assertStatus(401);
     }
 
     public function test_non_admin_cannot_create_devices(): void
     {
         $nonAdmin = User::factory()->create(['is_admin' => false]);
 
-        $response = $this->actingAs($nonAdmin)->post(route('devices.store'), [
+        $this->actingAs($nonAdmin)->postJson('/api/devices', [
             'name' => 'Unauthorized Device',
             'serial_number' => 'UNAUTH-001',
-            'device_type_id' => \App\Models\DeviceType::factory()->create()->id,
-            'lab_id' => \App\Models\Lab::factory()->create()->id,
+            'device_type_id' => DeviceType::factory()->create()->id,
+            'lab_id' => Lab::factory()->create()->id,
             'ip_address' => '192.168.10.20',
             'mac_address' => 'AA:BB:CC:DD:EE:01',
             'status' => true,
-        ]);
-
-        $response->assertForbidden();
+        ])->assertForbidden();
 
         $this->assertDatabaseMissing('devices', [
             'serial_number' => 'UNAUTH-001',
@@ -46,14 +55,14 @@ class SecurityAccessControlTest extends TestCase
             'name' => 'Original Name',
         ]);
 
-        $response = $this->actingAs($nonAdmin)->put(route('devices.update', $device), [
+        $this->actingAs($nonAdmin)->putJson("/api/devices/{$device->id}", [
             'name' => 'Hacked Name',
+            'serial_number' => $device->serial_number,
+            'device_type_id' => $device->device_type_id,
             'ip_address' => $device->ip_address,
             'mac_address' => $device->mac_address,
             'lab_id' => $device->lab_id,
-        ]);
-
-        $response->assertForbidden();
+        ])->assertForbidden();
 
         $this->assertSame('Original Name', $device->fresh()->name);
     }
@@ -62,7 +71,7 @@ class SecurityAccessControlTest extends TestCase
     {
         $user = User::factory()->create(['is_admin' => false]);
 
-        $sensor = \App\Models\Sensor::factory()->create();
+        $sensor = Sensor::factory()->create();
 
         $response = $this->actingAs($user)->postJson('/api/alert-rules', [
             'sensor_type_id' => $sensor->sensor_type_id,
@@ -81,7 +90,7 @@ class SecurityAccessControlTest extends TestCase
 
     public function test_guest_cannot_access_alert_rule_creation_api_endpoint(): void
     {
-        $sensor = \App\Models\Sensor::factory()->create();
+        $sensor = Sensor::factory()->create();
 
         $this->postJson('/api/alert-rules', [
             'sensor_type_id' => $sensor->sensor_type_id,

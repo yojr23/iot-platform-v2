@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Alert;
-use App\Models\AlertRule;
 use App\Models\Device;
 use App\Models\Sensor;
 use App\Models\SystemSetting;
@@ -238,7 +237,6 @@ class Phase2ApiEndpointsTest extends TestCase
                 'mail_enabled',
                 'alert_sound_enabled',
                 'alert_threshold',
-                'sensor_update_interval',
                 'danger_email_rate_limit_seconds',
             ]);
 
@@ -246,7 +244,6 @@ class Phase2ApiEndpointsTest extends TestCase
             'mail_enabled' => true,
             'alert_sound_enabled' => false,
             'alert_threshold' => 12,
-            'sensor_update_interval' => 3000,
             'danger_email_rate_limit_seconds' => 90,
         ])->assertOk()
             ->assertJsonPath('alert_sound_enabled', false)

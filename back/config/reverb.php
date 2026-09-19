@@ -82,7 +82,28 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
-                'allowed_origins' => ['*'],
+                // EVT-01 (release blocker): wildcard origin let ANY site open a websocket
+                // connection to this app's Reverb channels. REVERB_ALLOWED_ORIGINS is a
+                // comma-separated explicit allowlist; unset falls back to the known local dev
+                // origins, never '*'.
+                // `Laravel\Reverb\Protocols\Pusher\Server::verifyOrigin()` reduces the
+                // connecting browser's Origin header to its host only
+                // (`parse_url($connection->origin(), PHP_URL_HOST)`) before matching it against
+                // this list, so a full "scheme://host:port" entry here would never match —
+                // normalize each configured origin the same way (a bare hostname/wildcard
+                // pattern with no scheme is kept as-is).
+                'allowed_origins' => array_values(array_filter(array_map(
+                    function (string $origin) {
+                        $origin = trim($origin);
+
+                        if ($origin === '') {
+                            return null;
+                        }
+
+                        return str_contains($origin, '://') ? parse_url($origin, PHP_URL_HOST) : $origin;
+                    },
+                    explode(',', env('REVERB_ALLOWED_ORIGINS') ?: 'http://127.0.0.1:4173,http://localhost:4173')
+                ))),
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
                 'max_connections' => env('REVERB_APP_MAX_CONNECTIONS'),

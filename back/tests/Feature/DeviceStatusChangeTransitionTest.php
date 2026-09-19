@@ -86,30 +86,16 @@ class DeviceStatusChangeTransitionTest extends TestCase
         $this->assertTrue($device->fresh()->last_communication->equalTo($lastCommunication));
     }
 
-    public function test_blade_toggle_status_writes_one_log_and_one_outbox_row(): void
+    public function test_two_distinct_api_transitions_each_emit_exactly_one_log_and_event(): void
     {
         $admin = User::factory()->create(['is_admin' => true]);
         $device = Device::factory()->create(['status' => true, 'is_active' => true]);
 
-        $this->actingAs($admin)->post(route('devices.toggle-status', $device))->assertRedirect();
-
-        $this->assertSame(false, (bool) $device->fresh()->status);
-        $this->assertSame(1, DeviceStatusLog::query()->where('device_id', $device->id)->count());
-        $this->assertSame(1, DomainEventOutbox::query()
-            ->where('event_type', 'device.status.changed')
-            ->where('aggregate_id', (string) $device->id)
-            ->count());
-    }
-
-    public function test_api_and_blade_both_route_through_one_command_path_never_double(): void
-    {
-        $admin = User::factory()->create(['is_admin' => true]);
-        $device = Device::factory()->create(['status' => true, 'is_active' => true]);
-
-        // API turns it off, Blade turns it back on — two distinct real transitions, each must emit
-        // exactly one log + one event, never two for either entrypoint.
+        // Off then on — two distinct real transitions, each must emit exactly one log + one event,
+        // never two for either. (BACK-01: Blade product mutation retired; the API status endpoint is
+        // the sole `DeviceService::changeStatus()` owner.)
         $this->actingAs($admin)->postJson("/api/devices/{$device->id}/status", ['status' => false])->assertOk();
-        $this->actingAs($admin)->post(route('devices.toggle-status', $device))->assertRedirect();
+        $this->actingAs($admin)->postJson("/api/devices/{$device->id}/status", ['status' => true])->assertOk();
 
         $this->assertSame(true, (bool) $device->fresh()->status);
         $this->assertSame(2, DeviceStatusLog::query()->where('device_id', $device->id)->count());

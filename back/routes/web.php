@@ -1,31 +1,28 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\DeviceController;
-use App\Http\Controllers\SensorController;
-use App\Http\Controllers\AlertController;
-use App\Http\Controllers\AlertRuleController;
-use App\Http\Controllers\ConfigController;
-use App\Http\Controllers\EmailConfigController;
+use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Auth;
-use App\Http\Controllers\SensorTypeController;
-use App\Http\Controllers\DashboardPreferenceController;
-use App\Http\Controllers\LabController;
-use App\Http\Controllers\DeviceTypeController;
-use App\Http\Controllers\UserRoleController;
-use App\Http\Controllers\MetricsController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
 | Web Routes
 |--------------------------------------------------------------------------
+|
+| BACK-01 (PLAN Mac M3): the Vue SPA (front/) is the SOLE canonical product
+| dashboard and the SOLE product mutation owner (all writes go through the
+| JSON API -> application/domain services). Legacy Blade product CRUD used to
+| mutate models directly, bypassing canonical services — that dual-ownership
+| surface is retired here. Blade now serves only auth/verify/profile pages
+| that are genuinely Laravel-rendered; every product read redirects to the SPA
+| and no product write route remains. See audit.md / PLAN.md Stage 6.0 + M3.
+|
 */
 
-// Backend is API-only for the dashboard product surface; the Vue SPA
-// (front/) is the sole canonical dashboard. See PLAN.md Stage 6.0A / audit.md.
-Route::get('/', function () {
-    return redirect()->away(rtrim(config('app.front_url'), '/').'/dashboard');
-});
+// Redirect the SPA product surface to the Vue app.
+$spa = fn (string $path = '') => redirect()->away(rtrim(config('app.front_url'), '/').$path);
+
+Route::get('/', fn () => $spa('/dashboard'));
 
 Auth::routes(['verify' => true]);
 
@@ -43,91 +40,44 @@ foreach (Route::getRoutes()->get() as $route) {
     }
 }
 
-Route::get('/dashboard', function () {
-    return redirect()->away(rtrim(config('app.front_url'), '/').'/dashboard');
-})->name('dashboard');
+Route::get('/dashboard', fn () => $spa('/dashboard'))->name('dashboard');
 
-Route::get('/profile', [App\Http\Controllers\HomeController::class, 'profile'])
+// Profile is a genuinely Laravel-rendered authenticated page (no product
+// mutation), so it stays in Blade.
+Route::get('/profile', [HomeController::class, 'profile'])
     ->name('profile')
     ->middleware(['auth', 'verified']);
 
-Route::middleware(['auth', 'verified'])->prefix('dashboard')->group(function () {
-    Route::get('preferences', [DashboardPreferenceController::class, 'show'])->name('dashboard.preferences.show');
-    Route::post('preferences', [DashboardPreferenceController::class, 'store'])
-        ->middleware('admin')
-        ->name('dashboard.preferences.store');
-});
+// Product reads: keep the named routes (deep links / bookmarks / mailers) but
+// hand them to the canonical SPA. No product WRITE route exists anymore — those
+// live only on the JSON API (routes/api.php) behind the canonical services.
+Route::middleware(['auth', 'verified'])->group(function () use ($spa) {
+    Route::get('metrics', fn () => $spa('/metrics'))->name('metrics.index');
 
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('metrics', [MetricsController::class, 'index'])->name('metrics.index');
-    Route::get('metrics/data', [MetricsController::class, 'data'])->name('metrics.data');
+    Route::get('devices', fn () => $spa('/devices'))->name('devices.index');
+    Route::get('devices/create', fn () => $spa('/devices'))->name('devices.create');
+    Route::get('devices/{device}', fn ($device) => $spa('/devices/'.$device))->name('devices.show');
+    Route::get('devices/{device}/edit', fn ($device) => $spa('/devices/'.$device))->name('devices.edit');
 
-    // Dispositivos
-    Route::resource('devices', DeviceController::class);
-    Route::post('devices/{device}/toggle-status', [DeviceController::class, 'toggleStatus'])->name('devices.toggle-status');
-    Route::post('/devices/{device}/register-communication', [DeviceController::class, 'registerCommunication'])->name('devices.register-communication');
+    Route::get('sensors', fn () => $spa('/sensors'))->name('sensors.index');
+    Route::get('sensors/create', fn () => $spa('/sensors'))->name('sensors.create');
+    Route::get('sensors/{sensor}', fn ($sensor) => $spa('/sensors/'.$sensor))->name('sensors.show');
+    Route::get('sensors/{sensor}/edit', fn ($sensor) => $spa('/sensors/'.$sensor))->name('sensors.edit');
 
-    // Sensores: lectura (index/show) redirige a la SPA canónica (Vue ya sirve
-    // /sensors y /sensors/:id autenticados); administración/escritura sigue en Blade.
-    // Ver PLAN.md Stage 6.0A/6.0C y audit.md.
-    Route::get('sensors', function () {
-        return redirect()->away(rtrim(config('app.front_url'), '/').'/sensors');
-    })->name('sensors.index');
-    Route::get('sensors/create', [SensorController::class, 'create'])->name('sensors.create');
-    Route::post('sensors', [SensorController::class, 'store'])->name('sensors.store');
-    Route::get('sensors/{sensor}/edit', [SensorController::class, 'edit'])->name('sensors.edit');
-    Route::get('sensors/{sensor}/download', [SensorController::class, 'downloadReadings'])->name('sensors.download');
-    Route::get('sensors/{sensor}/readings/filter', [SensorController::class, 'getReadingsByDateRange'])->name('sensors.readings.filter');
-    Route::get('sensors/{sensor}', function ($sensor) {
-        return redirect()->away(rtrim(config('app.front_url'), '/').'/sensors/'.$sensor);
-    })->name('sensors.show');
-    Route::match(['put', 'patch'], 'sensors/{sensor}', [SensorController::class, 'update'])->name('sensors.update');
-    Route::delete('sensors/{sensor}', [SensorController::class, 'destroy'])->name('sensors.destroy');
+    Route::get('alerts', fn () => $spa('/alerts'))->name('alerts.index');
+    Route::get('alerts/unresolved', fn () => $spa('/alerts'))->name('alerts.unresolved');
 
-    // Alertas
-    Route::post('alerts/mark-all-resolved', [AlertController::class, 'markAllAsResolved'])->name('alerts.mark-all-resolved');
-    Route::get('alerts', [AlertController::class, 'index'])->name('alerts.index');
-    Route::get('alerts/unresolved', [AlertController::class, 'unresolved'])->name('alerts.unresolved');
-    Route::put('alerts/{alert}/resolve', [AlertController::class, 'resolve'])->name('alerts.resolve');
+    Route::middleware('admin')->group(function () use ($spa) {
+        Route::get('config', fn () => $spa('/config'))->name('config.index');
+        Route::get('config/user-roles', fn () => $spa('/users'))->name('config.user-roles.index');
+        Route::get('email-config', fn () => $spa('/config/email'))->name('email-config.index');
 
-    // Configuración
-    Route::middleware('admin')->group(function () {
-        Route::get('config', [ConfigController::class, 'index'])->name('config.index');
-
-        // Alert Rules
-        Route::get('alert-rules/create', [AlertRuleController::class, 'create'])->name('alert-rules.create');
-        Route::post('alert-rules', [AlertRuleController::class, 'store'])->name('alert-rules.store');
-        Route::delete('alert-rules/{alertRule}', [AlertRuleController::class, 'destroy'])->name('alert-rules.destroy');
-
-        // Tipos de Sensores
-        Route::get('sensor-types/create', [SensorTypeController::class, 'create'])->name('sensor-types.create');
-        Route::post('sensor-types', [SensorTypeController::class, 'store'])->name('sensor-types.store');
-        Route::get('sensor-types/{sensorType}/edit', [SensorTypeController::class, 'edit'])->name('sensor-types.edit');
-        Route::put('sensor-types/{sensorType}', [SensorTypeController::class, 'update'])->name('sensor-types.update');
-        Route::delete('sensor-types/{sensorType}', [SensorTypeController::class, 'destroy'])->name('sensor-types.destroy');
-
-        // Tipos de Dispositivos
-        Route::get('device-types/create', [DeviceTypeController::class, 'create'])->name('device-types.create');
-        Route::post('device-types', [DeviceTypeController::class, 'store'])->name('device-types.store');
-        Route::get('device-types/{deviceType}/edit', [DeviceTypeController::class, 'edit'])->name('device-types.edit');
-        Route::put('device-types/{deviceType}', [DeviceTypeController::class, 'update'])->name('device-types.update');
-        Route::delete('device-types/{deviceType}', [DeviceTypeController::class, 'destroy'])->name('device-types.destroy');
-
-        // Laboratorios
-        Route::get('labs/create', [LabController::class, 'create'])->name('labs.create');
-        Route::post('labs', [LabController::class, 'store'])->name('labs.store');
-        Route::get('labs/{lab}/edit', [LabController::class, 'edit'])->name('labs.edit');
-        Route::put('labs/{lab}', [LabController::class, 'update'])->name('labs.update');
-        Route::delete('labs/{lab}', [LabController::class, 'destroy'])->name('labs.destroy');
-
-        // Configuración
-        Route::post('config', [ConfigController::class, 'update'])->name('config.update');
-        Route::get('config/user-roles', [UserRoleController::class, 'index'])->name('config.user-roles.index');
-        Route::patch('config/user-roles/{user}', [UserRoleController::class, 'update'])->name('config.user-roles.update');
-
-        // Configuración de Email
-        Route::get('email-config', [EmailConfigController::class, 'index'])->name('email-config.index');
-        Route::put('email-config', [EmailConfigController::class, 'update'])->name('email-config.update');
-        Route::post('email-config/test', [EmailConfigController::class, 'testEmail'])->name('email-config.test');
+        Route::get('alert-rules/create', fn () => $spa('/alert-rules'))->name('alert-rules.create');
+        Route::get('sensor-types/create', fn () => $spa('/sensor-types'))->name('sensor-types.create');
+        Route::get('sensor-types/{sensorType}/edit', fn ($sensorType) => $spa('/sensor-types'))->name('sensor-types.edit');
+        Route::get('device-types/create', fn () => $spa('/device-types'))->name('device-types.create');
+        Route::get('device-types/{deviceType}/edit', fn ($deviceType) => $spa('/device-types'))->name('device-types.edit');
+        Route::get('labs/create', fn () => $spa('/labs'))->name('labs.create');
+        Route::get('labs/{lab}/edit', fn ($lab) => $spa('/labs'))->name('labs.edit');
     });
 });

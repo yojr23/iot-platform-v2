@@ -27,7 +27,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 
 import { getActiveAlerts, getAlerts, getUnresolvedAlerts } from '@/api/alerts';
 import { getApiErrorMessage } from '@/api/client';

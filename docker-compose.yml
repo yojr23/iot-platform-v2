@@ -150,6 +150,12 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@fsockopen('127.0.0.1',8080)?0:1);\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     networks:
       - iot-platform
 
@@ -359,6 +365,8 @@ services:
         condition: service_healthy
       back:
         condition: service_healthy
+      reverb:
+        condition: service_healthy
     profiles:
       - workers
     networks:
@@ -379,6 +387,7 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-iot-platform-v2-ingestion}
       MQTT_QOS: ${MQTT_QOS:-1}
+      MQTT_CLEAN_SESSION: ${MQTT_CLEAN_SESSION:-false}
       BACKEND_BASE_URL: http://back:8000
       BACKEND_INGESTION_TOKEN: ${INGESTION_SERVICE_TOKEN:?INGESTION_SERVICE_TOKEN is required}
       BACKEND_TIMEOUT_SECONDS: ${BACKEND_TIMEOUT_SECONDS:-10}

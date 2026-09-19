@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\DangerAlertEmailDeliveryException;
 use App\Jobs\EvaluateSensorReadingAlerts;
 use App\Jobs\SendDangerAlertEmailJob;
 use App\Mail\DangerAlertMail;
@@ -15,6 +16,7 @@ use App\Services\Notifications\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use RuntimeException;
 use Tests\TestCase;
 
 class DangerAlertEmailTest extends TestCase
@@ -133,5 +135,101 @@ class DangerAlertEmailTest extends TestCase
         }
 
         Mail::assertSent(DangerAlertMail::class, 1);
+    }
+
+    /**
+     * EVT-04: a REAL delivery failure (SMTP throws) must bubble as
+     * `DangerAlertEmailDeliveryException` so the queue retries the job — `tries = 3` /
+     * `backoff() = [10, 30, 60]` on `SendDangerAlertEmailJob` only matter if the job actually
+     * throws instead of silently "succeeding" with the email never sent.
+     */
+    public function test_real_smtp_failure_makes_the_job_throw_for_retry(): void
+    {
+        Queue::fake();
+        SystemSetting::set('mail_to', 'alerts@example.test');
+
+        $sensorType = SensorType::factory()->create();
+        $device = Device::factory()->create();
+        $sensor = Sensor::factory()->create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => $device->id,
+        ]);
+
+        AlertRule::create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => $device->id,
+            'sensor_id' => $sensor->id,
+            'min_value' => null,
+            'max_value' => 50,
+            'severity' => 'danger',
+            'message' => 'Valor peligroso detectado',
+            'name' => 'Danger Rule',
+        ]);
+
+        $reading = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 80,
+        ]);
+
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
+
+        $dispatched = null;
+        Queue::assertPushed(SendDangerAlertEmailJob::class, function (SendDangerAlertEmailJob $job) use (&$dispatched) {
+            $dispatched = $job;
+
+            return true;
+        });
+
+        Mail::shouldReceive('send')->once()->andThrow(new RuntimeException('smtp unavailable'));
+
+        $this->expectException(DangerAlertEmailDeliveryException::class);
+        $dispatched->handle(app(NotificationService::class));
+    }
+
+    /**
+     * EVT-04: the intentional no-op outcomes (not danger / no associated reading / rate limited)
+     * must remain a clean successful no-op — never thrown, never retried.
+     */
+    public function test_non_danger_alert_does_not_throw_from_the_job(): void
+    {
+        Queue::fake();
+
+        $sensorType = SensorType::factory()->create();
+        $device = Device::factory()->create();
+        $sensor = Sensor::factory()->create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => $device->id,
+        ]);
+
+        AlertRule::create([
+            'sensor_type_id' => $sensorType->id,
+            'device_id' => $device->id,
+            'sensor_id' => $sensor->id,
+            'min_value' => null,
+            'max_value' => 50,
+            'severity' => 'warning',
+            'message' => 'Advertencia de nivel elevado',
+            'name' => 'Warning Rule',
+        ]);
+
+        $reading = SensorReading::factory()->create([
+            'sensor_id' => $sensor->id,
+            'value' => 80,
+        ]);
+
+        (new EvaluateSensorReadingAlerts($reading->id))->handle();
+
+        $dispatched = null;
+        Queue::assertPushed(SendDangerAlertEmailJob::class, function (SendDangerAlertEmailJob $job) use (&$dispatched) {
+            $dispatched = $job;
+
+            return true;
+        });
+
+        // No Mail expectation registered at all: a non-danger alert must never attempt a send,
+        // and handle() must return normally (no exception) rather than retry.
+        $dispatched->handle(app(NotificationService::class));
+
+        $this->assertTrue(true);
     }
 }

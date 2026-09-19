@@ -105,14 +105,6 @@ class SystemSettingsSeeder extends Seeder
                 'is_public' => false,
             ],
             [
-                'key' => 'sensor_update_interval',
-                'value' => '2000',
-                'type' => 'integer',
-                'group' => 'alerts',
-                'description' => 'Intervalo de actualización de sensores en milisegundos',
-                'is_public' => false,
-            ],
-            [
                 'key' => 'alert_sound_enabled',
                 'value' => '1',
                 'type' => 'boolean',

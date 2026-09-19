@@ -39,7 +39,6 @@ function setResponses() {
     mail_enabled: true,
     alert_sound_enabled: false,
     alert_threshold: 70,
-    sensor_update_interval: 1000,
     danger_email_rate_limit_seconds: 60
   }));
   configApi.getEmailConfig.mockResolvedValue(response({

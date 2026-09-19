@@ -20,7 +20,6 @@ class UpdateAlertConfigRequest extends FormRequest
             'mail_enabled' => ['required', 'boolean'],
             'alert_sound_enabled' => ['required', 'boolean'],
             'alert_threshold' => ['required', 'numeric', 'min:0'],
-            'sensor_update_interval' => ['required', 'numeric', 'min:1000'],
             'danger_email_rate_limit_seconds' => ['required', 'integer', 'min:0'],
         ];
     }

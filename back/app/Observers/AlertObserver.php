@@ -18,8 +18,9 @@ use Illuminate\Support\Facades\Log;
  *
  * Existing code reused: `NotificationService::notifyDangerAlertByEmail()` behavior is unchanged
  * (still reached only via `SendDangerAlertEmailJob`, Stage 8.2).
- * Existing owner retired/delegated: `NotificationService::broadcastNewAlert()` is now dead code from
- * this observer's perspective — no caller left in the created() path.
+ * Existing owner retired/delegated: `NotificationService::broadcastNewAlert()` had no caller left
+ * in the created() path and was removed (EVT-05) — `DomainEventBroadcastConsumer` is the sole
+ * `NewAlertTriggered` dispatcher, as already documented above.
  * Compatibility window: none.
  *
  * PLAN.md Stage 8.2: `notifyDangerAlertByEmail()` no longer runs inline here. It is dispatched via

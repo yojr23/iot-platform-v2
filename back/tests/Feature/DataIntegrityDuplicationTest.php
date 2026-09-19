@@ -9,6 +9,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * BACK-01 (PLAN Mac M3): device creation is owned solely by the JSON API
+ * (DeviceApiController + Rule::unique). The legacy Blade write path was retired;
+ * this guards the serial-number uniqueness invariant through the canonical
+ * endpoint.
+ */
 class DataIntegrityDuplicationTest extends TestCase
 {
     use RefreshDatabase;
@@ -26,9 +32,8 @@ class DataIntegrityDuplicationTest extends TestCase
             'lab_id' => $lab->id,
         ]);
 
-        $response = $this->actingAs($admin)
-            ->from(route('devices.create'))
-            ->post(route('devices.store'), [
+        $this->actingAs($admin)
+            ->postJson('/api/devices', [
                 'name' => 'Duplicate Serial Device',
                 'serial_number' => 'DUP-0001',
                 'device_type_id' => $deviceType->id,
@@ -36,10 +41,9 @@ class DataIntegrityDuplicationTest extends TestCase
                 'ip_address' => '192.168.1.40',
                 'mac_address' => 'AA:BB:CC:DD:EE:10',
                 'status' => true,
-            ]);
-
-        $response->assertRedirect(route('devices.create'));
-        $response->assertSessionHasErrors(['serial_number']);
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['serial_number']);
 
         $this->assertSame(1, Device::query()->where('serial_number', 'DUP-0001')->count());
     }

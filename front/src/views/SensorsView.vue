@@ -118,7 +118,6 @@ const log = createLogger('SensorsView');
 const authStore = useAuthStore();
 const route = useRoute();
 const sensorTypes = ref([]);
-const loading = ref(false);
 const error = ref('');
 const success = ref('');
 const search = ref('');
@@ -137,6 +136,9 @@ const sensorList = usePaginatedList(
 const sensors = sensorList.items;
 const hasMore = sensorList.hasMore;
 const loadingMore = sensorList.loadingMore;
+// Gen-safe loading owned by usePaginatedList; don't shadow it with a view-level ref (see
+// DevicesView for the stale-generation bug that shadowing caused).
+const loading = sensorList.loading;
 
 // Wrapper for loadNextPage with error handling
 async function loadNextPage() {
@@ -203,7 +205,6 @@ function sensorListParams() {
 }
 
 async function loadSensorList() {
-  loading.value = true;
   error.value = '';
 
   try {
@@ -213,8 +214,6 @@ async function loadSensorList() {
   } catch (requestError) {
     log.warn('loadSensorList failed:', requestError?.message);
     error.value = getApiErrorMessage(requestError, 'No se pudieron cargar los sensores.');
-  } finally {
-    loading.value = false;
   }
 }
 

@@ -76,11 +76,13 @@ class RegistrationEmailVerificationTest extends TestCase
         Notification::assertNothingSent();
     }
 
-    public function test_unverified_user_cannot_access_protected_dashboard_preferences(): void
+    public function test_unverified_user_cannot_access_protected_web_route(): void
     {
+        // /profile is a kept auth+verified Blade route (BACK-01 retired the product
+        // Blade routes; /profile stays Laravel-rendered).
         $user = User::factory()->unverified()->create();
 
-        $response = $this->actingAs($user)->get('/dashboard/preferences');
+        $response = $this->actingAs($user)->get('/profile');
 
         $response->assertRedirect(route('verification.notice'));
     }

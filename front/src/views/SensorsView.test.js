@@ -380,6 +380,67 @@ describe('SensorsView rapid search race condition', () => {
   });
 });
 
+describe('SensorsView loading race condition (FRONT-01)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentQuery = {};
+    setActivePinia(createPinia());
+    getDevices.mockResolvedValue({ data: { data: [], current_page: 1, last_page: 1, total: 0, per_page: 20 } });
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  const waitDebounce = () => new Promise((resolve) => setTimeout(resolve, 350));
+
+  it('keeps loading=true while a newer (superseding) request is pending, even if the older stale request resolves first', async () => {
+    let resolveA;
+    let resolveB;
+    const promiseA = new Promise((resolve) => { resolveA = resolve; });
+    const promiseB = new Promise((resolve) => { resolveB = resolve; });
+
+    getSensors
+      .mockImplementationOnce(() => promiseA) // generation 1: initial mount load
+      .mockImplementationOnce(() => promiseB); // generation 2: search-triggered reload, supersedes A
+
+    const { el, unmount } = await mountView();
+
+    // Generation 1 (A) is still pending -> spinner visible.
+    expect(el.textContent).toContain('Cargando sensores...');
+
+    // Trigger a newer request (generation 2 / B) via search debounce -> reset() + loadFirstPage().
+    const filterInput = el.querySelector('input[aria-label="Buscar sensores"]');
+    filterInput.value = 'temperature';
+    filterInput.dispatchEvent(new Event('input'));
+    await waitDebounce();
+    await flush();
+    await nextTick();
+
+    // B is now the active generation and still in flight.
+    expect(el.textContent).toContain('Cargando sensores...');
+
+    // Resolve the STALE request A while B is still pending. Because loading is now the same
+    // generation-safe ref usePaginatedList owns (not a second view-level ref), A's finally
+    // must not flip loading to false -- it belongs to a superseded generation.
+    resolveA(makeSensorResponse([{ id: 1, name: 'Sensor A' }]));
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).toContain('Cargando sensores...');
+
+    // Resolve B, the current generation -- loading must now become false.
+    resolveB(makeSensorResponse([{ id: 2, name: 'Sensor B' }]));
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).not.toContain('Cargando sensores...');
+    expect(el.textContent).toContain('Sensor B');
+
+    unmount();
+  });
+});
+
 describe('SensorsView pagination', () => {
   beforeEach(() => {
     vi.clearAllMocks();

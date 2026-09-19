@@ -404,6 +404,69 @@ describe('DevicesView pagination', () => {
   });
 });
 
+describe('DevicesView loading race condition (FRONT-01)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createDevice.mockResolvedValue({ data: { message: 'created', api_key: 'created-device-secret' } });
+    updateDevice.mockResolvedValue({ data: { message: 'updated', api_key: 'must-not-be-displayed' } });
+    getLabs.mockResolvedValue({ data: [] });
+    getDeviceTypes.mockResolvedValue({ data: [] });
+    localStorage.clear();
+    sessionStorage.clear();
+    setActivePinia(createPinia());
+  });
+
+  afterEach(() => {
+    mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it('keeps loading=true while a newer (superseding) request is pending, even if the older stale request resolves first', async () => {
+    let resolveA;
+    let resolveB;
+    const promiseA = new Promise((resolve) => { resolveA = resolve; });
+    const promiseB = new Promise((resolve) => { resolveB = resolve; });
+
+    getDevices
+      .mockImplementationOnce(() => promiseA) // generation 1: initial mount load
+      .mockImplementationOnce(() => promiseB); // generation 2: search-triggered reload, supersedes A
+
+    const { el, unmount } = await mountDevicesView();
+
+    // Generation 1 (A) is still pending -> spinner visible.
+    expect(el.textContent).toContain('Cargando dispositivos...');
+
+    // Trigger a newer request (generation 2 / B) via search debounce -> reset() + loadFirstPage().
+    const filterInput = el.querySelector('input[aria-label="Buscar dispositivos"]');
+    filterInput.value = 'Dispositivo';
+    filterInput.dispatchEvent(new Event('input'));
+    await waitDebounce();
+    await flush();
+    await nextTick();
+
+    // B is now the active generation and still in flight.
+    expect(el.textContent).toContain('Cargando dispositivos...');
+
+    // Resolve the STALE request A while B is still pending. Because loading is now the same
+    // generation-safe ref usePaginatedList owns (not a second view-level ref), A's finally
+    // must not flip loading to false -- it belongs to a superseded generation.
+    resolveA(makeDeviceResponse([{ id: 1, name: 'Dispositivo 1' }]));
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).toContain('Cargando dispositivos...');
+
+    // Resolve B, the current generation -- loading must now become false.
+    resolveB(makeDeviceResponse([{ id: 2, name: 'Dispositivo 2' }]));
+    await flush();
+    await nextTick();
+
+    expect(el.textContent).not.toContain('Cargando dispositivos...');
+    expect(el.textContent).toContain('Dispositivo 2');
+
+    unmount();
+  });
+});
+
 describe('DevicesView unmount cleanup', () => {
   beforeEach(() => {
     vi.clearAllMocks();

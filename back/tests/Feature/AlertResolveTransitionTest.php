@@ -113,41 +113,4 @@ class AlertResolveTransitionTest extends TestCase
         $this->assertSame(4, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
         $this->assertSame(0, Alert::active()->count());
     }
-
-    public function test_blade_resolve_and_mark_all_share_the_same_transition_owner(): void
-    {
-        // SEC-ALERT-001: Blade resolve/mark-all-resolved are admin-only, same AlertPolicy as the API.
-        $admin = User::factory()->create(['is_admin' => true]);
-        $single = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
-        $bulk = Alert::factory()->count(2)->create(['resolved' => false, 'resolved_at' => null]);
-
-        $this->actingAs($admin)->put(route('alerts.resolve', $single))->assertRedirect();
-        $this->actingAs($admin)->post(route('alerts.mark-all-resolved'))->assertRedirect();
-
-        $this->assertTrue((bool) $single->fresh()->resolved);
-        foreach ($bulk as $alert) {
-            $this->assertTrue((bool) $alert->fresh()->resolved);
-        }
-
-        // 1 (single) + 2 (bulk) = 3 total, going through the same AlertLifecycleService as the API.
-        $this->assertSame(3, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
-    }
-
-    public function test_blade_resolve_and_mark_all_are_available_to_standard_verified_user(): void
-    {
-        // SEC-ALERT-001 fix round 1: the web/Blade path must not be a bypass for the admin-only rule.
-        $user = User::factory()->create(['is_admin' => false]);
-        $single = Alert::factory()->create(['resolved' => false, 'resolved_at' => null]);
-        $bulk = Alert::factory()->count(2)->create(['resolved' => false, 'resolved_at' => null]);
-
-        $this->actingAs($user)->put(route('alerts.resolve', $single))->assertRedirect();
-        $this->actingAs($user)->post(route('alerts.mark-all-resolved'))->assertRedirect();
-
-        $this->assertTrue((bool) $single->fresh()->resolved);
-        foreach ($bulk as $alert) {
-            $this->assertTrue((bool) $alert->fresh()->resolved);
-        }
-
-        $this->assertSame(3, DomainEventOutbox::query()->where('event_type', 'alert.resolved')->count());
-    }
 }

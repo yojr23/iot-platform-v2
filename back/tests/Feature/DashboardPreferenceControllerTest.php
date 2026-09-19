@@ -17,7 +17,7 @@ class DashboardPreferenceControllerTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = $this->actingAs($user)->getJson(route('dashboard.preferences.show'));
+        $response = $this->actingAs($user)->getJson('/api/dashboard/preferences');
 
         $response->assertOk()
             ->assertJsonPath('layout.main.device_id', null)
@@ -29,7 +29,7 @@ class DashboardPreferenceControllerTest extends TestCase
     {
         $user = User::factory()->create(['is_admin' => false]);
 
-        $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+        $this->actingAs($user)->putJson('/api/dashboard/preferences', [
             'layout' => ['main' => ['id' => 'main', 'range' => '5m']],
         ])->assertForbidden();
 
@@ -42,7 +42,7 @@ class DashboardPreferenceControllerTest extends TestCase
         $device = Device::factory()->create();
         $sensor = Sensor::factory()->create(['device_id' => $device->id]);
 
-        $response = $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+        $response = $this->actingAs($user)->putJson('/api/dashboard/preferences', [
             'layout' => [
                 'main' => [
                     'device_id' => $device->id,
@@ -86,7 +86,7 @@ class DashboardPreferenceControllerTest extends TestCase
             'selected_id' => 'monitor-1',
         ];
 
-        $response = $this->actingAs($user)->postJson(route('dashboard.preferences.store'), compact('layout'));
+        $response = $this->actingAs($user)->putJson('/api/dashboard/preferences', compact('layout'));
 
         $response->assertOk()
             ->assertJsonPath('layout.selected_id', 'monitor-1')
@@ -103,7 +103,7 @@ class DashboardPreferenceControllerTest extends TestCase
     {
         $user = User::factory()->create(['is_admin' => true]);
 
-        $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+        $this->actingAs($user)->putJson('/api/dashboard/preferences', [
             'layout' => [
                 'main' => ['range' => '30d'],
             ],
@@ -117,7 +117,7 @@ class DashboardPreferenceControllerTest extends TestCase
         $otherDevice = Device::factory()->create();
         $otherSensor = Sensor::factory()->create(['device_id' => $otherDevice->id]);
 
-        $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+        $this->actingAs($user)->putJson('/api/dashboard/preferences', [
             'layout' => [
                 'main' => [
                     'device_id' => $selectedDevice->id,
@@ -136,7 +136,7 @@ class DashboardPreferenceControllerTest extends TestCase
         $otherDevice = Device::factory()->create();
         $otherSensor = Sensor::factory()->create(['device_id' => $otherDevice->id]);
 
-        $this->actingAs($user)->postJson(route('dashboard.preferences.store'), [
+        $this->actingAs($user)->putJson('/api/dashboard/preferences', [
             'layout' => [
                 'monitors' => [[
                     'id' => 'monitor-1',

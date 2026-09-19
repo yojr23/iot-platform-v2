@@ -2,7 +2,7 @@
 
 namespace App\Services\Notifications;
 
-use App\Events\NewAlertTriggered;
+use App\Exceptions\DangerAlertEmailDeliveryException;
 use App\Models\Alert;
 use App\Models\SystemSetting;
 use Illuminate\Support\Facades\Cache;
@@ -10,14 +10,35 @@ use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
-    public function broadcastNewAlert(Alert $alert): void
+    /**
+     * Same outcome as {@see notifyDangerAlertByEmail()}, but throws
+     * {@see DangerAlertEmailDeliveryException} when an email was actually attempted and the send
+     * failed — never for an intentional no-op (not danger / no reading / rate limited). Intended
+     * for `SendDangerAlertEmailJob`, which lets the exception bubble so the queue retries only a
+     * real delivery failure.
+     */
+    public function notifyDangerAlertByEmailOrFail(Alert $alert): void
     {
-        Log::info('NotificationService:broadcastNewAlert entry', ['alert_id' => $alert->id]);
-        event(new NewAlertTriggered($alert));
-        Log::info('NotificationService:broadcastNewAlert completed', ['alert_id' => $alert->id]);
+        $result = $this->attemptDangerAlertEmail($alert);
+
+        if (! $result['sent'] && $result['reason'] === null) {
+            throw new DangerAlertEmailDeliveryException(
+                "Danger alert email delivery failed for alert {$alert->id}"
+            );
+        }
     }
 
     public function notifyDangerAlertByEmail(Alert $alert): bool
+    {
+        return $this->attemptDangerAlertEmail($alert)['sent'];
+    }
+
+    /**
+     * @return array{sent: bool, reason: string|null} `reason` is one of 'not_danger',
+     *                                                'no_reading', 'rate_limited' for an intentional no-op, or null once a real send was
+     *                                                attempted (whether or not it succeeded — see `sent`).
+     */
+    private function attemptDangerAlertEmail(Alert $alert): array
     {
         Log::info('NotificationService:notifyDangerAlertByEmail entry', ['alert_id' => $alert->id]);
 
@@ -31,7 +52,7 @@ class NotificationService
                 'severity' => $severity,
             ]);
 
-            return false;
+            return ['sent' => false, 'reason' => 'not_danger'];
         }
 
         $sensorReading = $alert->sensorReading;
@@ -40,7 +61,7 @@ class NotificationService
                 'alert_id' => $alert->id,
             ]);
 
-            return false;
+            return ['sent' => false, 'reason' => 'no_reading'];
         }
 
         $sensor = $sensorReading->sensor;
@@ -67,7 +88,7 @@ class NotificationService
                     'rate_limit_seconds' => $rateLimitSeconds,
                 ]);
 
-                return false;
+                return ['sent' => false, 'reason' => 'rate_limited'];
             }
         }
 
@@ -118,7 +139,6 @@ class NotificationService
             Log::warning('NotificationService:notifyDangerAlertByEmail slow execution', ['duration_ms' => $durationMs]);
         }
 
-        return $emailSent;
+        return ['sent' => $emailSent, 'reason' => null];
     }
 }
-
