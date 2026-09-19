@@ -378,7 +378,11 @@ SELECT JSON_OBJECT(
         marker = "Gate 10 fault checkpoint reached after publish before ack"
 
         def reached() -> bool:
-            logs = self.runner.run(["docker", "logs", container_id], timeout=20, check=False).stdout
+            # The checkpoint marker is written to the container's STDERR (see Gate10FaultInjection::hook);
+            # `docker logs` routes it to this process's stderr, which capture_output separates from stdout.
+            # Search both streams so the marker is actually observed.
+            result = self.runner.run(["docker", "logs", container_id], timeout=20, check=False)
+            logs = result.stdout + result.stderr
             return marker in logs and stream_id in logs
 
         self.wait_for(f"CDC fault checkpoint for {stream_id}", reached)
