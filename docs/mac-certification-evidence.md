@@ -248,3 +248,20 @@ and tested; live-infra certification is pending a full stack run.
 2. `4b14825` — `RawSensorEvent.received_at` stored UTC digits read back as APP_TIMEZONE, pushing every MQTT-sourced `reading_time` ~5h into the future so the browser clock-drift guard dropped it and no live telemetry rendered. Fixed with an app-timezone setter + `RawSensorEventReceivedAtTimezoneTest`.
 
 **Accepted limitations:** 4 dev-only npm advisories (never in the production bundle); pre-existing repo-wide Pint style debt in ~130 unmodified files (no new violations this session).
+
+## FINAL CI (M25)
+
+GitHub Actions `gate10-quality` run **#70**, pushed commit `4ab5e3f`, 2m 22s — **6/6 GREEN**:
+
+| Job | Result |
+|-----|--------|
+| backend | PASS |
+| ingestion | PASS |
+| architecture | PASS |
+| frontend | PASS |
+| frontend-responsive-e2e-mocked | PASS |
+| dependency-security | PASS |
+
+The run corresponds to the final committed repository state (`4ab5e3f`), on top of application freeze `4b14825`.
+
+**PLAN: CLOSED. Gate 9: CLOSED. Gate 10: CLOSED.**
