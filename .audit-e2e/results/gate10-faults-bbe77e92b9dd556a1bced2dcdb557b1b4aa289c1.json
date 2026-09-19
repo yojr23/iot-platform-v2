@@ -1,0 +1,418 @@
+{
+  "completed_at": "2026-09-19T07:12:14Z",
+  "git_sha": "bbe77e92b9dd556a1bced2dcdb557b1b4aa289c1",
+  "harness": "gate10-fault-injection",
+  "run_id": "gate10-7a6c1271064c",
+  "scenarios": [
+    {
+      "actions": {
+        "accepted_response": {
+          "duplicate": false,
+          "event_id": 16,
+          "message": "Raw sensor event stored successfully",
+          "status": "received"
+        },
+        "assertion": "durable progress survived back container stop",
+        "outbox_id": 16
+      },
+      "after": {
+        "captured_at": "2026-09-19T07:11:17Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 16,
+              "last_error": null,
+              "published_at": "2026-09-19 02:11:07.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 16,
+              "processed_at": "2026-09-19 02:11:07.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 1
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 36,
+            "raw_application": 1,
+            "raw_cdc": 40
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:10:56Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 0
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 36,
+            "raw_application": 0,
+            "raw_cdc": 38
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "scenario": "A",
+      "source_event_id": "gate10-7a6c1271064c-a-9e56f170ab13",
+      "status": "PASS"
+    },
+    {
+      "after": {
+        "captured_at": "2026-09-19T07:11:29Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 17,
+              "last_error": null,
+              "published_at": "2026-09-19 02:11:26.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 17,
+              "processed_at": "2026-09-19 02:11:26.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 2
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 36,
+            "raw_application": 2,
+            "raw_cdc": 42
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:11:19Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 1
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 36,
+            "raw_application": 1,
+            "raw_cdc": 40
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "error": "'NoneType' object has no attribute 'get'",
+      "scenario": "B",
+      "source_event_id": "gate10-7a6c1271064c-b-dca3834a83ab",
+      "status": "FAIL"
+    },
+    {
+      "after": {
+        "captured_at": "2026-09-19T07:11:53Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 18,
+              "last_error": null,
+              "published_at": "2026-09-19 02:11:49.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 18,
+              "processed_at": "2026-09-19 02:11:49.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 36,
+            "raw_application": 3,
+            "raw_cdc": 44
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:11:30Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 2
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 36,
+            "raw_application": 2,
+            "raw_cdc": 42
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "error": "'Compose' object has no attribute 'wait_for_logical_reading_once'",
+      "scenario": "C",
+      "source_event_id": "gate10-7a6c1271064c-c-7213d49b256b",
+      "status": "FAIL"
+    },
+    {
+      "actions": {
+        "assertion": "poison CDC record was DLQed then ACKed without wedge",
+        "dlq": {
+          "attempts": "1",
+          "failed_at": "2026-09-19T02:11:57-05:00",
+          "orig_id": "1789801917537-0",
+          "orig_stream": "iot-cdc.iot_platform.raw_event_outboxes",
+          "payload_json": "{\"key\":\"{not-json}\",\"gate10_source_event_id\":\"gate10-7a6c1271064c-d-2281a5cfec51\"}",
+          "reason": "malformed_cdc_message: Debezium CDC message is missing value"
+        },
+        "poison_cdc_stream_id": "1789801917537-0"
+      },
+      "after": {
+        "captured_at": "2026-09-19T07:12:01Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 37,
+            "raw_application": 3,
+            "raw_cdc": 45
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:11:55Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 36,
+            "raw_application": 3,
+            "raw_cdc": 44
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "scenario": "D",
+      "source_event_id": "gate10-7a6c1271064c-d-2281a5cfec51",
+      "status": "PASS"
+    },
+    {
+      "after": {
+        "captured_at": "2026-09-19T07:12:13Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 19,
+              "last_error": null,
+              "published_at": "2026-09-19 02:12:10.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 19,
+              "processed_at": "2026-09-19 02:12:11.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 4
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 37,
+            "raw_application": 4,
+            "raw_cdc": 47
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:12:02Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 37,
+            "raw_application": 3,
+            "raw_cdc": 45
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "error": "'NoneType' object has no attribute 'get'",
+      "scenario": "E",
+      "source_event_id": "gate10-7a6c1271064c-e-f828767cb297",
+      "status": "FAIL"
+    }
+  ],
+  "schema_version": 1,
+  "selected_scenarios": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "started_at": "2026-09-19T07:10:56Z",
+  "status": "FAIL"
+}

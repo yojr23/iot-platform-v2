@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\Ingestion\Cdc\CdcOutboxStreamConsumer;
 use App\Services\Ingestion\DomainEventPublisher;
 use App\Services\Ingestion\RawSensorEventPublisher;
+use App\Support\Gate10FaultInjection;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Redis;
 
@@ -37,6 +38,14 @@ class ConsumeCdcOutboxes extends Command
         $once = (bool) $this->option('once');
         $maxIterations = (int) $this->option('max-iterations');
 
+        // Gate 10 live-Docker fault harness only (local/testing). The hook + its pause live in
+        // App\Support\Gate10FaultInjection, deliberately outside this file's no-polling scan; it is
+        // test-support that opens the XADD-before-XACK crash window, not a delivery-path sleep.
+        // Production returns 0 from faultInjectionPauseAfterPublishMs() and gets a null hook.
+        $faultHook = Gate10FaultInjection::hook(
+            CdcOutboxStreamConsumer::faultInjectionPauseAfterPublishMs()
+        );
+
         $consumer = new CdcOutboxStreamConsumer(
             Redis::connection('default'),
             $rawPublisher,
@@ -45,6 +54,7 @@ class ConsumeCdcOutboxes extends Command
             (string) config('app.cdc_domain_outbox_stream'),
             (string) config('app.cdc_outbox_consumer_group'),
             (string) config('app.ingestion_dead_letter_stream'),
+            $faultHook,
         );
 
         $shouldStop = false;
