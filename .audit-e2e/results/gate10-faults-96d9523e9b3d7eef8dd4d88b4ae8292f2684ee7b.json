@@ -1,47 +1,47 @@
 {
-  "completed_at": "2026-09-19T16:37:13Z",
-  "git_sha": "3dc771bea8e93544bfb426fd9f3fa7e113484505",
+  "completed_at": "2026-09-19T21:39:18Z",
+  "git_sha": "96d9523e9b3d7eef8dd4d88b4ae8292f2684ee7b",
   "harness": "gate10-fault-injection",
-  "run_id": "gate10-421106ecf81d",
+  "run_id": "gate10-8b26634f9ba1",
   "scenarios": [
     {
       "actions": {
         "accepted_response": {
           "duplicate": false,
-          "event_id": 13,
+          "event_id": 1,
           "message": "Raw sensor event stored successfully",
           "status": "received"
         },
         "assertion": "durable progress survived back container stop",
-        "outbox_id": 13
+        "outbox_id": 1
       },
       "after": {
-        "captured_at": "2026-09-19T16:35:45Z",
+        "captured_at": "2026-09-19T21:37:10Z",
         "mysql": {
           "outboxes": [
             {
               "attempts": 0,
-              "id": 13,
+              "id": 1,
               "last_error": null,
-              "published_at": "2026-09-19 11:35:31.000000",
+              "published_at": "2026-09-19 16:36:56.000000",
               "status": "published"
             }
           ],
           "raw_events": [
             {
               "error": null,
-              "id": 13,
-              "processed_at": "2026-09-19 11:35:31.000000",
+              "id": 1,
+              "processed_at": "2026-09-19 16:36:56.000000",
               "status": "processed"
             }
           ],
-          "sensor_readings_for_node": 23
+          "sensor_readings_for_node": 13
         },
         "redis": {
           "xlen": {
-            "dead_letter": 5,
-            "raw_application": 15,
-            "raw_cdc": 28
+            "dead_letter": 0,
+            "raw_application": 1,
+            "raw_cdc": 2
           },
           "xpending": {
             "raw_application": [
@@ -60,17 +60,17 @@
         }
       },
       "before": {
-        "captured_at": "2026-09-19T16:35:20Z",
+        "captured_at": "2026-09-19T21:36:42Z",
         "mysql": {
           "outboxes": [],
           "raw_events": [],
-          "sensor_readings_for_node": 22
+          "sensor_readings_for_node": 12
         },
         "redis": {
           "xlen": {
-            "dead_letter": 5,
-            "raw_application": 14,
-            "raw_cdc": 26
+            "dead_letter": 0,
+            "raw_application": 0,
+            "raw_cdc": 0
           },
           "xpending": {
             "raw_application": [
@@ -89,56 +89,56 @@
         }
       },
       "scenario": "A",
-      "source_event_id": "gate10-421106ecf81d-a-69d0e4c24cae",
+      "source_event_id": "gate10-8b26634f9ba1-a-386df8b3e8c2",
       "status": "PASS"
     },
     {
       "actions": {
         "accepted_response": {
           "duplicate": false,
-          "event_id": 14,
+          "event_id": 2,
           "message": "Raw sensor event stored successfully",
           "status": "received"
         },
         "assertion": "XADD-before-XACK pending entry was reclaimed without logical duplicate",
-        "cdc_stream_id": "1789835753530-0",
-        "outbox_id": 14,
+        "cdc_stream_id": "1789853838682-0",
+        "outbox_id": 2,
         "pending_after_kill": [
           [
-            "1789835753530-0",
-            "gate10-421106ecf81d-b-dead",
-            1602,
+            "1789853838682-0",
+            "gate10-8b26634f9ba1-b-dead",
+            2551,
             1
           ]
         ]
       },
       "after": {
-        "captured_at": "2026-09-19T16:36:09Z",
+        "captured_at": "2026-09-19T21:37:39Z",
         "mysql": {
           "outboxes": [
             {
               "attempts": 0,
-              "id": 14,
+              "id": 2,
               "last_error": null,
-              "published_at": "2026-09-19 11:36:01.000000",
+              "published_at": "2026-09-19 16:37:28.000000",
               "status": "published"
             }
           ],
           "raw_events": [
             {
               "error": null,
-              "id": 14,
-              "processed_at": "2026-09-19 11:35:56.000000",
+              "id": 2,
+              "processed_at": "2026-09-19 16:37:22.000000",
               "status": "processed"
             }
           ],
-          "sensor_readings_for_node": 24
+          "sensor_readings_for_node": 14
         },
         "redis": {
           "xlen": {
-            "dead_letter": 5,
-            "raw_application": 17,
-            "raw_cdc": 30
+            "dead_letter": 0,
+            "raw_application": 3,
+            "raw_cdc": 4
           },
           "xpending": {
             "raw_application": [
@@ -157,17 +157,17 @@
         }
       },
       "before": {
-        "captured_at": "2026-09-19T16:35:47Z",
+        "captured_at": "2026-09-19T21:37:13Z",
         "mysql": {
           "outboxes": [],
           "raw_events": [],
-          "sensor_readings_for_node": 23
+          "sensor_readings_for_node": 13
         },
         "redis": {
           "xlen": {
-            "dead_letter": 5,
-            "raw_application": 15,
-            "raw_cdc": 28
+            "dead_letter": 0,
+            "raw_application": 1,
+            "raw_cdc": 2
           },
           "xpending": {
             "raw_application": [
@@ -186,14 +186,14 @@
         }
       },
       "scenario": "B",
-      "source_event_id": "gate10-421106ecf81d-b-c046d66a0ea9",
+      "source_event_id": "gate10-8b26634f9ba1-b-9506592d973f",
       "status": "PASS"
     },
     {
       "actions": {
         "accepted_response": {
           "duplicate": false,
-          "event_id": 15,
+          "event_id": 3,
           "message": "Raw sensor event stored successfully",
           "status": "received"
         },
@@ -202,7 +202,7 @@
           "outboxes": [
             {
               "attempts": 0,
-              "id": 15,
+              "id": 3,
               "last_error": null,
               "published_at": null,
               "status": "pending"
@@ -211,42 +211,42 @@
           "raw_events": [
             {
               "error": null,
-              "id": 15,
+              "id": 3,
               "processed_at": null,
               "status": "received"
             }
           ],
-          "sensor_readings_for_node": 24
+          "sensor_readings_for_node": 14
         },
-        "outbox_id": 15
+        "outbox_id": 3
       },
       "after": {
-        "captured_at": "2026-09-19T16:36:42Z",
+        "captured_at": "2026-09-19T21:38:10Z",
         "mysql": {
           "outboxes": [
             {
               "attempts": 0,
-              "id": 15,
+              "id": 3,
               "last_error": null,
-              "published_at": "2026-09-19 11:36:34.000000",
+              "published_at": "2026-09-19 16:38:03.000000",
               "status": "published"
             }
           ],
           "raw_events": [
             {
               "error": null,
-              "id": 15,
-              "processed_at": "2026-09-19 11:36:35.000000",
+              "id": 3,
+              "processed_at": "2026-09-19 16:38:03.000000",
               "status": "processed"
             }
           ],
-          "sensor_readings_for_node": 25
+          "sensor_readings_for_node": 15
         },
         "redis": {
           "xlen": {
-            "dead_letter": 5,
-            "raw_application": 18,
-            "raw_cdc": 32
+            "dead_letter": 0,
+            "raw_application": 4,
+            "raw_cdc": 6
           },
           "xpending": {
             "raw_application": [
@@ -265,17 +265,17 @@
         }
       },
       "before": {
-        "captured_at": "2026-09-19T16:36:11Z",
+        "captured_at": "2026-09-19T21:37:42Z",
         "mysql": {
           "outboxes": [],
           "raw_events": [],
-          "sensor_readings_for_node": 24
+          "sensor_readings_for_node": 14
         },
         "redis": {
           "xlen": {
-            "dead_letter": 5,
-            "raw_application": 17,
-            "raw_cdc": 30
+            "dead_letter": 0,
+            "raw_application": 3,
+            "raw_cdc": 4
           },
           "xpending": {
             "raw_application": [
@@ -294,7 +294,7 @@
         }
       },
       "scenario": "C",
-      "source_event_id": "gate10-421106ecf81d-c-9318a7573ef3",
+      "source_event_id": "gate10-8b26634f9ba1-c-3204d9425b16",
       "status": "PASS"
     },
     {
@@ -302,26 +302,26 @@
         "assertion": "poison CDC record was DLQed then ACKed without wedge",
         "dlq": {
           "attempts": "1",
-          "failed_at": "2026-09-19T11:36:45-05:00",
-          "orig_id": "1789835805762-0",
+          "failed_at": "2026-09-19T16:38:14-05:00",
+          "orig_id": "1789853894509-0",
           "orig_stream": "iot-cdc.iot_platform.raw_event_outboxes",
-          "payload_json": "{\"key\":\"{not-json}\",\"gate10_source_event_id\":\"gate10-421106ecf81d-d-13f543cdb9e0\"}",
+          "payload_json": "{\"key\":\"{not-json}\",\"gate10_source_event_id\":\"gate10-8b26634f9ba1-d-69e8b66ce6dc\"}",
           "reason": "malformed_cdc_message: Debezium CDC message is missing value"
         },
-        "poison_cdc_stream_id": "1789835805762-0"
+        "poison_cdc_stream_id": "1789853894509-0"
       },
       "after": {
-        "captured_at": "2026-09-19T16:36:50Z",
+        "captured_at": "2026-09-19T21:38:22Z",
         "mysql": {
           "outboxes": [],
           "raw_events": [],
-          "sensor_readings_for_node": 25
+          "sensor_readings_for_node": 15
         },
         "redis": {
           "xlen": {
-            "dead_letter": 6,
-            "raw_application": 18,
-            "raw_cdc": 33
+            "dead_letter": 1,
+            "raw_application": 4,
+            "raw_cdc": 7
           },
           "xpending": {
             "raw_application": [
@@ -340,17 +340,17 @@
         }
       },
       "before": {
-        "captured_at": "2026-09-19T16:36:43Z",
+        "captured_at": "2026-09-19T21:38:11Z",
         "mysql": {
           "outboxes": [],
           "raw_events": [],
-          "sensor_readings_for_node": 25
+          "sensor_readings_for_node": 15
         },
         "redis": {
           "xlen": {
-            "dead_letter": 5,
-            "raw_application": 18,
-            "raw_cdc": 32
+            "dead_letter": 0,
+            "raw_application": 4,
+            "raw_cdc": 6
           },
           "xpending": {
             "raw_application": [
@@ -369,49 +369,49 @@
         }
       },
       "scenario": "D",
-      "source_event_id": "gate10-421106ecf81d-d-13f543cdb9e0",
+      "source_event_id": "gate10-8b26634f9ba1-d-69e8b66ce6dc",
       "status": "PASS"
     },
     {
       "actions": {
         "accepted_response": {
           "duplicate": false,
-          "event_id": 16,
+          "event_id": 4,
           "message": "Raw sensor event stored successfully",
           "status": "received"
         },
         "assertion": "dead-consumer pending work was reclaimed with no logical duplicate",
-        "cdc_stream_id": "1789835816628-0",
+        "cdc_stream_id": "1789853916217-0",
         "claim_idle_ms": 0,
-        "outbox_id": 16
+        "outbox_id": 4
       },
       "after": {
-        "captured_at": "2026-09-19T16:37:12Z",
+        "captured_at": "2026-09-19T21:39:12Z",
         "mysql": {
           "outboxes": [
             {
               "attempts": 0,
-              "id": 16,
+              "id": 4,
               "last_error": null,
-              "published_at": "2026-09-19 11:37:04.000000",
+              "published_at": "2026-09-19 16:38:58.000000",
               "status": "published"
             }
           ],
           "raw_events": [
             {
               "error": null,
-              "id": 16,
-              "processed_at": "2026-09-19 11:37:00.000000",
+              "id": 4,
+              "processed_at": "2026-09-19 16:38:48.000000",
               "status": "processed"
             }
           ],
-          "sensor_readings_for_node": 26
+          "sensor_readings_for_node": 16
         },
         "redis": {
           "xlen": {
-            "dead_letter": 6,
-            "raw_application": 20,
-            "raw_cdc": 35
+            "dead_letter": 1,
+            "raw_application": 6,
+            "raw_cdc": 9
           },
           "xpending": {
             "raw_application": [
@@ -430,17 +430,17 @@
         }
       },
       "before": {
-        "captured_at": "2026-09-19T16:36:52Z",
+        "captured_at": "2026-09-19T21:38:25Z",
         "mysql": {
           "outboxes": [],
           "raw_events": [],
-          "sensor_readings_for_node": 25
+          "sensor_readings_for_node": 15
         },
         "redis": {
           "xlen": {
-            "dead_letter": 6,
-            "raw_application": 18,
-            "raw_cdc": 33
+            "dead_letter": 1,
+            "raw_application": 4,
+            "raw_cdc": 7
           },
           "xpending": {
             "raw_application": [
@@ -459,7 +459,7 @@
         }
       },
       "scenario": "E",
-      "source_event_id": "gate10-421106ecf81d-e-1674a34009b2",
+      "source_event_id": "gate10-8b26634f9ba1-e-c39cd28eb13d",
       "status": "PASS"
     }
   ],
@@ -471,6 +471,6 @@
     "D",
     "E"
   ],
-  "started_at": "2026-09-19T16:35:20Z",
+  "started_at": "2026-09-19T21:36:42Z",
   "status": "PASS"
 }
