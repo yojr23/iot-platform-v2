@@ -1,0 +1,27 @@
+{
+  "test": "M10 MQTT durability certification",
+  "git_sha": "b21100325d92726472257409aea0cc1cf6766986",
+  "date": "2026-09-19T17:14:40Z",
+  "machine": "Darwin 23.5.0",
+  "broker": "mosquitto 2.1.2 (host, persistence=true, persistent_client_expiration=7d)",
+  "mqtt": {"client_id": "iot-platform-v2-ingestion", "qos": 1, "clean_session": false, "topic": "iot/+/readings"},
+  "subscriber_down": {
+    "published_offline": 10,
+    "recovered": 10,
+    "lost": 0,
+    "logical_duplicates": 0,
+    "distinct_source_event_ids": 10,
+    "all_raw_events_processed": true,
+    "readings_before": 26,
+    "readings_after": 36
+  },
+  "spool_crash": {
+    "reached_spool_while_backend_down": true,
+    "spool_pending_during_outage": 1,
+    "killed_before_delivery": true,
+    "delivered_after_restart": true,
+    "spool_pending_after_ack": 0,
+    "note": "spool row disappears only after acknowledged backend acceptance"
+  },
+  "result": "PASS"
+}
