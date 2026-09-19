@@ -1,0 +1,447 @@
+{
+  "completed_at": "2026-09-19T07:31:00Z",
+  "git_sha": "445d5333bbaff9c579ff5b52f8cf38efbdc47f21",
+  "harness": "gate10-fault-injection",
+  "run_id": "gate10-cc9ed255efb4",
+  "scenarios": [
+    {
+      "actions": {
+        "accepted_response": {
+          "duplicate": false,
+          "event_id": 24,
+          "message": "Raw sensor event stored successfully",
+          "status": "received"
+        },
+        "assertion": "durable progress survived back container stop",
+        "outbox_id": 24
+      },
+      "after": {
+        "captured_at": "2026-09-19T07:25:55Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 24,
+              "last_error": null,
+              "published_at": "2026-09-19 02:25:44.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 24,
+              "processed_at": "2026-09-19 02:25:44.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 1
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 70,
+            "raw_application": 1,
+            "raw_cdc": 74
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:25:34Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 0
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 70,
+            "raw_application": 0,
+            "raw_cdc": 72
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "scenario": "A",
+      "source_event_id": "gate10-cc9ed255efb4-a-1a9211514f4c",
+      "status": "PASS"
+    },
+    {
+      "after": {
+        "captured_at": "2026-09-19T07:28:08Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 25,
+              "last_error": null,
+              "published_at": "2026-09-19 02:26:33.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 25,
+              "processed_at": "2026-09-19 02:26:03.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 2
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 70,
+            "raw_application": 2,
+            "raw_cdc": 76
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:25:56Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 1
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 70,
+            "raw_application": 1,
+            "raw_cdc": 74
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "error": "timed out waiting for CDC fault checkpoint for 1789802761176-0: predicate was false",
+      "scenario": "B",
+      "source_event_id": "gate10-cc9ed255efb4-b-99e471a7e1c8",
+      "status": "FAIL"
+    },
+    {
+      "actions": {
+        "accepted_response": {
+          "duplicate": false,
+          "event_id": 26,
+          "message": "Raw sensor event stored successfully",
+          "status": "received"
+        },
+        "assertion": "committed DB state drained after Redis recovery",
+        "durable_during_outage": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 26,
+              "last_error": null,
+              "published_at": null,
+              "status": "pending"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 26,
+              "processed_at": null,
+              "status": "received"
+            }
+          ],
+          "sensor_readings_for_node": 2
+        },
+        "outbox_id": 26
+      },
+      "after": {
+        "captured_at": "2026-09-19T07:28:36Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 26,
+              "last_error": null,
+              "published_at": "2026-09-19 02:28:31.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 26,
+              "processed_at": "2026-09-19 02:28:31.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 70,
+            "raw_application": 3,
+            "raw_cdc": 78
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:28:09Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 2
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 70,
+            "raw_application": 2,
+            "raw_cdc": 76
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "scenario": "C",
+      "source_event_id": "gate10-cc9ed255efb4-c-9f86616d9b16",
+      "status": "PASS"
+    },
+    {
+      "actions": {
+        "assertion": "poison CDC record was DLQed then ACKed without wedge",
+        "dlq": {
+          "attempts": "1",
+          "failed_at": "2026-09-19T02:28:39-05:00",
+          "orig_id": "1789802919443-0",
+          "orig_stream": "iot-cdc.iot_platform.raw_event_outboxes",
+          "payload_json": "{\"key\":\"{not-json}\",\"gate10_source_event_id\":\"gate10-cc9ed255efb4-d-55f2fffdd88e\"}",
+          "reason": "malformed_cdc_message: Debezium CDC message is missing value"
+        },
+        "poison_cdc_stream_id": "1789802919443-0"
+      },
+      "after": {
+        "captured_at": "2026-09-19T07:28:43Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 71,
+            "raw_application": 3,
+            "raw_cdc": 79
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:28:37Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 70,
+            "raw_application": 3,
+            "raw_cdc": 78
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "scenario": "D",
+      "source_event_id": "gate10-cc9ed255efb4-d-55f2fffdd88e",
+      "status": "PASS"
+    },
+    {
+      "after": {
+        "captured_at": "2026-09-19T07:30:58Z",
+        "mysql": {
+          "outboxes": [
+            {
+              "attempts": 0,
+              "id": 27,
+              "last_error": null,
+              "published_at": "2026-09-19 02:29:22.000000",
+              "status": "published"
+            }
+          ],
+          "raw_events": [
+            {
+              "error": null,
+              "id": 27,
+              "processed_at": "2026-09-19 02:28:52.000000",
+              "status": "processed"
+            }
+          ],
+          "sensor_readings_for_node": 4
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 71,
+            "raw_application": 4,
+            "raw_cdc": 81
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "before": {
+        "captured_at": "2026-09-19T07:28:44Z",
+        "mysql": {
+          "outboxes": [],
+          "raw_events": [],
+          "sensor_readings_for_node": 3
+        },
+        "redis": {
+          "xlen": {
+            "dead_letter": 71,
+            "raw_application": 3,
+            "raw_cdc": 79
+          },
+          "xpending": {
+            "raw_application": [
+              0,
+              null,
+              null,
+              null
+            ],
+            "raw_cdc": [
+              0,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      "error": "timed out waiting for CDC fault checkpoint for 1789802930086-0: predicate was false",
+      "scenario": "E",
+      "source_event_id": "gate10-cc9ed255efb4-e-e77275c18989",
+      "status": "FAIL"
+    }
+  ],
+  "schema_version": 1,
+  "selected_scenarios": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "started_at": "2026-09-19T07:25:34Z",
+  "status": "FAIL"
+}
