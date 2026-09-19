@@ -213,3 +213,38 @@ Real fault injection against the running stack:
 
 Honest status: source-fixable correctness/authorization/perf phases are done
 and tested; live-infra certification is pending a full stack run.
+
+---
+
+## FINAL LIVE CERTIFICATION — 2026-09-19 (Mac)
+
+**Application freeze SHA:** `4b14825` (`fix(ingestion): normalize RawSensorEvent received_at to app timezone`). Live gates re-run to evidence on `96d9523`/`76f12c9` (byte-identical application source). Repo HEAD after evidence/graphify: `3953fb5`.
+
+**Environment:** Darwin 23.5.0; PHP 8.5.2 (Docker back PHP 8.4); MySQL 8.0/8.4 (Docker); Redis 7 (AOF); Debezium Server 3.5.2; Laravel Reverb; Mosquitto 2.1.2 (host, persistence on, `clean_session=false`, client id `iot-platform-v2-ingestion`, QoS1); Node 18.20.8; Docker 27.3.1. Full `--profile workers` topology + host Mosquitto + production preview (`127.0.0.1:4173`).
+
+| Gate | Command / harness | Result | Evidence |
+|------|-------------------|--------|----------|
+| Backend suite | `php artisan test` (SQLite in-mem) | 482 pass / 52 skip | — |
+| Ingestion suite | `pytest -q` | 49 pass | — |
+| Frontend unit | `vitest run` | 341 pass | — |
+| Production build | `npm run build` (release env) | PASS | `front/dist` |
+| No-polling source | `audit:no-polling:source` | PASS | — |
+| MySQL fresh migrate | `migrate:fresh --seed` (real MySQL) | PASS | — |
+| MySQL concurrency | `tests/concurrency/run_mapping_race.sh 1 1 20` | 20/20 invariant held | — |
+| Gate 10 A–E fault matrix | `scripts/gate10/fault_injection.py --scenario all` | A/B/C/D/E PASS | `.audit-e2e/results/gate10-faults-96d9523….json` |
+| MQTT durability (subscriber-down) | `mqtt_durability.sh` | 10 published / 10 recovered / 0 lost / 0 dup | `.audit-e2e/results/mqtt-durability-<sha>.json` |
+| MQTT durability (spool-crash) | manual orchestration | delivered after restart; spool row cleared only after ack | same |
+| MQTT → browser E2E | `front/.audit-e2e/mqtt-to-browser-live.mjs` | PASS — rendered in DOM ~2.6s, 0 recurring REST GET | `front/.audit-e2e/results/mqtt-browser-live-<sha>.json` |
+| H5 duplicate-delivery (browser) | `front/.audit-e2e/h5-broadcast-crash-live.mjs` | 2 physical frames (reading 74, event 44) → 1 logical row, XPENDING 0, DLQ +0 | `front/.audit-e2e/results/h5-broadcast-crash-<sha>.json` |
+| Live no-polling / auth | `front/.audit-e2e/network-assertion-live.mjs` | PASS — guest clean, logout 200 + stale token 401, 0 recurring offenders | `front/.audit-e2e/results/gate10-live-network.json` |
+| Gate 9 responsive (mocked) | `audit:gate9` on preview | 35/35 | `front/.audit-e2e/results/task10-summary.json` |
+| Gate 9 responsive (live screenshots) | `front/.audit-e2e/production-screenshots.mjs` | 98 PNGs, 0 auto findings, manual spot-check clean | `front/.audit-e2e/results/screenshots/` |
+| composer audit | — | 0 advisories | — |
+| pip-audit | — | 0 vulnerabilities | — |
+| npm audit | — | 4 dev-only (vite/esbuild/vitest), accepted residual | — |
+
+**Two source defects found only by live certification, both fixed:**
+1. `3dc771b` — Gate-10 fault harness read `docker logs` stdout while the checkpoint marker is on stderr → scenarios B/E had never passed to committed evidence.
+2. `4b14825` — `RawSensorEvent.received_at` stored UTC digits read back as APP_TIMEZONE, pushing every MQTT-sourced `reading_time` ~5h into the future so the browser clock-drift guard dropped it and no live telemetry rendered. Fixed with an app-timezone setter + `RawSensorEventReceivedAtTimezoneTest`.
+
+**Accepted limitations:** 4 dev-only npm advisories (never in the production bundle); pre-existing repo-wide Pint style debt in ~130 unmodified files (no new violations this session).
