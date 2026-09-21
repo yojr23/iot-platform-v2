@@ -3,7 +3,7 @@
     <div class="lab-toolbar lab-resource-toolbar">
       <div>
         <h1 class="lab-resource-title">Usuarios y roles</h1>
-        <p class="lab-resource-description">Gestiona permisos administrativos y responsabilidades del equipo.</p>
+        <p class="lab-resource-description">Gestiona roles y responsabilidades del equipo.</p>
       </div>
       <div class="lab-resource-actions">
         <button class="btn btn-outline-secondary lab-action" type="button" :disabled="loading" @click="load">
@@ -64,9 +64,8 @@
                     <I name="gear" />
                   </button>
                   <ul class="dropdown-menu dropdown-menu-end">
-                    <li v-for="role in assignableRoles" :key="role.code">
+                    <li v-for="role in availableRolesFor(user)" :key="role.code">
                       <button
-                        v-if="role.code !== user.role?.code && canAssignRole(role.code)"
                         class="dropdown-item"
                         type="button"
                         @click="changeRole(user, role.code)"
@@ -86,7 +85,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, ref } from 'vue';
 
 import { getUsers, updateUserRole, getRoles } from '@/api/users';
 import { getApiErrorMessage, unwrapData } from '@/api/client';
@@ -94,6 +93,7 @@ import { useAuthStore } from '@/stores/auth';
 import BaseAlert from '@/components/base/BaseAlert.vue';
 import LoadingSpinner from '@/components/base/LoadingSpinner.vue';
 import I from '@/components/dashboard/lab/LabIcon.vue';
+import { availableRoleTransitions } from '@/security/roleTransitionPolicy';
 import { asArray, formatDate } from '@/utils/formatters';
 
 const authStore = useAuthStore();
@@ -103,10 +103,6 @@ const loading = ref(false);
 const savingId = ref(null);
 const error = ref('');
 const success = ref('');
-
-const assignableRoles = computed(() => {
-  return roles.value.filter(r => r.assignable && r.code !== 'guest');
-});
 
 async function load() {
   loading.value = true;
@@ -126,12 +122,17 @@ async function load() {
   }
 }
 
-function canManageUser(user) {
-  return authStore.can('user.role.assign');
+function availableRolesFor(user) {
+  return availableRoleTransitions({
+    actorRoleCode: authStore.user?.role?.code,
+    targetUser: user,
+    roles: roles.value,
+    hasAssignPermission: authStore.can('user.role.assign')
+  });
 }
 
-function canAssignRole(roleCode) {
-  return authStore.can('user.role.assign');
+function canManageUser(user) {
+  return availableRolesFor(user).length > 0;
 }
 
 function getRoleBadgeClass(roleCode) {
