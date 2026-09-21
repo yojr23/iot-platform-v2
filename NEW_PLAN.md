@@ -1770,6 +1770,28 @@ Actions:
 - keep user→role assignment dynamic;
 - make role-permission matrix source-authoritative.
 
+### Implementation evidence
+
+**Completed source work** — commit `b427f93`:
+
+- `back/database/seeders/RolePermissionSeeder.php` no longer seeds
+  `role.permissions.manage`; the remaining predefined permission catalogue and
+  `role_permissions` mappings remain source-controlled.
+- `back/database/migrations/2026_09_21_000001_remove_role_permissions_manage_permission.php`
+  deletes the legacy permission on upgrade and supplies a reversible `down()`
+  migration.
+
+**Automated regression present, execution pending:**
+
+- `back/tests/Feature/RbacUserProvisioningTest.php` —
+  `test_dynamic_role_permission_management_capability_is_not_seeded()` checks
+  that the seed has no legacy permission and that a superadmin cannot receive
+  it.
+- **PENDING:** execute that PHPUnit test against MySQL, then apply the
+  migration to an existing database containing the legacy row and prove that
+  neither the permission nor its pivot survives. This Windows evidence set did
+  not include a runnable PHP/MySQL runtime.
+
 ---
 
 # T-2.6 — Evidence-backed index optimization
@@ -1892,6 +1914,24 @@ Add negative test.
 
 **Current status:** SOURCE FIXED; live Reverb verification on macOS remains pending.
 
+### Implementation evidence
+
+**Completed source work** — commit `943c909`:
+
+- `back/config/reverb.php` defaults
+  `REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM` to `none`.
+- `back/.env.example` documents the same safe default for deployments.
+
+**Automated regression present, execution pending:**
+
+- `back/tests/Feature/ReverbClientEventPolicyTest.php` —
+  `test_client_events_are_disabled_by_default()` asserts the configuration;
+  `test_vendor_client_event_handler_rejects_client_events_when_disabled()`
+  drives Reverb's handler and expects Pusher error `4301`.
+- **PENDING:** run that PHPUnit file on macOS and attempt a live browser
+  `client-*` event against Reverb. No live Reverb service was available in the
+  Windows evidence run.
+
 ---
 
 # T-3.5 — Shared password policy
@@ -1909,6 +1949,32 @@ Use one rule factory for:
 - web reset.
 
 **Current status:** SOURCE FIXED; password-flow verification on macOS remains pending.
+
+### Implementation evidence
+
+**Completed source work** — commit `4afdaea` (with network isolation for the
+test suite in `259406f`):
+
+- `back/app/Support/Security/PasswordPolicy.php` defines the shared confirmed
+  12-character mixed-case, letter, number, symbol, and uncompromised rule.
+- `back/app/Http/Controllers/Api/AuthApiController.php` consumes it for API
+  registration and API password reset.
+- `back/app/Http/Controllers/Auth/RegisterController.php` and
+  `back/app/Http/Controllers/Auth/ResetPasswordController.php` consume it for
+  the web registration and reset flows.
+
+**Automated regressions present, execution pending:**
+
+- `back/tests/Feature/AuthApiHeadlessTest.php` —
+  `test_api_register_rejects_a_weak_password()` and
+  `test_api_reset_password_rejects_a_weak_password_and_keeps_the_old_password()`.
+- `back/tests/Feature/AuthSecurityTest.php` —
+  `test_register_rejects_weak_password()` and
+  `test_password_reset_rejects_weak_password()` for the web endpoints.
+- Those PHP tests fake Have I Been Pwned range requests so the
+  `uncompromised()` rule does not require external network access.
+- **PENDING:** run the PHP feature tests and perform the browser/API password
+  flows on macOS. PHP runtime evidence was not collected in this Windows run.
 
 ---
 
@@ -1932,6 +1998,35 @@ Do not offer role transitions backend will reject.
 
 **Current status:** CLOSED — Windows Vitest verified.
 
+### Implementation evidence
+
+**Completed source work** — commit `399d158`, with the activities wording
+clarification in `67f654e`:
+
+- `front/src/security/roleTransitionPolicy.js` derives only backend-permitted,
+  assignable transitions from the actor role and `user.role.assign` permission.
+- `front/src/views/UserRolesView.vue` disables empty role controls and states:
+  “Las actividades del sistema se representan mediante permisos asociados a
+  cada rol.”
+
+**Vitest evidence — executed on Windows:**
+
+- `front/src/security/roleTransitionPolicy.test.js` covers the allowed and
+  rejected hierarchy transitions plus the permission and assignability guards
+  (8 cases).
+- `front/src/views/UserRolesView.test.js` covers the matching rendered role
+  controls and
+  `explains that a role controls activities through its associated permissions`
+  (5 cases).
+- `npm.cmd run test:unit -- src/security/roleTransitionPolicy.test.js src/views/UserRolesView.test.js`
+  completed with **2 files / 13 tests passing**.
+- `npm.cmd run test:unit` completed with **53 files / 354 tests passing**.
+
+**Pending non-Vitest evidence:** a live authenticated `/users` browser flow
+against a running backend. The local browser probe could not enter the
+protected route without an authenticated backend session; this does not reopen
+the source-level Windows closure because the view DOM regression is executed.
+
 ---
 
 # T-3.8 — Verify static role-permission immutability
@@ -1947,6 +2042,16 @@ Because dynamic Role→Permission administration has been rejected:
 - verify source-controlled seeding converges;
 - verify no stale permission pivot survives upgrade;
 - verify user→role assignment remains the only normal RBAC mutation.
+
+### Implementation evidence
+
+- The source changes and test fixture are shared with T-2.5:
+  `back/database/seeders/RolePermissionSeeder.php`,
+  `back/database/migrations/2026_09_21_000001_remove_role_permissions_manage_permission.php`,
+  and `back/tests/Feature/RbacUserProvisioningTest.php`.
+- **PENDING:** execute the PHPUnit regression and a MySQL upgrade-path test
+  against a pre-existing legacy permission/pivot. Until that run is captured,
+  this task remains partial even though the source removal is complete.
 
 ---
 
