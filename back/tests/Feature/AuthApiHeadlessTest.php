@@ -7,6 +7,7 @@ use App\Notifications\ResetPasswordNotification;
 use App\Notifications\VerifyEmailNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\URL;
@@ -15,6 +16,15 @@ use Tests\TestCase;
 class AuthApiHeadlessTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Http::fake([
+            'api.pwnedpasswords.com/*' => Http::response('', 200),
+        ]);
+    }
 
     public function test_api_register_creates_an_unverified_user_without_a_private_access_token(): void
     {
@@ -49,6 +59,25 @@ class AuthApiHeadlessTest extends TestCase
                 return str_contains($mailMessage->actionUrl, '/api/auth/verify-email/'.$user->id.'/');
             }
         );
+    }
+
+    public function test_api_register_rejects_a_weak_password(): void
+    {
+        Notification::fake();
+
+        $this->postJson('/api/auth/register', [
+            'name' => 'Usuario API Debil',
+            'email' => 'weak-api@gmail.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['password']);
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'weak-api@gmail.com',
+        ]);
+
+        Notification::assertNothingSent();
     }
 
     public function test_unverified_user_token_cannot_access_devices(): void
@@ -173,6 +202,26 @@ class AuthApiHeadlessTest extends TestCase
 
         $this->assertTrue(Hash::check('NuevaClaveSegura123!', $user->password));
         $this->assertFalse(Hash::check('OldPassword123!', $user->password));
+    }
+
+    public function test_api_reset_password_rejects_a_weak_password_and_keeps_the_old_password(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'weak-reset-api@gmail.com',
+            'password' => 'OldPassword123!',
+        ]);
+
+        $token = Password::broker()->createToken($user);
+
+        $this->postJson('/api/auth/reset-password', [
+            'token' => $token,
+            'email' => $user->email,
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['password']);
+
+        $this->assertTrue(Hash::check('OldPassword123!', $user->fresh()->password));
     }
 
     public function test_api_verify_email_marks_user_verified(): void

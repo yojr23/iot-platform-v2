@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Support\Security\PasswordPolicy;
 use Illuminate\Foundation\Auth\ResetsPasswords;
-use Illuminate\Validation\Rules\Password;
 
 class ResetPasswordController extends Controller
 {
@@ -31,8 +31,7 @@ class ResetPasswordController extends Controller
     /**
      * Get the password reset validation rules.
      *
-     * SEC-PASS-001: same strong policy as registration (min 12, mixed case,
-     * letters, numbers, symbols, checked against HaveIBeenPwned).
+     * Uses the application-owned human-user password policy.
      *
      * @return array
      */
@@ -41,7 +40,7 @@ class ResetPasswordController extends Controller
         return [
             'token' => 'required',
             'email' => 'required|email',
-            'password' => ['required', 'confirmed', Password::min(12)->mixedCase()->letters()->numbers()->symbols()->uncompromised()],
+            'password' => PasswordPolicy::rules(),
         ];
     }
 }
