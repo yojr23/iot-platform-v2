@@ -58,7 +58,6 @@ class RolePermissionSeeder extends Seeder
 
             // Role permissions
             ['code' => 'role.view', 'resource' => 'role', 'action' => 'view', 'description' => 'View roles', 'is_system' => true, 'created_at' => $now, 'updated_at' => $now],
-            ['code' => 'role.permissions.manage', 'resource' => 'role', 'action' => 'permissions.manage', 'description' => 'Manage role permissions', 'is_system' => true, 'created_at' => $now, 'updated_at' => $now],
 
             // System settings permissions
             ['code' => 'system_setting.view', 'resource' => 'system_setting', 'action' => 'view', 'description' => 'View system settings', 'is_system' => true, 'created_at' => $now, 'updated_at' => $now],
@@ -95,7 +94,7 @@ class RolePermissionSeeder extends Seeder
             'public_monitoring.manage',
             'audit.view',
         ]);
-        $superadminPermissions = array_merge($adminPermissions, ['role.permissions.manage']);
+        $superadminPermissions = $adminPermissions;
 
         $roleIds = DB::table('roles')->pluck('id', 'code');
         $permissionIds = DB::table('permissions')->pluck('id', 'code');

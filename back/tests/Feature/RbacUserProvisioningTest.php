@@ -37,4 +37,23 @@ class RbacUserProvisioningTest extends TestCase
 
         $this->assertTrue($user->can('alert.resolve'));
     }
+
+    public function test_dynamic_role_permission_management_capability_is_not_seeded(): void
+    {
+        $this->assertDatabaseMissing('permissions', [
+            'code' => 'role.permissions.manage',
+        ]);
+
+        $superadmin = User::factory()->create([
+            'is_admin' => true,
+        ]);
+
+        $superadmin->role_id = \App\Models\Role::where('code', 'superadmin')->value('id');
+        $superadmin->saveQuietly();
+
+        $this->assertNotContains(
+            'role.permissions.manage',
+            $superadmin->fresh()->getAllPermissions()->all()
+        );
+    }
 }
