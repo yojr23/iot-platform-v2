@@ -13,7 +13,7 @@ Branch:
 refraccion
 ```
 
-Repository HEAD:
+Repository baseline audited:
 
 ```text
 0092a6962b547f767bb60fc8c2ad7d0475cba1a5
@@ -23,6 +23,12 @@ Application SHA audited:
 
 ```text
 4b148252415b54f8ba969b563aaaa0f5f3761470
+```
+
+Post-audit Windows remediation source base:
+
+```text
+d6192b7669818889c059626c2655878470c1dc72
 ```
 
 ---
@@ -869,7 +875,7 @@ PLAN-2 / T-2.4
 # F-015
 
 **Severity:** LOW  
-**Status:** [OBSERVED]
+**Status:** [PARTIAL — SOURCE REMOVED; DB UPGRADE VERIFICATION PENDING]
 
 **Title:** `role.permissions.manage` advertises functionality that the product does not implement.
 
@@ -990,7 +996,7 @@ F-012
 # F-019
 
 **Severity:** MEDIUM  
-**Status:** [OBSERVED]
+**Status:** [SOURCE FIXED — MAC LIVE REVERB VERIFICATION PENDING]
 
 **Title:** Reverb permits browser-originated `client-*` traffic despite a read-only application contract.
 
@@ -1015,7 +1021,7 @@ PLAN-3 / T-3.4
 # F-020
 
 **Severity:** MEDIUM  
-**Status:** [OBSERVED]
+**Status:** [SOURCE FIXED — MAC PASSWORD-FLOW VERIFICATION PENDING]
 
 **Title:** API authentication endpoints permit a weaker password policy than hardened web endpoints.
 
@@ -1055,7 +1061,7 @@ PLAN-3 / T-3.6
 # F-022
 
 **Severity:** LOW  
-**Status:** [OBSERVED]
+**Status:** [CLOSED — WINDOWS VERIFIED]
 
 **Title:** Role-management frontend offers some transitions the backend hierarchy correctly rejects.
 
@@ -1238,7 +1244,8 @@ rol:
 EQUIVALENT
 
 actividades:
-EQUIVALENT
+permissions table
+(semantic equivalent; no physical `actividades` table)
 
 
 RBAC conceptual data model:
@@ -1253,6 +1260,17 @@ Strong database areas remain:
 - RBAC pivot uniqueness;
 - temporal mapping lookup;
 - reading range indexes.
+
+RBAC terminology clarification:
+
+```text
+Usuario → Rol → Actividades
+users.role_id → roles → role_permissions → permissions
+```
+
+The physical `permissions` table is the catalogue of system activities/actions.
+It fulfills the conceptual “actividades” entity; the schema does not contain a
+separate table literally named `actividades`.
 
 Primary failures are semantic:
 
@@ -1359,15 +1377,16 @@ not repeating the full historic 35-phase process.
 
 # 11. PLAN.MD CLOSURE MATRIX
 
-## Scope limitation
+## Current authority
 
-The complete `PLAN.md` body was not supplied as an independent reconciliation input.
+`PLAN.md` is the completed historical 35-phase baseline. It is not the current
+release authority. `NEW_PLAN.md` is the active, open remediation authority.
 
 Therefore:
 
 ```text
-PLAN.md MATRIX SCOPE:
-PARTIAL
+PLAN.md STATUS:
+HISTORICAL BASELINE — SUPERSEDED
 ```
 
 The following matrix covers only items explicitly surfaced by:
@@ -1379,7 +1398,7 @@ B
 C
 ```
 
-It must **not** be interpreted as the exhaustive PLAN inventory.
+It must **not** be interpreted as the current exhaustive remediation inventory.
 
 ```text
 FULL PLAN.md ITEM COUNT:
@@ -1413,25 +1432,28 @@ Referenced items:
 | scoped alert resolve | OPEN |
 | ingestion-path idempotency | PARTIAL |
 | RBAC seed convergence | PARTIAL |
-| dynamic role-permission management | OBSOLETE / REMOVE |
-| API password parity | OPEN |
-| WS client-write policy | OPEN |
+| dynamic role-permission management | SOURCE REMOVED / DB VERIFY PENDING |
+| API password parity | SOURCE FIXED / MAC VERIFY PENDING |
+| WS client-write policy | SOURCE FIXED / MAC LIVE VERIFY PENDING |
 | alert lifecycle replay safety | PARTIAL |
 | pipeline observability | PARTIAL |
 | timestamp semantic separation | PARTIAL |
 | query index coverage | PARTIAL |
 | state constraints | OPEN |
 | Sanctum ability claim | CONTRADICTED |
-| role assignment UX parity | PARTIAL |
+| role assignment UX parity | CLOSED / WINDOWS VERIFIED |
 
 ### PLAN status
 
 ```text
-PLAN.md FINAL:
-REOPEN
+PLAN.md:
+HISTORICAL BASELINE — SUPERSEDED
+
+NEW_PLAN.md:
+ACTIVE / OPEN
 ```
 
-Full final PLAN counts must be calculated only after the complete PLAN.md is reconciled.
+Release closure remains open until the active findings have fresh evidence-based closure.
 
 ---
 
@@ -1737,6 +1759,8 @@ Final decision:
 role→permission mappings are NOT dynamically editable.
 ```
 
+**Current status:** SOURCE FIXED; MySQL upgrade verification remains pending.
+
 Current application supports predefined roles and user→role assignment, with no runtime role-permission editor.
 
 Actions:
@@ -1866,6 +1890,8 @@ accept_client_events_from=none
 
 Add negative test.
 
+**Current status:** SOURCE FIXED; live Reverb verification on macOS remains pending.
+
 ---
 
 # T-3.5 — Shared password policy
@@ -1881,6 +1907,8 @@ Use one rule factory for:
 - API password reset;
 - web registration;
 - web reset.
+
+**Current status:** SOURCE FIXED; password-flow verification on macOS remains pending.
 
 ---
 
@@ -1901,6 +1929,8 @@ Either implement meaningful PAT abilities or remove stale claims.
 **Priority:** P2
 
 Do not offer role transitions backend will reject.
+
+**Current status:** CLOSED — Windows Vitest verified.
 
 ---
 
@@ -2419,27 +2449,27 @@ Role → arbitrary Permission mutation
 ```text
 FINAL CLOSURE
 
-Repository HEAD:
+Repository baseline audited:
 0092a6962b547f767bb60fc8c2ad7d0475cba1a5
 
 Application SHA audited:
 4b148252415b54f8ba969b563aaaa0f5f3761470
 
+Post-audit Windows remediation source base:
+d6192b7669818889c059626c2655878470c1dc72
+
 Graphify:
 CURRENT
 
 
-Critical open:
-0
+Status correction:
+- SOURCE FIXED / macOS recertification pending: F-019, F-020
+- PARTIAL / MySQL upgrade verification pending: F-015
+- CLOSED / Windows Vitest verified: F-022
+- All other finding statuses remain as recorded in their individual entries.
 
-High open:
-7
-
-Medium open:
-8
-
-Low open:
-7
+Current open ledger:
+See the individual F-001 through F-022 statuses; this summary does not replace them.
 
 
 Architecture:
@@ -2480,14 +2510,11 @@ Gate 10:
 REOPEN
 
 
-PLAN.md MATRIX:
-PARTIAL INPUT COVERAGE
+PLAN.md:
+HISTORICAL BASELINE — SUPERSEDED
 
-FULL PLAN.md ITEM COUNT:
-UNVERIFIED
-
-PLAN.md FINAL:
-REOPEN
+NEW_PLAN.md:
+ACTIVE / OPEN
 
 
 Plan-1 tasks:
@@ -2515,15 +2542,17 @@ Concrete blockers:
 7. Alert resolution and resolve-all are globally scoped.
 8. Compatibility ingestion bypasses canonical event identity/outbox architecture.
 9. Gate 9 does not certify the complete product.
-10. API password policy is weaker than the hardened web policy.
-11. Reverb exposes unnecessary client-event write capability.
+10. Password-policy source changes await macOS password-flow recertification.
+11. Reverb client-event source changes await live macOS Reverb recertification.
 12. Full MySQL/Redis/MQTT/Reverb/browser recertification remains pending.
 
 ---
 
 # FINAL RELEASE CONCLUSION
 
-The repository is **not ready for final PLAN closure**, but the remaining defects are concentrated rather than evidence of a fundamentally failed architecture.
+The repository is **not ready for final release closure**. `PLAN.md` remains the
+completed historical baseline; `NEW_PLAN.md` remains the active remediation
+authority.
 
 Strong architectural mechanisms already exist and should be preserved:
 
@@ -2567,7 +2596,7 @@ complete Gate 9 certification
 The correct next step is:
 
 ```text
-execute PLAN-1 / PLAN-2 / PLAN-3
+execute active NEW_PLAN remediation tasks
 according to dependency waves
 
 ↓
@@ -2576,7 +2605,7 @@ targeted Mac runtime recertification
 
 ↓
 
-full PLAN.md reconciliation
+active NEW_PLAN reconciliation
 
 ↓
 
@@ -2584,7 +2613,7 @@ close only evidence-backed findings
 
 ↓
 
-PLAN.md CLOSED
+release gate closed
 ```
 
 Do not repeat the entire historical audit or 35-phase implementation plan unless new contradictory evidence appears.

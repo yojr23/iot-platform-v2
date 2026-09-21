@@ -76,6 +76,13 @@ describe('UserRolesView role transitions', () => {
 
   let currentTargetRoleCode = 'user';
 
+  it('explains that a role controls activities through its associated permissions', async () => {
+    currentTargetRoleCode = 'user';
+    const { el } = await mountView({ actorRoleCode: 'superadmin', targetRoleCode: 'user' });
+
+    expect(el.textContent).toContain('Las actividades del sistema se representan mediante permisos asociados a cada rol.');
+  });
+
   it('shows only the administrator transition to a superadmin viewing a user', async () => {
     currentTargetRoleCode = 'user';
     const { el } = await mountView({ actorRoleCode: 'superadmin', targetRoleCode: 'user' });

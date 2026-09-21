@@ -3,7 +3,7 @@
     <div class="lab-toolbar lab-resource-toolbar">
       <div>
         <h1 class="lab-resource-title">Usuarios y roles</h1>
-        <p class="lab-resource-description">Gestiona roles y responsabilidades del equipo.</p>
+        <p class="lab-resource-description">Gestiona roles y responsabilidades del equipo. Las actividades del sistema se representan mediante permisos asociados a cada rol.</p>
       </div>
       <div class="lab-resource-actions">
         <button class="btn btn-outline-secondary lab-action" type="button" :disabled="loading" @click="load">
