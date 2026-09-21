@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Password;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
@@ -29,6 +30,10 @@ class AuthSecurityTest extends TestCase
 
     public function test_password_reset_revokes_existing_tokens(): void
     {
+        Http::fake([
+            'api.pwnedpasswords.com/*' => Http::response('', 200),
+        ]);
+
         $user = User::factory()->create([
             'email' => 'reset-revoke@gmail.com',
             'password' => 'OldPassword123!',
