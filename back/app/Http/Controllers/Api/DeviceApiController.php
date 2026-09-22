@@ -9,6 +9,7 @@ use App\Http\Resources\DeviceStatusSnapshotResource;
 use App\Http\Resources\SensorResource;
 use App\Models\Device;
 use App\Models\DomainEventOutbox;
+use App\Services\AuditService;
 use App\Services\DeviceService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -23,7 +24,10 @@ class DeviceApiController extends Controller
 {
     use EscapesLikeSearch;
 
-    public function __construct(private DeviceService $deviceService) {}
+    public function __construct(
+        private DeviceService $deviceService,
+        private readonly AuditService $auditService,
+    ) {}
 
     public function index(Request $request)
     {
@@ -439,20 +443,21 @@ class DeviceApiController extends Controller
     /**
      * Rotate device API key. Returns new plaintext key shown once.
      */
-    public function rotateKey(Device $device)
+    public function rotateKey(Request $request, Device $device)
     {
         $startTime = microtime(true);
 
         $context = [
-            'ip' => request()->ip(),
-            'path' => request()->path(),
-            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'ip' => $request->ip(),
+            'path' => $request->path(),
+            'request_id' => $request->header('X-Request-Id', uniqid()),
             'user_id' => auth()->id(),
             'device_id' => $device->id,
         ];
 
         try {
             $newKey = $device->rotateApiKey();
+            $this->auditService->logDeviceApiKeyRotated($device->id, $request);
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

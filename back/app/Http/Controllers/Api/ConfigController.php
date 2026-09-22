@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpdateAlertConfigRequest;
 use App\Http\Requests\Api\UpdateGeneralConfigRequest;
 use App\Models\SystemSetting;
+use App\Services\AuditService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -13,6 +14,10 @@ use Throwable;
 
 class ConfigController extends Controller
 {
+    public function __construct(private readonly AuditService $auditService)
+    {
+    }
+
     public function publicConfig(): JsonResponse
     {
         $startTime = microtime(true);
@@ -184,6 +189,12 @@ class ConfigController extends Controller
             SystemSetting::set('app_name', $validated['app_name'], 'string', 'general');
             SystemSetting::set('app_url', $validated['app_url'], 'string', 'general');
             SystemSetting::clearCache();
+
+            foreach (array_keys($validated) as $key) {
+                // Keep clear-text configuration values out of the audit call boundary as well as
+                // out of durable metadata and structured log context.
+                $this->auditService->logSystemSettingChanged($key, null, 'changed', $request);
+            }
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

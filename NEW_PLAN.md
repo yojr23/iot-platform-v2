@@ -2739,3 +2739,22 @@ were authored before the source change, and `git diff --check` passes.
 **Mac-required evidence:** execute the focused PHPUnit regression and load-test
 the configured ingestion ceiling. `MAC_LOAD_VALIDATION_PENDING`; the 120/min
 default is deliberately non-certified.
+
+---
+
+## Task 2 evidence — Safe audit projection and structured JSON channels (2026-09-22)
+
+**Finding:** audit persistence accepted raw request-header IDs and clear-text
+setting old/new values; required configuration/email/key-rotation mutations had
+no bounded safe-audit wiring, and JSON audit/health channels were absent.
+**Severity:** HIGH
+**Scope / owner:** backend-observability-logging / Task 2
+**Status:** SOURCE FIXED — MAC TEST EXECUTION PENDING
+
+**Windows evidence:** pre-source behavioral regressions were authored for
+safe configuration/email/device-key audits and the bounded JSON channel
+contract. Static inspection confirms request IDs come only from request
+attributes, safe audit projections omit IP and sensitive values, mutation
+paths call `AuditService` after mutation, and `git diff --check` passes.
+**Mac-required evidence:** run the focused PHPUnit command in the Task 2 report
+before treating this source-only result as runtime-verified.

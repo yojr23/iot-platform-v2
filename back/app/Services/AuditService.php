@@ -4,9 +4,25 @@ namespace App\Services;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AuditService
 {
+    /** @var array<int,string> */
+    private const SAFE_SYSTEM_SETTING_KEYS = [
+        'app_name',
+        'app_url',
+        'mail_mailer',
+        'mail_host',
+        'mail_port',
+        'mail_username',
+        'mail_password',
+        'mail_encryption',
+        'mail_from_address',
+        'mail_from_name',
+        'mail_to',
+    ];
+
     /**
      * Log an audit event.
      */
@@ -18,16 +34,36 @@ class AuditService
         ?Request $request = null,
         ?array $metadata = null
     ): void {
-        DB::table('audit_logs')->insert([
-            'actor_user_id' => $actorUserId ?? auth()->id(),
+        $actorUserId ??= auth()->id();
+        $safeMetadata = $this->safeMetadataFor($action, $metadata);
+
+        $inserted = DB::table('audit_logs')->insert([
+            'actor_user_id' => $actorUserId,
             'action' => $action,
             'resource_type' => $resourceType,
             'resource_id' => $resourceId,
-            'request_id' => $request?->header('X-Request-Id'),
+            // Request IDs are established by trusted middleware. A caller-supplied raw header is
+            // untrusted and must never become durable audit data.
+            'request_id' => $request?->attributes->get('request_id'),
             'ip_address' => $request?->ip(),
-            'metadata' => $metadata ? json_encode($metadata) : null,
+            'metadata' => $safeMetadata !== null ? json_encode($safeMetadata) : null,
             'created_at' => now(),
             'updated_at' => now(),
+        ]);
+
+        if (! $inserted) {
+            return;
+        }
+
+        // Deliberately a projection rather than a copy of the durable record: no raw IP,
+        // credentials, clear-text setting values, or untrusted request header appears here.
+        Log::channel('audit')->info('audit_event', [
+            'actor_user_id' => $actorUserId,
+            'action' => $action,
+            'resource_type' => $resourceType,
+            'resource_id' => $resourceId,
+            'request_id' => $request?->attributes->get('request_id'),
+            'metadata' => $safeMetadata,
         ]);
     }
 
@@ -86,9 +122,32 @@ class AuditService
             $request,
             [
                 'setting_key' => $settingKey,
-                'old_value' => $oldValue,
-                'new_value' => $newValue,
+                'value_changed' => true,
             ]
         );
+    }
+
+    /**
+     * Accept only a deliberately small, event-specific audit projection.
+     *
+     * @param  array<string,mixed>|null  $metadata
+     * @return array<string,mixed>|null
+     */
+    private function safeMetadataFor(string $action, ?array $metadata): ?array
+    {
+        if ($action !== 'system_setting.changed') {
+            return null;
+        }
+
+        $settingKey = $metadata['setting_key'] ?? null;
+
+        if (! is_string($settingKey) || ! in_array($settingKey, self::SAFE_SYSTEM_SETTING_KEYS, true)) {
+            return ['value_changed' => true];
+        }
+
+        return [
+            'setting_key' => $settingKey,
+            'value_changed' => true,
+        ];
     }
 }

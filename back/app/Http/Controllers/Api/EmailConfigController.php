@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpdateEmailConfigRequest;
 use App\Models\SystemSetting;
+use App\Services\AuditService;
 use App\Services\Security\SecretSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,9 +15,10 @@ use Throwable;
 
 class EmailConfigController extends Controller
 {
-    public function __construct(private readonly SecretSettingService $secrets)
-    {
-    }
+    public function __construct(
+        private readonly SecretSettingService $secrets,
+        private readonly AuditService $auditService,
+    ) {}
 
     public function show(): JsonResponse
     {
@@ -62,6 +64,14 @@ class EmailConfigController extends Controller
         }
 
         SystemSetting::clearCache();
+
+        foreach (array_keys($settings) as $key) {
+            $this->auditService->logSystemSettingChanged($key, null, 'changed', $request);
+        }
+
+        if (! empty($validated['mail_password'])) {
+            $this->auditService->logSystemSettingChanged('mail_password', null, 'changed', $request);
+        }
 
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 
