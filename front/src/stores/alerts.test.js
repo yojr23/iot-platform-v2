@@ -145,3 +145,59 @@ describe('Gate 7.1 idempotent trigger/resolve ledgers', () => {
     expect(store.seenResolvedIds).toEqual([]);
   });
 });
+
+describe('T-1.5 lifecycle-monotonic alert projection', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('keeps a resolved alert terminal when its trigger is delayed', () => {
+    const store = useAlertsStore();
+
+    store.addRealtimeAlert({ id: 801, message: 'original', resolved: false });
+    const originalLatestAlert = store.latestAlert;
+    store.markAlertResolved(801);
+    store.addRealtimeAlert({ id: 801, message: 'delayed replay', resolved: false });
+
+    expect(store.activeAlerts).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 801 })]));
+    expect(store.unresolvedCount).toBe(0);
+    expect(store.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: 801, resolved: true })]));
+    expect(store.latestAlert).toBe(originalLatestAlert);
+  });
+
+  it('filters a resolved ID from a stale snapshot and its replay', () => {
+    const store = useAlertsStore();
+
+    store.addRealtimeAlert({ id: 901, resolved: false });
+    store.markAlertResolved(901);
+    store.applyActiveSnapshot([{ id: 901, resolved: false }, { id: 902, resolved: false }], { count: 2 });
+    store.addRealtimeAlert({ id: 901, resolved: false });
+
+    expect(store.activeAlerts).toEqual([{ id: 902, resolved: false }]);
+    expect(store.unresolvedCount).toBe(1);
+    expect(store.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: 901, resolved: true })]));
+  });
+
+  it('retains terminal and trigger identity after more than 500 unrelated lifecycles evict display arrays', () => {
+    const store = useAlertsStore();
+
+    store.addRealtimeAlert({ id: 1001, resolved: false });
+    store.markAlertResolved(1001);
+
+    for (let id = 2000; id <= 2500; id += 1) {
+      store.addRealtimeAlert({ id, resolved: false });
+      store.markAlertResolved(id);
+    }
+
+    expect(store.activeAlerts).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 1001 })]));
+    expect(store.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 1001 })]));
+
+    store.addRealtimeAlert({ id: 1001, resolved: false });
+
+    expect(store.activeAlerts).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 1001 })]));
+    expect(store.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 1001 })]));
+    expect(store.unresolvedCount).toBe(0);
+    expect(store.seenTriggeredIds).toContain(1001);
+    expect(store.seenResolvedIds).toContain(1001);
+  });
+});

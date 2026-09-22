@@ -1564,6 +1564,15 @@ replay after >500 unrelated events
 snapshot + stale event
 ```
 
+**Status:** T-1.5 WINDOWS VERIFIED — UNIT/PROJECTION SCOPE
+
+**Windows evidence (2026-09-22):** `npm.cmd run test:unit -- src/stores/alerts.test.js` —
+1 file / 15 tests passed; `npm.cmd run test:unit` — 53 files / 357 tests passed.
+**RED:** `npm.cmd run test:unit -- src/stores/alerts.test.js` — 1 file,
+3 failed / 12 passed. **Focused GREEN:** `npm.cmd run test:unit -- src/stores/alerts.test.js` —
+1 file / 15 tests passed. **Full:** `npm.cmd run test:unit` — 53 files / 357 tests passed.
+Live realtime and Mac certification remain pending.
+
 ---
 
 # T-1.6 — Pipeline readiness

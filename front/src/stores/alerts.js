@@ -89,9 +89,8 @@ export const useAlertsStore = defineStore('alerts', {
     loading: false,
     error: null,
     realtimeReady: false,
-    // Gate 7 (7.1): bounded id ledgers so a redelivered triggered/resolved event only ever
-    // mutates unresolvedCount once, even after the alert itself has been evicted from the
-    // bounded activeAlerts/items arrays above.
+    // Preserve lifecycle identity for this authorized-store lifetime. The bounded display
+    // arrays can evict alerts, but their trigger/resolution knowledge must remain terminal.
     seenTriggeredIds: [],
     seenResolvedIds: []
   }),
@@ -131,14 +130,23 @@ export const useAlertsStore = defineStore('alerts', {
     },
 
     applyActiveSnapshot(alerts, { count, notifyNew = false } = {}) {
-      const nextActiveAlerts = Array.isArray(alerts) ? alerts : [];
+      const suppliedActiveAlerts = Array.isArray(alerts) ? alerts : [];
+      const knownResolvedIds = new Set(this.seenResolvedIds);
+      const resolvedIdsInSnapshot = new Set(
+        suppliedActiveAlerts
+          .map((alert) => Number(alert?.id))
+          .filter((id) => Number.isFinite(id) && knownResolvedIds.has(id))
+      );
+      const nextActiveAlerts = suppliedActiveAlerts.filter((alert) => (
+        !knownResolvedIds.has(Number(alert?.id))
+      ));
       let newAlerts = [];
 
       // Seed authoritative active IDs before buffered/replayed triggers are projected.
       const snapshotIds = nextActiveAlerts
         .map((alert) => Number(alert?.id))
         .filter(Number.isFinite);
-      this.seenTriggeredIds = [...new Set([...this.seenTriggeredIds, ...snapshotIds])].slice(-500);
+      this.seenTriggeredIds = [...new Set([...this.seenTriggeredIds, ...snapshotIds])];
 
       if (notifyNew) {
         const knownIds = new Set([...this.activeAlerts, ...this.items]
@@ -152,7 +160,7 @@ export const useAlertsStore = defineStore('alerts', {
 
       this.activeAlerts = nextActiveAlerts;
       this.unresolvedCount = Number.isFinite(Number(count))
-        ? Number(count)
+        ? Math.max(0, Number(count) - resolvedIdsInSnapshot.size)
         : this.activeAlerts.length;
       return newAlerts;
     },
@@ -230,7 +238,7 @@ export const useAlertsStore = defineStore('alerts', {
       if (!Number.isFinite(id)) return false;
       if (this.seenResolvedIds.includes(id)) return false;
 
-      this.seenResolvedIds = [...this.seenResolvedIds, id].slice(-500);
+      this.seenResolvedIds = [...this.seenResolvedIds, id];
       this.activeAlerts = this.activeAlerts.filter((alert) => Number(alert.id) !== id);
       this.items = this.items.map((alert) => (
         Number(alert.id) === id ? { ...alert, resolved: true, resolved_at: new Date().toISOString() } : alert
@@ -258,9 +266,8 @@ export const useAlertsStore = defineStore('alerts', {
 
     // PLAN.md Stage 5 / ownership F2: this store is now the SOLE realtime alert dedup owner.
     // useAlertsRealtime.js no longer keeps its own seenAlertIds Set — the transport delivers,
-    // this projection dedups. Gate 7 (7.1): dedup now uses the bounded seenTriggeredIds ledger
-    // (last 500 ids) instead of scanning activeAlerts/items, so a redelivered id still counts
-    // once even after the alert was evicted from those bounded display arrays.
+    // this projection dedups. Its authorized-store-lifetime trigger and terminal ledgers
+    // outlive bounded display-array eviction; clearAuthorizedState() is their lifecycle reset.
     addRealtimeAlert(payload) {
       const alert = normalizeRealtimeAlert(payload);
 
@@ -269,6 +276,9 @@ export const useAlertsStore = defineStore('alerts', {
       }
 
       const id = Number(alert.id);
+      if (this.seenResolvedIds.includes(id)) {
+        return null;
+      }
       const alreadySeen = this.seenTriggeredIds.includes(id);
 
       this.activeAlerts = mergeAlert(this.activeAlerts, alert, 20);
@@ -278,7 +288,7 @@ export const useAlertsStore = defineStore('alerts', {
         return null;
       }
 
-      this.seenTriggeredIds = [...this.seenTriggeredIds, id].slice(-500);
+      this.seenTriggeredIds = [...this.seenTriggeredIds, id];
       this.latestAlert = { ...alert, received_at: Date.now() };
 
       if (!alert.resolved) {
