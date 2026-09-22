@@ -2758,3 +2758,33 @@ attributes, safe audit projections omit IP and sensitive values, mutation
 paths call `AuditService` after mutation, and `git diff --check` passes.
 **Mac-required evidence:** run the focused PHPUnit command in the Task 2 report
 before treating this source-only result as runtime-verified.
+
+---
+
+## Task 3 evidence — HTTP request correlation and safe exception context (2026-09-22)
+
+**Finding:** API request IDs were trusted directly from headers by relevant
+logging paths, no canonical request-context owner returned a correlation header,
+and central exception reports could contain exception-derived detail.
+**Severity:** HIGH
+**Scope / owner:** backend-observability-logging / Task 3
+**Status:** SOURCE FIXED — MAC TEST EXECUTION PENDING
+
+**Windows evidence:** five behavioral regressions were authored before the
+corresponding source changes. Static inspection confirms `AssignRequestContext`
+is prepended to the API group, validates and lowercases canonical UUIDs or
+generates UUIDv7 values, and sets the request attribute/log context/response
+header. The 79 remaining direct correlation reads in 19 controllers were
+mechanically changed to trusted request attributes; together with the initial
+HealthController and ingestion-middleware corrections, Task 3 removes 82 direct
+reads in total. The sole remaining raw-header occurrence is the owner middleware.
+The central reporter emits only the trusted request
+attribute plus `SafeExceptionContext`; its required `->stop()` suppresses
+Laravel's otherwise additive default reporter. Laravel 12's API-only exception
+response finalizer copies only that trusted attribute to `X-Request-Id`, leaving
+the rendered error status/body unchanged. `git diff --check` passes. PHP,
+Composer, Artisan, Docker, MySQL, Redis, and backend HTTP execution were not
+run on Windows by task constraint.
+**Mac-required evidence:** run the focused and full PHPUnit commands in the
+Task 3 report, then inspect emitted JSON logs to confirm no secret sentinel is
+present.

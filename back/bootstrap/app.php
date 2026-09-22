@@ -1,12 +1,13 @@
 <?php
 
-use Illuminate\Database\QueryException;
+use App\Http\Middleware\AssignRequestContext;
+use App\Support\SafeExceptionContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -28,6 +29,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ],
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->prependToGroup('api', [
+            AssignRequestContext::class,
+        ]);
+
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
             'permission' => \App\Http\Middleware\EnsureUserHasPermission::class,
@@ -41,56 +46,22 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        $exceptions->report(function (ValidationException $e) {
+        $exceptions->respond(function (Response $response): Response {
             $request = request();
-            if (! $request || ! $request->is('api/*')) {
-                return;
+            $requestId = $request?->attributes->get('request_id');
+
+            if ($request?->is('api/*') && is_string($requestId)) {
+                $response->headers->set('X-Request-Id', $requestId);
             }
 
-            Log::warning('API validation exception', [
-                'path' => $request->path(),
-                'method' => $request->method(),
-                'ip' => $request->ip(),
-                'errors' => $e->errors(),
-            ]);
+            return $response;
         });
 
-        $exceptions->report(function (BadRequestHttpException $e) {
+        $exceptions->report(function (Throwable $e) {
             $request = request();
-            if (! $request || ! $request->is('api/*')) {
-                return;
-            }
-
-            Log::warning('API bad request exception (possibly malformed payload)', [
-                'path' => $request->path(),
-                'method' => $request->method(),
-                'ip' => $request->ip(),
-                'exception' => $e->getMessage(),
+            Log::error('Application exception', [
+                'request_id' => $request?->attributes->get('request_id'),
+                ...SafeExceptionContext::from($e),
             ]);
-        });
-
-        $exceptions->report(function (QueryException $e) {
-            $request = request();
-            Log::error('Database query exception', [
-                'path' => $request?->path(),
-                'method' => $request?->method(),
-                'ip' => $request?->ip(),
-                'request_id' => $request?->header('X-Request-Id'),
-                'exception_class' => get_class($e),
-                'sql_state' => $e->errorInfo[0] ?? $e->getCode(),
-                'db_error_code' => $e->errorInfo[1] ?? null,
-            ]);
-        });
-
-        $exceptions->report(function (\PDOException $e) {
-            $request = request();
-            Log::critical('Database connection exception', [
-                'path' => $request?->path(),
-                'method' => $request?->method(),
-                'ip' => $request?->ip(),
-                'request_id' => $request?->header('X-Request-Id'),
-                'exception_class' => get_class($e),
-                'sql_state' => $e->getCode(),
-            ]);
-        });
+        })->stop();
     })->create();

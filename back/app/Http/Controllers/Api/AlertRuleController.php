@@ -28,7 +28,7 @@ class AlertRuleController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
         ];
 
@@ -68,7 +68,7 @@ class AlertRuleController extends Controller
             'ip' => request()->ip(),
             'method' => request()->method(),
             'path' => request()->path(),
-            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'request_id' => request()->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'duration_ms' => $durationMs,
         ]);
@@ -84,7 +84,7 @@ class AlertRuleController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
         ];
 
@@ -136,7 +136,7 @@ class AlertRuleController extends Controller
             'ip' => request()->ip(),
             'method' => request()->method(),
             'path' => request()->path(),
-            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'request_id' => request()->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'alert_rule_id' => $alertRule->id,
             'duration_ms' => $durationMs,
@@ -153,7 +153,7 @@ class AlertRuleController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'alert_rule_id' => $alertRule->id,
         ];
@@ -204,7 +204,7 @@ class AlertRuleController extends Controller
                 'ip' => request()->ip(),
                 'method' => request()->method(),
                 'path' => request()->path(),
-                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'request_id' => request()->attributes->get('request_id'),
                 'user_id' => auth()->id(),
                 'alert_rule_id' => $alertRule->id,
                 'success' => true,

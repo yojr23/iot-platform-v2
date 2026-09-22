@@ -21,6 +21,7 @@ class TrackApiPerformance
         Log::debug('TrackApiPerformance: request started', [
             'method' => $request->method(),
             'path' => $request->path(),
+            'request_id' => $request->attributes->get('request_id'),
         ]);
 
         /** @var Response $response */
@@ -32,6 +33,7 @@ class TrackApiPerformance
             'path' => $request->path(),
             'status' => $response->getStatusCode(),
             'duration_ms' => round($durationMs, 2),
+            'request_id' => $request->attributes->get('request_id'),
         ]);
 
         $this->metrics->record($request, $response, $durationMs);
@@ -39,4 +41,3 @@ class TrackApiPerformance
         return $response;
     }
 }
-

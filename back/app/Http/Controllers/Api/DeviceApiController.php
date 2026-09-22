@@ -39,7 +39,7 @@ class DeviceApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
         ];
 
@@ -150,7 +150,7 @@ class DeviceApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'count' => $items->count(),
             'has_more' => $hasMore,
@@ -173,7 +173,7 @@ class DeviceApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'device_id' => $device->id,
         ];
@@ -232,7 +232,7 @@ class DeviceApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
         ];
 
@@ -302,7 +302,7 @@ class DeviceApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'device_id' => $device->id,
         ];
@@ -378,7 +378,7 @@ class DeviceApiController extends Controller
             'ip' => request()->ip(),
             'method' => request()->method(),
             'path' => request()->path(),
-            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'request_id' => request()->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'device_id' => $device->id,
         ];
@@ -450,7 +450,7 @@ class DeviceApiController extends Controller
         $context = [
             'ip' => $request->ip(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'device_id' => $device->id,
         ];
@@ -495,7 +495,7 @@ class DeviceApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'device_id' => $device->id,
         ];
@@ -605,7 +605,7 @@ class DeviceApiController extends Controller
                 'ip' => $request->ip(),
                 'method' => $request->method(),
                 'path' => $request->path(),
-                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'request_id' => $request->attributes->get('request_id'),
                 'user_id' => auth()->id(),
                 'device_id' => $device->id,
                 'count' => $sensors->count(),
@@ -622,7 +622,7 @@ class DeviceApiController extends Controller
                 'ip' => $request->ip(),
                 'method' => $request->method(),
                 'path' => $request->path(),
-                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'request_id' => $request->attributes->get('request_id'),
                 'user_id' => auth()->id(),
                 'device_id' => $device->id,
                 'exception' => $e->getMessage(),

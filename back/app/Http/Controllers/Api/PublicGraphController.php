@@ -78,7 +78,7 @@ class PublicGraphController extends Controller
             'ip' => request()->ip(),
             'method' => request()->method(),
             'path' => request()->path(),
-            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'request_id' => request()->attributes->get('request_id'),
             'sensor_count' => $sensors->count(),
             'duration_ms' => $durationMs,
         ]);
@@ -113,7 +113,7 @@ class PublicGraphController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'sensor_id' => $sensor->id,
             'duration_ms' => $durationMs,
         ]);

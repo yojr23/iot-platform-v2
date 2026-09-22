@@ -29,7 +29,7 @@ class AlertController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
         ];
 
@@ -79,7 +79,7 @@ class AlertController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
         ];
 
@@ -135,7 +135,7 @@ class AlertController extends Controller
                 'ip' => request()->ip(),
                 'method' => request()->method(),
                 'path' => request()->path(),
-                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'request_id' => request()->attributes->get('request_id'),
                 'user_id' => auth()->id(),
                 'alert_id' => $alert->id,
                 'duration_ms' => $durationMs,
@@ -180,7 +180,7 @@ class AlertController extends Controller
             'ip' => request()->ip(),
             'method' => request()->method(),
             'path' => request()->path(),
-            'request_id' => request()->header('X-Request-Id', uniqid()),
+            'request_id' => request()->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'active_count' => $result['count'],
             'duration_ms' => $durationMs,
@@ -210,7 +210,7 @@ class AlertController extends Controller
                 'ip' => request()->ip(),
                 'method' => request()->method(),
                 'path' => request()->path(),
-                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'request_id' => request()->attributes->get('request_id'),
                 'user_id' => auth()->id(),
                 'alert_id' => $alert->id,
                 'success' => true,
@@ -249,7 +249,7 @@ class AlertController extends Controller
                 'ip' => request()->ip(),
                 'method' => request()->method(),
                 'path' => request()->path(),
-                'request_id' => request()->header('X-Request-Id', uniqid()),
+                'request_id' => request()->attributes->get('request_id'),
                 'user_id' => auth()->id(),
                 'resolved_count' => $resolvedCount,
                 'success' => true,

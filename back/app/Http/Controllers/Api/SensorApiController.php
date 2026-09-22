@@ -203,7 +203,7 @@ class SensorApiController extends Controller
 
         Log::info('Authenticated sensor series request', [
             'sensor_id' => $sensor->id,
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
         ]);
 
@@ -593,7 +593,7 @@ class SensorApiController extends Controller
         if ($providedApiKey === '') {
             Log::warning('IoT sensor listing rejected: missing API key', [
                 'ip' => $request->ip(),
-                'request_id' => $request->header('X-Request-Id'),
+                'request_id' => $request->attributes->get('request_id'),
             ]);
 
             return response()->json(['error' => 'Unauthorized'], 401);
@@ -612,7 +612,7 @@ class SensorApiController extends Controller
             // SEC-LOG-001: no key material or fingerprints (length / presence) in logs.
             Log::warning('IoT sensor listing rejected: invalid API key', [
                 'ip' => $request->ip(),
-                'request_id' => $request->header('X-Request-Id'),
+                'request_id' => $request->attributes->get('request_id'),
             ]);
 
             return response()->json(['error' => 'Unauthorized'], 401);
@@ -941,7 +941,7 @@ class SensorApiController extends Controller
             'path' => $request->path(),
             'method' => $request->method(),
             'user_agent' => $request->userAgent(),
-            'request_id' => $request->header('X-Request-Id'),
+            'request_id' => $request->attributes->get('request_id'),
         ];
     }
 

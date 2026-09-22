@@ -25,7 +25,7 @@ class DashboardPreferenceController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'duration_ms' => $durationMs,
         ]);
@@ -92,7 +92,7 @@ class DashboardPreferenceController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'payload_keys' => array_keys($data),
             'success' => true,

@@ -34,7 +34,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
         ];
 
         $validated = $request->validate([
@@ -95,7 +95,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
         ];
 
         $validated = $request->validate([
@@ -170,7 +170,7 @@ class AuthApiController extends Controller
                 'ip' => $request->ip(),
                 'method' => $request->method(),
                 'path' => $request->path(),
-                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'request_id' => $request->attributes->get('request_id'),
                 'status' => $status,
                 'duration_ms' => $durationMs,
             ]);
@@ -186,7 +186,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'success' => true,
             'duration_ms' => $durationMs,
         ]);
@@ -230,7 +230,7 @@ class AuthApiController extends Controller
                 'ip' => $request->ip(),
                 'method' => $request->method(),
                 'path' => $request->path(),
-                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'request_id' => $request->attributes->get('request_id'),
                 'status' => $status,
                 'duration_ms' => $durationMs,
             ]);
@@ -246,7 +246,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'success' => true,
             'duration_ms' => $durationMs,
         ]);
@@ -269,7 +269,7 @@ class AuthApiController extends Controller
                 'ip' => $request->ip(),
                 'method' => $request->method(),
                 'path' => $request->path(),
-                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'request_id' => $request->attributes->get('request_id'),
                 'user_id' => $id,
                 'duration_ms' => $durationMs,
             ]);
@@ -290,7 +290,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => $user->id,
             'success' => true,
             'duration_ms' => $durationMs,
@@ -315,7 +315,7 @@ class AuthApiController extends Controller
                 'ip' => $request->ip(),
                 'method' => $request->method(),
                 'path' => $request->path(),
-                'request_id' => $request->header('X-Request-Id', uniqid()),
+                'request_id' => $request->attributes->get('request_id'),
                 'user_id' => $user->id,
                 'duration_ms' => $durationMs,
             ]);
@@ -333,7 +333,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => $user->id,
             'success' => true,
             'duration_ms' => $durationMs,
@@ -354,7 +354,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'duration_ms' => $durationMs,
         ]);
@@ -380,7 +380,7 @@ class AuthApiController extends Controller
             'ip' => $request->ip(),
             'method' => $request->method(),
             'path' => $request->path(),
-            'request_id' => $request->header('X-Request-Id', uniqid()),
+            'request_id' => $request->attributes->get('request_id'),
             'user_id' => auth()->id(),
             'success' => true,
             'duration_ms' => $durationMs,

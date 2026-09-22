@@ -19,7 +19,7 @@ class EnsureIngestionToken
             Log::warning('EnsureIngestionToken: rejected', [
                 'path' => $request->path(),
                 'ip' => $request->ip(),
-                'request_id' => $request->header('X-Request-Id'),
+                'request_id' => $request->attributes->get('request_id'),
                 'duration_ms' => $durationMs,
             ]);
 
@@ -33,7 +33,7 @@ class EnsureIngestionToken
         Log::info('EnsureIngestionToken: accepted', [
             'path' => $request->path(),
             'ip' => $request->ip(),
-            'request_id' => $request->header('X-Request-Id'),
+            'request_id' => $request->attributes->get('request_id'),
             'duration_ms' => $durationMs,
         ]);
 
