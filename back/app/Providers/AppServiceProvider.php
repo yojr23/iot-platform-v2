@@ -58,6 +58,19 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        // Canonical raw ingestion has no `{sensor}` route parameter. Its
+        // boundary therefore uses only the bounded request IP, never a
+        // body-provided node/sensor identity or ingestion credential.
+        RateLimiter::for('ingestion-events', function (Request $request) {
+            if ($this->app->environment('local')) {
+                return Limit::none();
+            }
+
+            $perMinute = max(1, (int) config('app.ingestion_events_rate_limit_per_minute', 120));
+
+            return Limit::perMinute($perMinute)->by('ingestion-events:ip:'.$request->ip());
+        });
+
         // Login de API más estricto para reducir credential stuffing.
         RateLimiter::for('auth-login', function (Request $request) {
             if ($this->app->environment('local')) {
@@ -72,6 +85,16 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(5)->by('login:ip:'.$ip),
                 Limit::perMinute(5)->by('login:email:'.$email.':ip:'.$ip),
             ];
+        });
+
+        // Registration is an independent anonymous abuse boundary. Keep an
+        // IP ceiling without coupling it to login or password-recovery flows.
+        RateLimiter::for('auth-register', function (Request $request) {
+            if ($this->app->environment('local')) {
+                return Limit::none();
+            }
+
+            return Limit::perMinute(5)->by('register:ip:'.$request->ip());
         });
     }
 }

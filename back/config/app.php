@@ -130,6 +130,10 @@ return [
 
     'ingestion_service_token' => env('INGESTION_SERVICE_TOKEN'),
 
+    // Non-certified default: must permit the known 50-event raw batch while
+    // MAC_LOAD_VALIDATION_PENDING establishes production capacity.
+    'ingestion_events_rate_limit_per_minute' => (int) env('INGESTION_EVENTS_RATE_LIMIT_PER_MINUTE', 120),
+
     'ingestion_raw_events_stream' => env('INGESTION_RAW_EVENTS_STREAM', 'iot.raw-events'),
 
     'ingestion_raw_events_maxlen' => (int) env('INGESTION_RAW_EVENTS_MAXLEN', 500000),

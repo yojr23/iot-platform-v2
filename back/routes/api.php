@@ -42,7 +42,7 @@ Route::prefix('public/graph')->group(function () {
 
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthApiController::class, 'login'])->middleware('throttle:auth-login');
-    Route::post('/register', [AuthApiController::class, 'register'])->middleware('throttle:auth-login');
+    Route::post('/register', [AuthApiController::class, 'register'])->middleware('throttle:auth-register');
     Route::post('/forgot-password', [AuthApiController::class, 'forgotPassword'])->middleware('throttle:auth-login');
     Route::post('/reset-password', [AuthApiController::class, 'resetPassword'])->middleware('throttle:auth-login');
     Route::get('/verify-email/{id}/{hash}', [AuthApiController::class, 'verifyEmail'])
@@ -69,7 +69,7 @@ Route::post('/sensors/{sensor}/readings', [SensorApiController::class, 'storeRea
 Route::post('/ingestion/events', [IngestionController::class, 'store'])
     ->middleware('ingestion.token')
     ->middleware('api.metrics')
-    ->middleware('throttle:api-write');
+    ->middleware('throttle:ingestion-events');
 
 Route::get('/internal/metrics/api-performance', [InternalMetricsController::class, 'apiPerformance'])
     ->middleware('api.metrics')

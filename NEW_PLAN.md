@@ -2722,3 +2722,20 @@ release gate closed
 ```
 
 Do not repeat the entire historical audit or 35-phase implementation plan unless new contradictory evidence appears.
+
+---
+
+## Task 1 evidence — Auth and canonical-ingestion rate-limit boundaries (2026-09-22)
+
+**Finding:** registration shared the credential-stuffing limiter, while canonical
+ingestion inherited `api-write`'s empty `{sensor}` bucket.
+**Severity:** MEDIUM
+**Scope / owner:** backend-observability-logging / Task 1
+**Status:** SOURCE FIXED — MAC TEST EXECUTION PENDING
+
+**Windows evidence:** static inspection confirms independent `auth-register` and
+IP-only configurable `ingestion-events` boundaries; four route-level regressions
+were authored before the source change, and `git diff --check` passes.
+**Mac-required evidence:** execute the focused PHPUnit regression and load-test
+the configured ingestion ceiling. `MAC_LOAD_VALIDATION_PENDING`; the 120/min
+default is deliberately non-certified.
