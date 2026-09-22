@@ -14,7 +14,7 @@ export function isCleanResult(result) {
 
 /**
  * Verify the browser landed on the intended page:
- *  - finalUrl pathname matches the requested route (or is a sub-path for detail views)
+ *  - finalUrl pathname exactly matches the requested route
  *  - no denied=permission redirect occurred
  *  - expected page marker (heading text or selector) is present in the DOM
  */
@@ -26,8 +26,9 @@ export function isPageCorrect(result, { expectedMarker } = {}) {
   // denied=permission means the router rejected the user — fail unless denial was the test goal
   if (result.finalUrl.includes('denied=permission')) return false;
 
-  // Route must match: exact or prefix (for /devices/1 style detail routes)
-  if (result.route && !finalPathname.startsWith(result.route)) return false;
+  // Route identity must be exact. Prefix matching accepts `/devices/10` for
+  // `/devices/1` and cannot certify a parameterized detail record.
+  if (result.route && finalPathname !== result.route) return false;
 
   // If a marker is expected, the heading captured by run.mjs must contain it
   if (expectedMarker) {

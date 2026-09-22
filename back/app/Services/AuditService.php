@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class AuditService
 {
@@ -22,6 +23,9 @@ class AuditService
         'mail_from_name',
         'mail_to',
     ];
+
+    /** @var array<int,string> */
+    private const SAFE_ROLE_CODES = ['guest', 'user', 'admin', 'superadmin'];
 
     /**
      * Log an audit event.
@@ -57,14 +61,20 @@ class AuditService
 
         // Deliberately a projection rather than a copy of the durable record: no raw IP,
         // credentials, clear-text setting values, or untrusted request header appears here.
-        Log::channel('audit')->info('audit_event', [
-            'actor_user_id' => $actorUserId,
-            'action' => $action,
-            'resource_type' => $resourceType,
-            'resource_id' => $resourceId,
-            'request_id' => $request?->attributes->get('request_id'),
-            'metadata' => $safeMetadata,
-        ]);
+        // Once the durable insert succeeds this secondary file projection is best effort: failure
+        // must not invalidate a completed mutation or suppress a newly issued device key.
+        try {
+            Log::channel('audit')->info('audit_event', [
+                'actor_user_id' => $actorUserId,
+                'action' => $action,
+                'resource_type' => $resourceType,
+                'resource_id' => $resourceId,
+                'request_id' => $request?->attributes->get('request_id'),
+                'metadata' => $safeMetadata,
+            ]);
+        } catch (Throwable) {
+            // The durable audit record above remains the authoritative event.
+        }
     }
 
     /**
@@ -135,10 +145,19 @@ class AuditService
      */
     private function safeMetadataFor(string $action, ?array $metadata): ?array
     {
-        if ($action !== 'system_setting.changed') {
-            return null;
-        }
+        return match ($action) {
+            'system_setting.changed' => $this->safeSystemSettingMetadata($metadata),
+            'user.role.changed' => $this->safeRoleChangeMetadata($metadata),
+            default => null,
+        };
+    }
 
+    /**
+     * @param  array<string,mixed>|null  $metadata
+     * @return array<string,mixed>
+     */
+    private function safeSystemSettingMetadata(?array $metadata): array
+    {
         $settingKey = $metadata['setting_key'] ?? null;
 
         if (! is_string($settingKey) || ! in_array($settingKey, self::SAFE_SYSTEM_SETTING_KEYS, true)) {
@@ -148,6 +167,33 @@ class AuditService
         return [
             'setting_key' => $settingKey,
             'value_changed' => true,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>|null  $metadata
+     * @return array{old_role: string|null, new_role: string}|null
+     */
+    private function safeRoleChangeMetadata(?array $metadata): ?array
+    {
+        if ($metadata === null || array_diff(array_keys($metadata), ['old_role', 'new_role']) !== []) {
+            return null;
+        }
+
+        $oldRole = $metadata['old_role'] ?? null;
+        $newRole = $metadata['new_role'] ?? null;
+
+        if (
+            ($oldRole !== null && (! is_string($oldRole) || ! in_array($oldRole, self::SAFE_ROLE_CODES, true)))
+            || ! is_string($newRole)
+            || ! in_array($newRole, self::SAFE_ROLE_CODES, true)
+        ) {
+            return null;
+        }
+
+        return [
+            'old_role' => $oldRole,
+            'new_role' => $newRole,
         ];
     }
 }

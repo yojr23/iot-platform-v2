@@ -456,8 +456,12 @@ class DeviceApiController extends Controller
         ];
 
         try {
-            $newKey = $device->rotateApiKey();
-            $this->auditService->logDeviceApiKeyRotated($device->id, $request);
+            $newKey = DB::transaction(function () use ($device, $request): string {
+                $newKey = $device->rotateApiKey();
+                $this->auditService->logDeviceApiKeyRotated($device->id, $request);
+
+                return $newKey;
+            });
 
             $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

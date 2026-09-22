@@ -1544,6 +1544,19 @@ viewport
 
 No global `startsWith()` assumption.
 
+**Status:** T-1.4 PARTIAL — ROUTER/MATRIX/FIXTURE CONTRACT VERIFICATION ONLY; MAC LIVE AUTHENTICATED DESKTOP/MOBILE CERTIFICATION PENDING
+
+**Source-level evidence (2026-09-22):** `gate9Coverage.test.js` derives certifiable paths from
+the active router, checks them against `task10-matrix.txt`, retains explicit guest/auth/fallback
+exclusions, and requires exact detail-route identity. `fixtures.test.js` invokes `mockApi` with
+an in-memory page/route stub (no browser launch) and checks the configuration/account shell
+fixtures, the representative sensor identity, the device sensor-list/logout shell routes, and the
+strict 501 unmatched fallback. The final focused Vitest run passed **2 files / 10 tests**; the
+final full frontend Vitest run passed **55 files / 367 tests**. This is router/matrix/fixture
+contract verification only, not rendered or live-network evidence.
+
+**Gate 9:** REOPEN — Mac live authenticated desktop/mobile browser evidence is still required.
+
 ---
 
 # T-1.5 — Monotonic alert projection

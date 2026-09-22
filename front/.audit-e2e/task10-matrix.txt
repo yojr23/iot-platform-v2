@@ -41,6 +41,23 @@
 /devices|admin|390x844|normal|device-modal|t10-device-modal-390|Dispositivos
 /alert-rules|admin|390x844|normal|alert-rule-modal|t10-alert-rule-modal-390|Reglas de alerta
 
+# Router-complete authenticated product coverage. Parameterized records use a representative
+# concrete identifier so exact final-path checks catch wrong-detail navigation.
+/sensors/101|admin|390x844|normal|responsive-layout|t10-sensor-detail-390|Sensor 101
+/devices/1|admin|390x844|normal|responsive-layout|t10-device-detail-390|Device 1
+/alerts|admin|390x844|normal|responsive-layout|t10-alerts-390|Alertas
+/alerts/1|admin|390x844|normal|responsive-layout|t10-alert-detail-390|Alerta
+/config|admin|390x844|normal|responsive-layout|t10-config-390|Configuración
+/config/general|admin|390x844|normal|responsive-layout|t10-config-general-390|Configuración general
+/config/alerts|admin|390x844|normal|responsive-layout|t10-config-alerts-390|Alertas
+/config/email|admin|390x844|normal|responsive-layout|t10-config-email-390|Correo
+/config/diagnostics|admin|390x844|normal|responsive-layout|t10-config-diagnostics-390|Diagnóstico
+/labs|admin|390x844|normal|responsive-layout|t10-labs-390|Laboratorios
+/sensor-types|admin|390x844|normal|responsive-layout|t10-sensor-types-390|Tipos de sensores
+/device-types|admin|390x844|normal|responsive-layout|t10-device-types-390|Tipos de dispositivos
+/users|admin|390x844|normal|responsive-layout|t10-users-390|Usuarios y roles
+/profile|admin|390x844|normal|responsive-layout|t10-profile-390|Mi cuenta
+
 # Metrics must stack through every required breakpoint.
 /metrics|admin|320x700|normal|responsive-layout|t10-metrics-320|Métricas
 /metrics|admin|360x800|normal|responsive-layout|t10-metrics-360|Métricas

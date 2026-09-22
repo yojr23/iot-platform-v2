@@ -72,12 +72,12 @@ describe('page identity assertions', () => {
     })).toBe(false);
   });
 
-  it('accepts a detail sub-route matching a route prefix', () => {
+  it('rejects a detail sub-route when the matrix requested the collection route', () => {
     expect(isPageCorrect({
       ...baseResult,
       route: '/devices',
       finalUrl: 'http://127.0.0.1:5173/devices/1'
-    })).toBe(true);
+    })).toBe(false);
   });
 });
 

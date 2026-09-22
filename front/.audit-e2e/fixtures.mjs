@@ -34,6 +34,53 @@ const USERS = {
 
 const LONG = 'Laboratorio de Instrumentación y Control Ambiental de Procesos Industriales Distribuidos';
 
+// These contracts are intentionally explicit: the configuration and account shells issue
+// independent requests on mount, so a generic successful fallback would hide missing fixtures.
+const CONFIG_RUNTIME = {
+  alert_sound_enabled: true,
+  app_url: 'https://iot-platform.fixture.test'
+};
+
+const CONFIG_GENERAL = {
+  data: {
+    app_name: 'SINOA Fixture',
+    app_url: CONFIG_RUNTIME.app_url
+  }
+};
+
+const CONFIG_ALERTS = {
+  mail_enabled: true,
+  alert_sound_enabled: true,
+  alert_threshold: 5,
+  danger_email_rate_limit_seconds: 60
+};
+
+const CONFIG_EMAIL = {
+  mail_mailer: 'smtp',
+  mail_host: 'smtp.fixture.test',
+  mail_port: 587,
+  mail_username: 'alerts@fixture.test',
+  mail_encryption: 'tls',
+  mail_from_address: 'alerts@fixture.test',
+  mail_from_name: 'SINOA Fixture',
+  mail_to: 'operator@fixture.test',
+  password_configured: true
+};
+
+const CONFIG_SYSTEM_INFO = {
+  data: {
+    php_version: '8.3.0',
+    laravel_version: '12.0.0',
+    environment: 'testing',
+    db_driver: 'mysql'
+  }
+};
+
+const ROLES = [
+  { id: 1, code: 'user', name: 'User', level: 1, permissions: USERS.user.permissions },
+  { id: 2, code: 'admin', name: 'Administrator', level: 2, permissions: USERS.admin.permissions }
+];
+
 // Mirrors back/app/Http/Controllers/Api/DashboardController.php::publicDevices()
 // device.sensors[] is what SensorMonitorBoard.vue reads (availableSensors/firstSelectableSensor).
 function deviceSensor(deviceIndex, sensorIndex, mode) {
@@ -171,6 +218,9 @@ export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
       // auth store reads response.data.access_token before it fetches /auth/me.
       return json(route, { access_token: 'astra-user-token', user: USERS.user });
     }
+    if (p === '/auth/logout' && method === 'POST') {
+      return json(route, { message: 'Sesión API cerrada correctamente.' });
+    }
     // Shape mirrors back/app/Http/Controllers/Api/DashboardController.php::dashboardPayload()
     // (flat total_devices/active_devices/total_sensors/active_alerts/unresolved_alerts, not
     // {devices,sensors,alerts} counts) — MetricsCards.vue/DashboardView.vue read these exact keys.
@@ -218,7 +268,27 @@ export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
     if (p === '/dashboard/preferences') {
       return json(route, { data: { monitors: sensors.slice(0, 3).map((s) => s.id), poll_interval: 2000 } });
     }
+    if (p === '/config/runtime') return json(route, CONFIG_RUNTIME);
+    if (p === '/config/general') return json(route, CONFIG_GENERAL);
+    if (p === '/config/alerts') return json(route, CONFIG_ALERTS);
+    if (p === '/config/email') return json(route, CONFIG_EMAIL);
+    if (p === '/config/system-info') return json(route, CONFIG_SYSTEM_INFO);
+    if (p === '/roles') return json(route, { data: ROLES });
+    if (p === '/profile') {
+      const user = USERS[role] || USERS.user;
+      return json(route, {
+        ...user,
+        department: 'Laboratorio de pruebas',
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z'
+      });
+    }
     if (p === '/devices') return json(route, { data: devices });
+    if (/^\/devices\/\d+\/sensor-list$/.test(p)) {
+      const deviceId = Number(p.split('/')[2]);
+      const match = devices.find((d) => d.id === deviceId);
+      return json(route, { data: match ? match.sensors : [] });
+    }
     if (/^\/devices\/\d+\/sensors$/.test(p)) {
       const deviceId = Number(p.split('/')[2]);
       const match = devices.find((d) => d.id === deviceId);
@@ -267,6 +337,8 @@ export async function mockApi(page, { role = 'guest', mode = 'normal' } = {}) {
       return json(route, { data: [] });
     }
 
-    return json(route, { data: [] });
+    // A new matrix route must declare its API fixture explicitly. Returning a generic
+    // successful empty response masks router/harness drift as a healthy mock run.
+    return json(route, { message: `Unmocked API fixture: ${method} ${p}` }, 501);
   });
 }
