@@ -82,6 +82,9 @@ services:
       REDIS_CLIENT: phpredis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Override back/.env (often stale: single file, debug). daily + info so iot:logs:archive can rotate.
+      LOG_STACK: ${LOG_STACK:-daily}
+      LOG_LEVEL: ${LARAVEL_LOG_LEVEL:-info}
       CACHE_STORE: ${CACHE_STORE:-database}
       SESSION_DRIVER: ${SESSION_DRIVER:-database}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
@@ -145,6 +148,9 @@ services:
       REDIS_CLIENT: phpredis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Override back/.env (often stale: single file, debug). daily + info so iot:logs:archive can rotate.
+      LOG_STACK: ${LOG_STACK:-daily}
+      LOG_LEVEL: ${LARAVEL_LOG_LEVEL:-info}
       BROADCAST_CONNECTION: reverb
       REVERB_APP_ID: ${REVERB_APP_ID:-iotlocal}
       REVERB_APP_KEY: ${REVERB_APP_KEY:-iotlocalkey}
@@ -222,6 +228,9 @@ services:
       REDIS_CLIENT: phpredis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Override back/.env (often stale: single file, debug). daily + info so iot:logs:archive can rotate.
+      LOG_STACK: ${LOG_STACK:-daily}
+      LOG_LEVEL: ${LARAVEL_LOG_LEVEL:-info}
       CACHE_STORE: ${CACHE_STORE:-database}
       SESSION_DRIVER: ${SESSION_DRIVER:-database}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
@@ -276,6 +285,9 @@ services:
       REDIS_CLIENT: phpredis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Override back/.env (often stale: single file, debug). daily + info so iot:logs:archive can rotate.
+      LOG_STACK: ${LOG_STACK:-daily}
+      LOG_LEVEL: ${LARAVEL_LOG_LEVEL:-info}
       CACHE_STORE: ${CACHE_STORE:-database}
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
       INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
