@@ -1,5 +1,13 @@
 # HANDOFF — Nodo ESP32 DO (iot-platform-v2)
 
+> **Actualizado 2026-10-17 (autopilot nocturno terminado).** Leer primero
+> `docs/superpowers/plans/autopilot-evidence/REPORTE-FINAL.md` y el **paso 0** de `lab_esp32/README.md`.
+> Rama `autopilot/lab-readiness-2026-10-17` (local, sin push). E2E simulado 9/9 PASS.
+
+---
+Historial previo:
+
+
 Fecha: 2026-10-16. Sesión previa: Opus 4.8.
 
 ## Por qué el handoff
