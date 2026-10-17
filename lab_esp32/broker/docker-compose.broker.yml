@@ -1,0 +1,21 @@
+# Broker MQTT independiente del stack principal.
+# Se corre en la máquina que haga de broker en el lab (no es la de este repo).
+#
+#   docker compose -f docker-compose.broker.yml up -d
+#
+# Expone 1883 (MQTT).
+services:
+  broker:
+    image: eclipse-mosquitto:2
+    container_name: lab-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
