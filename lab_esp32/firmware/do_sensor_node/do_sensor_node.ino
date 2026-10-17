@@ -28,6 +28,19 @@
 #include <time.h>
 
 #include "config.h"
+#include "ring_buffer.h"
+
+// ---------------------------------------------------------------------
+// Lectura pendiente: valor, indice y hora quedan fijados al medir.
+// epoch == 0 -> sin hora real (se publica sin "timestamp").
+// ---------------------------------------------------------------------
+struct Reading {
+  float    value;
+  uint32_t index;
+  time_t   epoch;
+};
+
+RingBuffer<Reading, OFFLINE_BUFFER_SIZE> offlineBuf;
 
 WiFiClient    netClient;
 PubSubClient  mqtt(netClient);
@@ -61,14 +74,13 @@ void connectWifi() {
     Serial.printf("\n[WiFi] OK  IP=%s  RSSI=%d dBm\n",
                   WiFi.localIP().toString().c_str(), WiFi.RSSI());
   } else {
-    Serial.println("\n[WiFi] FALLO (se reintenta en loop)");
+    Serial.println("\n[WiFi] FALLO (se reintenta en loop, sin bloquear)");
   }
 }
 
 // ---------------------------------------------------------------------
-// Hora UTC vía NTP -> timestamp ISO-8601 con 'Z'
-// El backend acepta payload.timestamp como reading_time.
-// Si no hay NTP, igual publicamos y el ingestion_service pone received_at.
+// Hora UTC vía NTP. configTime deja el cliente SNTP corriendo: si no hubo
+// hora al arrancar, se sincroniza sola cuando haya red.
 // ---------------------------------------------------------------------
 void syncTime() {
   configTime(0, 0, "pool.ntp.org", "time.google.com");  // UTC
@@ -76,45 +88,46 @@ void syncTime() {
   if (getLocalTime(&t, 8000)) {
     Serial.println("[NTP] Hora sincronizada (UTC).");
   } else {
-    Serial.println("[NTP] Sin hora; se omite timestamp en el payload.");
+    Serial.println("[NTP] Sin hora todavia; lecturas sin hora real no se encolan.");
   }
 }
 
-// Devuelve true si logró formatear la hora actual como ISO-8601 UTC.
-bool nowIso8601(char *buf, size_t len) {
-  struct tm t;
-  if (!getLocalTime(&t, 0)) return false;
-  // 2026-10-17T09:00:00Z
-  strftime(buf, len, "%Y-%m-%dT%H:%M:%SZ", &t);
-  return true;
+// Hora real = epoch posterior a 2023 (sin NTP el reloj arranca en 1970).
+time_t validEpochNow() {
+  time_t t = time(nullptr);
+  return t > 1700000000 ? t : 0;
 }
 
 // ---------------------------------------------------------------------
-// MQTT
+// MQTT: un intento por llamada, sin bucles. loop() reintenta cada MQTT_RETRY_MS.
 // ---------------------------------------------------------------------
-void connectMqtt() {
-  mqtt.setServer(MQTT_HOST, MQTT_PORT);
-  mqtt.setBufferSize(512);  // el JSON ronda ~400 bytes; el default (256) no alcanza
+unsigned long lastMqttTry = 0;
+unsigned long lastWifiTry = 0;
 
-  while (!mqtt.connected()) {
-    connectWifi();
-    String clientId = String("esp32-") + NODE_ID;
-    Serial.printf("[MQTT] Conectando a %s:%d ...", MQTT_HOST, MQTT_PORT);
+void tryMqtt() {
+  lastMqttTry = millis();
+  String clientId = String("esp32-") + NODE_ID;
+  Serial.printf("[MQTT] Conectando a %s:%d ...", MQTT_HOST, MQTT_PORT);
+  bool ok = strlen(MQTT_USERNAME) > 0
+              ? mqtt.connect(clientId.c_str(), MQTT_USERNAME, MQTT_PASSWORD)
+              : mqtt.connect(clientId.c_str());
+  if (ok) Serial.println(" OK");
+  else Serial.printf(" FALLO rc=%d. Reintento en %lus\n", mqtt.state(), MQTT_RETRY_MS / 1000);
+}
 
-    bool ok;
-    if (strlen(MQTT_USERNAME) > 0) {
-      ok = mqtt.connect(clientId.c_str(), MQTT_USERNAME, MQTT_PASSWORD);
-    } else {
-      ok = mqtt.connect(clientId.c_str());
+// Llamar desde loop(): reconecta WiFi y MQTT sin bloquear la cadencia de medicion.
+void maintainConnections() {
+  unsigned long now = millis();
+  if (WiFi.status() != WL_CONNECTED) {
+    if (now - lastWifiTry >= WIFI_RETRY_MS) {
+      lastWifiTry = now;
+      Serial.println("[WiFi] Reintentando (no bloqueante)");
+      WiFi.disconnect();
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     }
-
-    if (ok) {
-      Serial.println(" OK");
-    } else {
-      Serial.printf(" FALLO rc=%d. Reintento en 3s\n", mqtt.state());
-      delay(3000);
-    }
+    return;
   }
+  if (!mqtt.connected() && now - lastMqttTry >= MQTT_RETRY_MS) tryMqtt();
 }
 
 // ---------------------------------------------------------------------
@@ -135,15 +148,10 @@ float readDissolvedOxygen() {
   return mgL;
 }
 
-// ---------------------------------------------------------------------
-// Construye el JSON y publica
-// ---------------------------------------------------------------------
-void publishReading() {
-  float doValue = readDissolvedOxygen();
-  readingIndex++;
-
-  // Documento JSON (ArduinoJson v6)
-  StaticJsonDocument<512> doc;
+// Construye el JSON y publica. Devuelve el resultado de mqtt.publish.
+bool publishReading(const Reading &r) {
+  // Documento JSON (ArduinoJson v6 API; compatible con v7)
+  StaticJsonDocument<640> doc;
 
   JsonObject device = doc.createNestedObject("device");
   device["node_id"]          = NODE_ID;
@@ -151,21 +159,25 @@ void publishReading() {
   device["location"]         = NODE_LOCATION;
 
   char ts[25];
-  if (nowIso8601(ts, sizeof(ts))) {
-    doc["timestamp"] = ts;   // opcional; si no hay NTP se omite
+  if (r.epoch) {
+    struct tm t;
+    gmtime_r(&r.epoch, &t);
+    strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &t);  // 2026-10-17T09:00:00Z
+    doc["timestamp"] = ts;   // opcional; sin NTP se omite
   }
 
   JsonObject session = doc.createNestedObject("session");
   session["boot_count"]    = bootCount;     // parte de la identidad anti-duplicado
-  session["reading_index"] = readingIndex;  // "
-  session["uptime_ms"]     = millis();
+  session["reading_index"] = r.index;       // "
+  session["uptime_ms"]     = millis();      // al enviar (no al medir)
+  session["dropped"]       = offlineBuf.dropped();  // descartadas por buffer lleno desde el arranque
 
   JsonObject network = doc.createNestedObject("network");
   network["wifi_rssi_dbm"] = WiFi.RSSI();
 
   JsonObject sensors = doc.createNestedObject("sensors");
   JsonObject s = sensors.createNestedObject(SENSOR_KEY);  // "dissolved_oxygen"
-  s["value"]        = roundf(doValue * 100) / 100.0f;     // 2 decimales
+  s["value"]        = roundf(r.value * 100) / 100.0f;     // 2 decimales
   s["unit"]         = SENSOR_UNIT;
   s["sensor_model"] = SENSOR_MODEL;
   s["status"]       = "ok";
@@ -173,13 +185,33 @@ void publishReading() {
   JsonObject qc = doc.createNestedObject("qc");
   qc["valid"] = true;   // si pones false, el backend archiva pero NO crea lectura
 
-  char buf[512];
+  char buf[640];
   size_t n = serializeJson(doc, buf, sizeof(buf));
 
   // PubSubClient solo publica con QoS 0; el ingestion_service se suscribe con QoS 1 igual.
   bool ok = mqtt.publish(topic, (const uint8_t *)buf, n, false);  // retain=false
-  Serial.printf("[PUB] %s -> %s  (%u bytes) %s\n",
-                topic, buf, (unsigned)n, ok ? "OK" : "FALLO");
+  Serial.printf("[PUB] idx=%u %s (%u bytes) %s\n", (unsigned)r.index, topic, (unsigned)n, ok ? "OK" : "FALLO");
+  return ok;
+}
+
+// Una medicion = un indice. Con hora real siempre pasa por el buffer (flushBuffer la
+// publica enseguida si hay MQTT); sin hora real solo se publica en directo.
+void takeMeasurement() {
+  Reading r = { readDissolvedOxygen(), ++readingIndex, validEpochNow() };
+  if (r.epoch) {
+    offlineBuf.push(r);
+  } else if (!(mqtt.connected() && publishReading(r))) {
+    Serial.printf("[BUF] idx=%u sin hora NTP y sin MQTT: lectura omitida\n", (unsigned)r.index);
+  }
+}
+
+// Vacia el buffer oldest-first, acotado por iteracion. Solo saca la lectura si publish tuvo exito.
+void flushBuffer() {
+  for (int i = 0; i < OFFLINE_FLUSH_PER_LOOP && mqtt.connected() && !offlineBuf.empty(); i++) {
+    if (!publishReading(offlineBuf.front())) break;  // se reintenta en la proxima iteracion
+    offlineBuf.pop();
+    mqtt.loop();
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -200,16 +232,19 @@ void setup() {
 
   connectWifi();
   syncTime();
-  connectMqtt();
+  mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  mqtt.setBufferSize(640);  // el JSON ronda ~420 bytes; el default (256) no alcanza
+  tryMqtt();
 }
 
 void loop() {
-  if (!mqtt.connected()) connectMqtt();
+  maintainConnections();
   mqtt.loop();
 
   unsigned long now = millis();
   if (now - lastPublish >= PUBLISH_PERIOD_MS) {
     lastPublish = now;
-    publishReading();
+    takeMeasurement();
   }
+  flushBuffer();
 }

@@ -47,3 +47,11 @@
 
 // ---------- Cadencia ----------
 #define PUBLISH_PERIOD_MS 5000UL  // cada cuánto publica una lectura
+
+// ---------- Resiliencia offline ----------
+// Lecturas guardadas en RAM cuando WiFi/MQTT estan caidos (360 = 30 min a 5 s, 6 h a 60 s).
+// ~16 bytes por lectura. Si se llena se descarta la mas vieja (session.dropped).
+#define OFFLINE_BUFFER_SIZE     360
+#define OFFLINE_FLUSH_PER_LOOP  10      // lecturas vaciadas por iteracion del loop
+#define WIFI_RETRY_MS           30000UL // reintento de WiFi (no bloqueante)
+#define MQTT_RETRY_MS           5000UL  // reintento de MQTT (no bloqueante)

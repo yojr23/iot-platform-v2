@@ -92,6 +92,12 @@ docker compose logs -f ingestion raw-consumer
    ```
 4. Monitor serie a 115200 baud: debe mostrar `[WiFi] OK`, `[MQTT] OK` y `[PUB] ... OK`.
 
+   **Búfer offline:** si WiFi/MQTT caen, el firmware guarda hasta `OFFLINE_BUFFER_SIZE`
+   lecturas (config.h, default 360 = 30 min a 5 s) con su índice y hora NTP, y las
+   envía en orden al reconectar. Si se llena descarta las más viejas y lo reporta en
+   `session.dropped`. Lecturas sin hora NTP válida no se encolan. Es RAM: un reinicio o
+   corte de energía pierde lo pendiente.
+
 ### 5. Preflight (antes de verificar)
 ```bash
 lab_esp32/preflight.sh          # PASS/FAIL por chequeo; exit != 0 si falla algo
