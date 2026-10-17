@@ -34,6 +34,21 @@ lab_esp32/
 
 ## PASOS PARA MAÑANA (en orden)
 
+### 0. Antes de salir / al llegar (5 min): arreglos de configuración encontrados en la prueba e2e
+1. `git pull` de la rama con este trabajo en el PC que hace de servidor.
+2. En el `.env` de la **raíz** (no está en git):
+   - `VITE_PUSHER_PORT=8080` (hoy dice 6001; Reverb escucha en 8080 → sin esto no hay tiempo real).
+   - `VITE_PUSHER_APP_KEY=iotlocalkey` (hoy dice `local-key`; Reverb responde 4001 "Application does not exist"),
+     o borrar ambas líneas para usar los defaults del compose.
+   - `MQTT_HOST=<IP del broker>` (o `host.docker.internal` si el broker corre en el mismo PC),
+     `MQTT_USERNAME=ingestion`, `MQTT_PASSWORD=<la que imprime make-users.sh>`.
+3. Liberar puertos: contenedores viejos `iotplatformv2-cert-*` ocupan 8000/8080
+   (`docker ps -a | grep cert` → `docker stop`/`docker rm` esos). Sin esto `back`/`reverb` no arrancan.
+4. Disco: `iot:capacity:check` marcó esta Mac al 97 % (≈6–8 GB libres). Si esta Mac es el servidor,
+   liberar espacio antes de dejarla corriendo (p. ej. `docker builder prune` = ~3 GB de caché).
+5. Para ver el gráfico **público** del sensor DO: activar "monitoreo público" del sensor en el portal
+   (el seeder lo deja apagado a propósito: exponerlo es decisión tuya). Logueado se ve igual.
+
 ### 1. Levantar el broker MQTT (máquina que haga de broker)
 ```bash
 cd lab_esp32/broker
@@ -50,11 +65,10 @@ siguiente paso, listener 8883 con certificados. Para otro puerto en el host: `MQ
 Anota la **IP LAN** de esa máquina (`ipconfig` / `ip a`). El ESP32 la usa como `MQTT_HOST`.
 
 ### 2. Registrar el dispositivo y el sensor en el backend
-Con el stack `back` corriendo (o dentro del contenedor):
 ```bash
-cd back
-php artisan migrate --force          # si aún no está migrado
-php artisan db:seed --class="Database\Seeders\LabDoNodeSeeder"
+docker compose up -d                                   # db, redis, back, reverb, front
+docker compose exec back php artisan migrate --force   # crea también las tablas ARCHIVE
+docker compose exec back php artisan db:seed --class="Database\Seeders\LabDoNodeSeeder"
 ```
 Esto crea: Lab + Device `serial_number=lab_postgrado_nodo_01` + Sensor DO +
 mapping `ingestion_service / dissolved_oxygen`. Es idempotente (re-ejecutable).
@@ -65,12 +79,14 @@ En el `.env` del repo (raíz) / variables del servicio `ingestion`:
 MQTT_HOST=<IP_DEL_BROKER>
 MQTT_PORT=1883
 MQTT_TOPIC=iot/+/readings
+MQTT_USERNAME=ingestion
+MQTT_PASSWORD=<clave de make-users.sh>
 INGESTION_MODE=mqtt
 INGESTION_SERVICE_TOKEN=<token-compartido-con-el-backend>
 BACKEND_INGESTION_TOKEN=<mismo-token>
 DEBEZIUM_DB_PASSWORD=<cualquier-password-para-cdc>
 ```
-Levantar workers (incluye ingestion, raw-consumer, cdc, reverb):
+Levantar workers (ingestion, debezium, outbox-cdc-consumer, raw-consumer, domain-event-consumer, scheduler):
 ```bash
 docker compose --profile workers up -d
 docker compose logs -f ingestion raw-consumer
