@@ -43,8 +43,11 @@ trait UsesRawRedisCommands
             // Redis XADD accepts one trimming strategy per command. MINID takes precedence
             // when age retention is enabled; combining it with MAXLEN is invalid grammar.
             $args = ['XADD', $stream, 'MINID', '~', (string) max(0, $cutoffMs).'-0'];
-        } else {
+        } elseif ($maxLength > 0) {
             $args = ['XADD', $stream, 'MAXLEN', '~', (string) $maxLength];
+        } else {
+            // maxLength <= 0: no blind trim on write; iot:cdc:trim trims consumer-safely instead.
+            $args = ['XADD', $stream];
         }
 
         $args[] = '*';

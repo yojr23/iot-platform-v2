@@ -153,4 +153,32 @@ class EventPublisherXaddShapeTest extends TestCase
         $this->assertMatchesRegularExpression('/^\d+-0$/', $captured[4]);
         $this->assertNotContains('MAXLEN', $captured);
     }
+
+    public function test_raw_event_publisher_skips_write_time_trim_when_maxlen_is_zero(): void
+    {
+        // Compose default: streams are trimmed consumer-safely by iot:cdc:trim, never blindly on XADD.
+        config(['app.ingestion_raw_events_maxlen' => 0, 'app.ingestion_raw_events_min_age_ms' => 0]);
+        $captured = null;
+
+        $client = Mockery::mock(\Redis::class);
+        $client->shouldReceive('rawCommand')
+            ->once()
+            ->andReturnUsing(function (...$args) use (&$captured) {
+                $captured = $args;
+
+                return '1-0';
+            });
+
+        $connection = Mockery::mock(\Illuminate\Redis\Connections\Connection::class);
+        $connection->shouldReceive('client')->andReturn($client);
+        Redis::shouldReceive('connection')->with('default')->andReturn($connection);
+
+        $event = new RawSensorEvent(['source' => 'test', 'source_event_id' => 'raw-notrim-test', 'status' => 'received']);
+        $event->id = 8;
+
+        $this->assertTrue((new RawSensorEventPublisher())->publish($event));
+        $this->assertSame(['XADD', $captured[1], '*'], array_slice($captured, 0, 3));
+        $this->assertNotContains('MAXLEN', $captured);
+        $this->assertNotContains('MINID', $captured);
+    }
 }
