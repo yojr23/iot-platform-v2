@@ -8,8 +8,8 @@ import requests
 class BackendClientError(RuntimeError):
     """Raised when backend ingestion endpoint cannot be reached or rejects payload.
 
-    retryable=True (default): transient (network, timeout, 5xx, 408, 429), retry forever.
-    retryable=False: permanent (other 4xx, empty token), dead-letter.
+    retryable=True (default): transient (network, timeout, 5xx, 408, 429, and operator-fixable 401/403/404/empty token), retry
+    forever so a rotated token or mid-deploy never dead-letters data. retryable=False: other 4xx.
     """
 
     def __init__(self, message: str = "", *, retryable: bool = True) -> None:
@@ -33,7 +33,7 @@ class BackendClient:
 
     def send_raw_event(self, event: dict[str, Any]) -> dict[str, Any]:
         if not self._ingestion_token:
-            raise BackendClientError("BACKEND_INGESTION_TOKEN is empty.", retryable=False)
+            raise BackendClientError("BACKEND_INGESTION_TOKEN is empty.")
 
         url = f"{self._base_url}/api/ingestion/events"
         headers = {
@@ -56,7 +56,7 @@ class BackendClient:
             code = response.status_code
             raise BackendClientError(
                 f"Backend rejected raw event with status {code}: {response.text[:300]}",
-                retryable=code >= 500 or code in (408, 429),
+                retryable=code >= 500 or code in (401, 403, 404, 408, 429),
             )
 
         try:

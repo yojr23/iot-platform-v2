@@ -26,11 +26,11 @@ def _send(status):
 
 
 def test_error_classification():
-    assert [_send(c) for c in (500, 503, 408, 429, 400, 422, 401)] == [True] * 4 + [False] * 3
+    assert [_send(c) for c in (500, 503, 408, 429, 401, 403, 404, 400, 422)] == [True] * 7 + [False] * 2
     try:
         BackendClient("http://b", "").send_raw_event({})
     except BackendClientError as e:
-        assert e.retryable is False
+        assert e.retryable is True
 
 
 def test_500_consecutive_503_never_dead_letter(tmp_path):
