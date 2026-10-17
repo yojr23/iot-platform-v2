@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def retry_delay(*, attempt: int, base: float, maximum: float) -> float:
-    return min(maximum, base * (2 ** max(0, attempt - 1)))
+    return min(maximum, base * (2 ** min(32, max(0, attempt - 1))))
 
 
 class DeliveryWorker:
@@ -51,10 +51,11 @@ class DeliveryWorker:
                     str(exc),
                     self._clock() + delay,
                     claim_token=item.claim_token,
+                    retryable=exc.retryable,
                 )
                 if dead:
                     logger.error(
-                        "Event dead-lettered after %s attempts source_event_id=%s error=%s",
+                        "Event dead-lettered (permanent error or max attempts) after %s attempts source_event_id=%s error=%s",
                         item.attempts + 1,
                         item.source_event_id,
                         exc,

@@ -249,8 +249,13 @@ class DurableEventSpool:
         next_attempt_at: float,
         *,
         claim_token: str | None = None,
+        retryable: bool | None = None,
     ) -> bool:
-        """Mark event as failed. Returns True if event is now dead-lettered (exceeded max attempts)."""
+        """Mark event as failed. Returns True if event is now dead-lettered.
+
+        retryable=True never dead-letters (transient outage); False dead-letters at once
+        (permanent error); None keeps the legacy max_attempts rule.
+        """
         with self._lock:
             where = "source_event_id = ?"
             params: list = [source_event_id]
@@ -275,7 +280,9 @@ class DurableEventSpool:
                 (source_event_id,),
             ).fetchone()
 
-            if row is not None and row[0] >= self._max_attempts:
+            if row is not None and (
+                retryable is False or (retryable is None and row[0] >= self._max_attempts)
+            ):
                 self._dead_letter(source_event_id)
                 self._connection.commit()
                 return True
@@ -300,6 +307,22 @@ class DurableEventSpool:
             "DELETE FROM pending_events WHERE source_event_id = ?",
             (source_event_id,),
         )
+
+    def replay_dead_letters(self, source_event_id: str | None = None) -> int:
+        """Move dead letters back to pending (all, or one id). Idempotent via source_event_id."""
+        where, params = ("WHERE source_event_id = ?", (source_event_id,)) if source_event_id else ("", ())
+        with self._lock:
+            ids = [r[0] for r in self._connection.execute(
+                f"SELECT source_event_id FROM dead_letters {where}", params).fetchall()]
+            for i in ids:
+                self._connection.execute(
+                    "INSERT OR IGNORE INTO pending_events (source_event_id, event_json, created_at) "
+                    "SELECT source_event_id, event_json, created_at FROM dead_letters WHERE source_event_id = ?",
+                    (i,),
+                )
+                self._connection.execute("DELETE FROM dead_letters WHERE source_event_id = ?", (i,))
+            self._connection.commit()
+        return len(ids)
 
     def dead_letters(self) -> list[dict]:
         """Return all dead-lettered events for inspection."""

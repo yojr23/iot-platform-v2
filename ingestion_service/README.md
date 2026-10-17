@@ -37,8 +37,8 @@ Si Mosquitto no esta listo en el entorno, el modo puede fallar al conectar.
 - `MQTT_HOST`
 - `MQTT_PORT`
 - `MQTT_TOPIC`
-- `MQTT_USERNAME`
-- `MQTT_PASSWORD`
+- `MQTT_USERNAME` (usar `ingestion`; el broker del lab no permite anónimos)
+- `MQTT_PASSWORD` (la imprime `lab_esp32/broker/make-users.sh`)
 - `MQTT_CLIENT_ID`
 - `MQTT_QOS`
 - `BACKEND_BASE_URL`
@@ -106,3 +106,12 @@ Los estados de `raw_sensor_events.status` son:
    - `received` al aceptar y almacenar el evento, pendiente de procesamiento.
    - `processed` con `processed_at` tras normalizar y guardar sus lecturas.
    - `failed` con detalle en `error` tras agotar los reintentos.
+
+## Entrega sin perdida
+
+- Errores transitorios del backend (red, timeout, 5xx, 408, 429) se reintentan para siempre con backoff
+  tope `INGESTION_RETRY_MAX_SECONDS`; no consumen `INGESTION_MAX_DELIVERY_ATTEMPTS`.
+- Errores permanentes (otros 4xx, token vacio) van a `dead_letters`.
+- Reenviar dead letters: `python -m app.replay_dead_letters --all` o `--id <source_event_id>`
+  (en Docker: `docker compose exec ingestion python -m app.replay_dead_letters --all`).
+- Mensajes cuyo node del topic `iot/<node>/readings` difiere de `payload.device.node_id` van a cuarentena.

@@ -1,6 +1,7 @@
 # Broker MQTT independiente del stack principal.
 # Se corre en la máquina que haga de broker en el lab (no es la de este repo).
 #
+#   ./make-users.sh lab_postgrado_nodo_01 ingestion   (crea usuarios; imprime claves una vez)
 #   docker compose -f docker-compose.broker.yml up -d
 #
 # Expone 1883 (MQTT).
@@ -10,9 +11,10 @@ services:
     container_name: lab-mosquitto
     restart: unless-stopped
     ports:
-      - "1883:1883"
+      - "${MQTT_HOST_PORT:-1883}:1883"
     volumes:
-      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      # Directorio completo: mosquitto.conf, acl y passwd (passwd lo crea make-users.sh, fuera de git).
+      - ./mosquitto/config:/mosquitto/config
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 

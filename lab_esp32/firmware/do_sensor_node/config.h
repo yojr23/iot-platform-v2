@@ -13,8 +13,10 @@
 // Ej: "192.168.1.50". NO uses "localhost": el ESP32 no es el broker.
 #define MQTT_HOST        "192.168.1.50"
 #define MQTT_PORT        1883
-#define MQTT_USERNAME    ""          // vacío si el broker permite anónimo
-#define MQTT_PASSWORD    ""
+// El broker NO permite anónimos: usuario = NODE_ID, clave generada con
+// lab_esp32/broker/make-users.sh <node_id> (se imprime una sola vez).
+#define MQTT_USERNAME    NODE_ID
+#define MQTT_PASSWORD    "CAMBIAR_POR_CLAVE_DE_make-users.sh"
 
 // ---------- Identidad del nodo ----------
 // node_id DEBE coincidir con el serial_number del Device en el backend.

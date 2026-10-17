@@ -72,6 +72,17 @@ class MQTTIngestionClient:
         try:
             payload = json.loads(msg.payload.decode("utf-8"))
             payload = validate_payload(payload)
+            parts = topic.split("/")
+            topic_node = parts[1] if len(parts) == 3 and parts[0] == "iot" else None
+            payload_node = (payload.get("device") or {}).get("node_id")
+            if topic_node is not None and payload_node is not None and topic_node != payload_node:
+                logger.error("Topic node %s != payload node %s on topic=%s", topic_node, payload_node, topic)
+                self._spool.quarantine(
+                    topic=topic,
+                    reason=f"node_mismatch: topic={topic_node} payload={payload_node}",
+                    raw_payload=msg.payload,
+                )
+                return
             source_event_id = derive_source_event_id(payload, topic=topic)
             raw_event = build_raw_event(
                 payload,

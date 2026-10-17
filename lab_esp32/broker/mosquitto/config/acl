@@ -1,0 +1,6 @@
+# Cada nodo (usuario == node_id) solo publica en su propio topic.
+pattern write iot/%u/readings
+
+# El ingestion_service solo lee lecturas.
+user ingestion
+topic read iot/+/readings

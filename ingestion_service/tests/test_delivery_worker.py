@@ -69,25 +69,14 @@ def test_reopened_spool_is_delivered_by_worker(tmp_path):
     reopened.close()
 
 
-def test_worker_dead_letters_after_exhausting_retries(tmp_path):
-    now = [100.0]
-    spool = DurableEventSpool(
-        tmp_path / "spool.sqlite3", max_attempts=3, clock=lambda: now[0]
-    )
+def test_worker_dead_letters_permanent_error_immediately(tmp_path):
+    spool = DurableEventSpool(tmp_path / "spool.sqlite3", max_attempts=3)
     spool.enqueue(event())
-    backend = RecordingBackend(BackendClientError("persistent failure"))
+    backend = RecordingBackend(BackendClientError("rejected", retryable=False))
 
-    worker = DeliveryWorker(spool, backend, retry_base_seconds=1, retry_max_seconds=60, batch_size=10)
+    DeliveryWorker(spool, backend, retry_base_seconds=1, retry_max_seconds=60, batch_size=10).run_once()
 
-    # Advance through each exponential backoff window to exhaust retries.
-    for _ in range(3):
-        worker.run_once()
-        now[0] += 60
-
-    # Event should be dead-lettered, not in pending
     assert spool.claim_due(limit=10) == []
     dead = spool.dead_letters()
-    assert len(dead) == 1
-    assert dead[0]["source_event_id"] == "event-1"
-    assert dead[0]["attempts"] == 3
+    assert [d["source_event_id"] for d in dead] == ["event-1"]
     spool.close()

@@ -37,9 +37,16 @@ lab_esp32/
 ### 1. Levantar el broker MQTT (máquina que haga de broker)
 ```bash
 cd lab_esp32/broker
+# El broker no permite anónimos. Crea un usuario por nodo (= node_id) y el de ingesta;
+# las claves se imprimen UNA vez: guárdalas (nodo -> config.h, ingestion -> MQTT_PASSWORD).
+./make-users.sh lab_postgrado_nodo_01 ingestion
 docker compose -f docker-compose.broker.yml up -d
 docker compose -f docker-compose.broker.yml logs -f broker   # ver que arranca
 ```
+Cada nodo solo puede publicar en `iot/<su node_id>/readings`; `ingestion` solo lee `iot/+/readings`
+(ver `broker/mosquitto/config/acl`). El ingestion_service necesita `MQTT_USERNAME=ingestion` y
+`MQTT_PASSWORD=<clave>`. `passwd` queda fuera de git. TLS no está activo (1883 plano en la LAN):
+siguiente paso, listener 8883 con certificados. Para otro puerto en el host: `MQTT_HOST_PORT=...`.
 Anota la **IP LAN** de esa máquina (`ipconfig` / `ip a`). El ESP32 la usa como `MQTT_HOST`.
 
 ### 2. Registrar el dispositivo y el sensor en el backend
