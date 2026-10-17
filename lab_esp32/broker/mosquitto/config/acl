@@ -1,5 +1,7 @@
 # Cada nodo (usuario == node_id) solo publica en su propio topic.
 pattern write iot/%u/readings
+# Ping de lab_esp32/preflight.sh (no es un topic de lecturas).
+pattern write iot/%u/ping
 
 # El ingestion_service solo lee lecturas.
 user ingestion

@@ -36,7 +36,8 @@ MQ_HOST=${PREFLIGHT_MQTT_HOST:-$(envval MQTT_HOST)}; MQ_PORT=$(envval MQTT_PORT)
 MQ_AUTH=(); [ -n "$(envval MQTT_USERNAME)" ] && MQ_AUTH=(-u "$(envval MQTT_USERNAME)" -P "$(envval MQTT_PASSWORD)")
 mqpub(){ mosquitto_pub -h "$MQ_HOST" -p "$MQ_PORT" ${MQ_AUTH[@]+"${MQ_AUTH[@]}"} "$@"; }
 if command -v mosquitto_pub >/dev/null 2>&1; then
-  check "broker alcanzable (pub a iot/preflight/ping)" mqpub -t iot/preflight/ping -m ping -q 1
+  MQ_PING_TOPIC="iot/$(envval MQTT_USERNAME || true)/ping"; [ "$MQ_PING_TOPIC" = "iot//ping" ] && MQ_PING_TOPIC=iot/preflight/ping
+  check "broker alcanzable y credenciales aceptadas (pub a $MQ_PING_TOPIC)" mqpub -t "$MQ_PING_TOPIC" -m ping -q 1
 else
   bad "mosquitto_pub no instalado (brew/apt install mosquitto-clients)"
 fi
