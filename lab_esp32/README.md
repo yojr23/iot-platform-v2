@@ -23,7 +23,7 @@ ESP32  --MQTT-->  Mosquitto  -->  ingestion_service  -->  POST /api/ingestion/ev
 lab_esp32/
 ├── firmware/do_sensor_node/
 │   ├── do_sensor_node.ino   # sketch Arduino (WiFi + MQTT + DO + JSON)
-│   └── config.h             # AJUSTAR: WiFi, IP del broker, calibración DO
+│   └── config.h             # AJUSTAR: pin y calibración DO (secretos en lab_esp32/.env)
 ├── broker/
 │   ├── docker-compose.broker.yml        # Mosquitto standalone (otra máquina)
 │   └── mosquitto/config/mosquitto.conf  # config mínima (anónimo, QoS1)
@@ -53,7 +53,7 @@ lab_esp32/
 ```bash
 cd lab_esp32/broker
 # El broker no permite anónimos. Crea un usuario por nodo (= node_id) y el de ingesta;
-# las claves se imprimen UNA vez: guárdalas (nodo -> config.h, ingestion -> MQTT_PASSWORD).
+# las claves se imprimen UNA vez: guárdalas (nodo -> NODE_MQTT_PASSWORD de lab_esp32/.env, ingestion -> MQTT_PASSWORD del .env raíz).
 ./make-users.sh lab_postgrado_nodo_01 ingestion
 docker compose -f docker-compose.broker.yml up -d
 docker compose -f docker-compose.broker.yml logs -f broker   # ver que arranca
@@ -94,16 +94,16 @@ docker compose logs -f ingestion raw-consumer
 
 ### 4. Flashear el ESP32
 1. Arduino IDE → instalar soporte ESP32 y librerías **PubSubClient** y **ArduinoJson**.
-2. Editar `firmware/do_sensor_node/config.h`:
-   - `WIFI_SSID` / `WIFI_PASSWORD`
-   - `MQTT_HOST` = IP del broker (paso 1)
+2. Secretos: `cp .env.example .env` (en `lab_esp32/`, gitignored) y completar `WIFI_SSID`,
+   `WIFI_PASSWORD`, `MQTT_HOST` (IP del broker, paso 1) y `NODE_MQTT_PASSWORD`. No van en `config.h`.
+   En `firmware/do_sensor_node/config.h` solo:
    - `DO_ADC_PIN` = pin donde entra la señal del sensor
    - `DO_CAL_SLOPE` / `DO_CAL_OFFSET` = calibración real de tu sonda
-3. Abrir `do_sensor_node.ino`, seleccionar placa "ESP32 Dev Module", subir.
-   Sin IDE (arduino-cli ya instalado en esta Mac, librerías incluidas):
+3. Compilar y subir con `flash.sh` (genera `secrets.h` temporal desde `.env`; el IDE solo
+   compila si ese archivo existe):
    ```bash
    arduino-cli board list                      # ver puerto, ej. /dev/cu.usbserial-0001
-   arduino-cli compile --upload -p /dev/cu.usbserial-0001 --fqbn esp32:esp32:esp32 firmware/do_sensor_node
+   ./flash.sh /dev/cu.usbserial-0001
    arduino-cli monitor -p /dev/cu.usbserial-0001 -c baudrate=115200
    ```
 4. Monitor serie a 115200 baud: debe mostrar `[WiFi] OK`, `[MQTT] OK` y `[PUB] ... OK`.

@@ -62,7 +62,7 @@ cd "/Users/j.rinconc/Desktop/ing sistemas/Sistemas Unab /iot-platform-v2/lab_esp
 ./make-users.sh lab_postgrado_nodo_01 ingestion   # imprime las claves UNA vez: anotarlas
 docker compose -f docker-compose.broker.yml up -d
 ```
-La clave del nodo va a `config.h` y la de `ingestion` va a `MQTT_PASSWORD` del `.env` raíz.
+La clave del nodo va a `NODE_MQTT_PASSWORD` de `lab_esp32/.env` y la de `ingestion` va a `MQTT_PASSWORD` del `.env` raíz.
 
 ### 4.2 Plataforma
 ```bash
@@ -75,17 +75,17 @@ PREFLIGHT_MQTT_HOST=localhost MQTT_USERNAME=lab_postgrado_nodo_01 MQTT_PASSWORD=
 ```
 Todo tiene que dar PASS antes de tocar el ESP32. Con poca RAM en Docker (4 GB), levantar por etapas.
 
-### 4.3 Firmware (`lab_esp32/firmware/do_sensor_node/config.h`)
-- `WIFI_SSID "E-bio"`, `WIFI_PASSWORD "<clave>"`.
-- `MQTT_HOST "172.16.122.235"` (volver a confirmar con `ipconfig getifaddr en0`: puede cambiar por DHCP).
-- `MQTT_USERNAME NODE_ID`, `MQTT_PASSWORD "<clave_nodo>"`.
+### 4.3 Firmware
+- Secretos en `lab_esp32/.env` (gitignored; plantilla `.env.example`): `WIFI_SSID`, `WIFI_PASSWORD`,
+  `MQTT_HOST` (confirmar con `ipconfig getifaddr en0`), `NODE_MQTT_PASSWORD`.
+- En `lab_esp32/firmware/do_sensor_node/config.h`, sin secretos:
 - `DO_ADC_PIN 34` (ADC1; no usar pines ADC2 con WiFi). Calibración: `DO_CAL_SLOPE`, `DO_CAL_OFFSET`.
 - `PUBLISH_PERIOD_MS` en 5000 para la prueba; para producción, 60000 (decidirlo con el químico).
 
 Flashear (arduino-cli ya instalado, con el core esp32 3.3.8 y las librerías):
 ```bash
 arduino-cli board list
-arduino-cli compile --upload -p /dev/cu.usbserial-XXXX --fqbn esp32:esp32:esp32 lab_esp32/firmware/do_sensor_node
+lab_esp32/flash.sh /dev/cu.usbserial-XXXX   # genera secrets.h temporal desde lab_esp32/.env
 arduino-cli monitor -p /dev/cu.usbserial-XXXX -c baudrate=115200
 ```
 En el monitor serie tienen que aparecer `[WiFi] OK IP=172.16.122.x`, `[NTP] Hora sincronizada`, `[MQTT] ... OK` y `[PUB] idx=N ... OK`.
@@ -108,7 +108,7 @@ Después: `docker compose up -d`. El gráfico público necesita activar `public_
 |---|---|---|
 | ESP32 no conecta a `E-bio` | El ESP32 solo usa **2,4 GHz**, o la red es WPA2-Enterprise / tiene portal cautivo | Usar la banda de 2,4 GHz del router o un SSID WPA2-PSK; `WiFi.begin` no soporta Enterprise |
 | WiFi OK pero `[MQTT] FALLO rc=-2` | Firewall de la Mac, IP equivocada o el router aísla a los clientes (AP isolation) | `ping 172.16.122.235` desde otro equipo; desactivar el aislamiento de clientes en el router; revisar el firewall |
-| `rc=5` | Usuario o clave MQTT incorrectos | Revisar `config.h` y volver a correr `make-users.sh` |
+| `rc=5` | Usuario o clave MQTT incorrectos | Revisar `lab_esp32/.env` y volver a correr `make-users.sh` |
 | Publica OK pero no llega nada | Topic ≠ `iot/<NODE_ID>/readings` o `node_id` del payload distinto (cuarentena) | Logs de `ingestion` |
 | `no device found for node_id` | Faltó el seeder | Paso 4.2 |
 | `[NTP] Sin hora` | El router bloquea NTP | Las lecturas se publican sin `timestamp` (el backend usa la hora de llegada); sin hora real no se usa el búfer offline |

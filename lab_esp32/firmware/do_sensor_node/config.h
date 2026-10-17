@@ -1,22 +1,28 @@
 // =====================================================================
 // config.h  -  Ajusta TODO esto en el laboratorio.
-// Nada de este archivo es secreto del backend; son datos de red local.
+// Sin secretos: WIFI_SSID, WIFI_PASSWORD, MQTT_HOST y MQTT_PASSWORD vienen de
+// lab_esp32/.env via secrets.h, que genera lab_esp32/flash.sh (gitignored).
 // =====================================================================
 #pragma once
 
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#error "Falta secrets.h: compila con lab_esp32/flash.sh (lee lab_esp32/.env)"
+#endif
+
 // ---------- WiFi ----------
-#define WIFI_SSID        "CAMBIAR_SSID"
-#define WIFI_PASSWORD    "CAMBIAR_PASSWORD"
+// WIFI_SSID, WIFI_PASSWORD: en lab_esp32/.env
 
 // ---------- MQTT broker ----------
 // IP del equipo donde corre Mosquitto (mañana en el lab).
 // Ej: "192.168.1.50". NO uses "localhost": el ESP32 no es el broker.
-#define MQTT_HOST        "192.168.1.50"
+// MQTT_HOST: en lab_esp32/.env
 #define MQTT_PORT        1883
 // El broker NO permite anónimos: usuario = NODE_ID, clave generada con
 // lab_esp32/broker/make-users.sh <node_id> (se imprime una sola vez).
 #define MQTT_USERNAME    NODE_ID
-#define MQTT_PASSWORD    "CAMBIAR_POR_CLAVE_DE_make-users.sh"
+// MQTT_PASSWORD (clave del nodo): en lab_esp32/.env
 
 // ---------- Identidad del nodo ----------
 // node_id DEBE coincidir con el serial_number del Device en el backend.
