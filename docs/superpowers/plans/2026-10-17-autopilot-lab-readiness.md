@@ -89,11 +89,24 @@ Requisitos:
    de `dead_letters` a `pending_events`. Idempotente gracias a `source_event_id`.
 4. `mosquitto.conf`: `max_queued_messages 0` (sin límite; la persistencia la acota el
    disco), `autosave_interval 60`, `log_type error warning notice` en vez de `all`.
+5. Autenticación del broker (hallazgo de seguridad MEDIUM: broker anónimo = cualquiera en
+   la LAN inyecta lecturas): `allow_anonymous false`, `password_file` y `acl_file`. El
+   usuario de cada nodo solo puede escribir en `iot/<su node_id>/readings` (patrón
+   `pattern write iot/%u/readings` con usuario = node_id). El usuario `ingestion` solo
+   lee `iot/+/readings`. Script `lab_esp32/broker/make-users.sh <node_id>...` que genera
+   las contraseñas con `mosquitto_passwd` dentro del contenedor y las imprime una vez.
+   El firmware ya soporta `MQTT_USERNAME`/`MQTT_PASSWORD` (`config.h`): poner
+   `MQTT_USERNAME NODE_ID` por defecto. Puertos: se mantiene 1883 en LAN (TLS fuera de
+   alcance hoy; documentarlo como siguiente paso).
+6. `ingestion_service`: rechazar (cuarentena existente) los mensajes cuyo node_id del
+   topic `iot/<node>/readings` no coincida con `payload.device.node_id`.
 
 DoD / tests:
 - Test: 500 respuestas 503 seguidas → 0 dead letters y el evento sigue pendiente.
 - Test: un 422 → dead letter.
 - Test: replay mueve dead→pending y luego se entrega.
+- Test: topic con node_id distinto del payload → cuarentena, no se entrega.
+- `make-users.sh` probado contra el contenedor `eclipse-mosquitto:2`: pub anónimo rechazado, pub con credencial a su topic OK, pub a otro topic denegado.
 - `pytest` verde (la línea base era 49).
 
 ## F2: Conexión al laboratorio (portal en LAN, última comunicación, preflight). Ola 1, paralela
