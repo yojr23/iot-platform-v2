@@ -69,6 +69,10 @@ class RawReadingNormalizer
             throw new RuntimeException("RawReadingNormalizer: no device found for node_id [{$nodeId}]");
         }
 
+        // Portal "Última comunicación": direct quiet write, no observer cascade (the
+        // DeviceCommunicationReceived event has no dispatcher).
+        $device->forceFill(['last_communication' => now()])->saveQuietly();
+
         $sensorsPayload = (array) data_get($event->payload, 'sensors', []);
         $readingTime = data_get($event->payload, 'timestamp') ?? $event->received_at ?? now();
         $source = $event->source ?: 'ingestion_service';

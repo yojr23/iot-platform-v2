@@ -85,7 +85,17 @@ docker compose logs -f ingestion raw-consumer
    ```
 4. Monitor serie a 115200 baud: debe mostrar `[WiFi] OK`, `[MQTT] OK` y `[PUB] ... OK`.
 
-### 5. Verificar end-to-end
+### 5. Preflight (antes de verificar)
+```bash
+lab_esp32/preflight.sh          # PASS/FAIL por chequeo; exit != 0 si falla algo
+lab_esp32/preflight.sh --e2e    # ademas publica 1 lectura sintetica y espera la fila (<= 60 s)
+```
+Revisa servicios (db, redis, back, reverb, front y workers), variables obligatorias del `.env`
+(sin imprimirlas), `/api/health`, broker (`mosquitto_pub`; usa `MQTT_USERNAME`/`MQTT_PASSWORD`
+si estan definidas, `PREFLIGHT_MQTT_HOST` si el broker se ve distinto desde este PC) y el
+dispositivo `lab_postgrado_nodo_01` con su mapping. `COMPOSE_PROJECT=<nombre>` apunta a otro stack.
+
+### 6. Verificar end-to-end
 ```bash
 # a) ¿Llega al broker?  (desde la máquina del broker)
 docker compose -f docker-compose.broker.yml exec broker \
@@ -99,6 +109,24 @@ docker compose logs -f raw-consumer | grep RawReadingNormalizer
 
 # d) Dashboard: la lectura de DO del nodo debe aparecer en el front (5173).
 ```
+
+---
+
+## Portal desde otros PCs del lab (LAN)
+
+Por defecto el portal solo acepta `localhost`. En el `.env` de la raiz define (con la IP LAN de
+este servidor, ej. `192.168.1.20`) y reinicia `docker compose up -d back reverb front`:
+
+```
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://192.168.1.20:5173
+SANCTUM_STATEFUL_DOMAINS=localhost:5173,localhost:8000,192.168.1.20:5173,192.168.1.20:8000
+REVERB_ALLOWED_ORIGINS=localhost,127.0.0.1,192.168.1.20
+VITE_API_BASE_URL=http://192.168.1.20:8000/api
+VITE_PUSHER_HOST=192.168.1.20
+```
+Abrir despues `http://192.168.1.20:5173` desde el otro PC (puertos 5173, 8000 y 8080 libres en el
+firewall). `VITE_PUSHER_PORT` debe ser `8080` (puerto publicado de Reverb), `VITE_PUSHER_SCHEME=http`
+y `VITE_PUSHER_FORCE_TLS=false`.
 
 ---
 

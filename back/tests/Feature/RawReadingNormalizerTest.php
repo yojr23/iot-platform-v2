@@ -86,6 +86,21 @@ class RawReadingNormalizerTest extends TestCase
         );
     }
 
+    public function test_normalize_updates_device_last_communication(): void
+    {
+        [$device] = $this->deviceAndSensor('node-last-comm');
+        $device->forceFill(['last_communication' => null])->saveQuietly();
+
+        $event = RawSensorEvent::factory()->create([
+            'node_id' => 'node-last-comm',
+            'payload' => ['sensors' => ['temperature' => ['value' => 21.5]]],
+        ]);
+
+        app(RawReadingNormalizer::class)->normalize($event);
+
+        $this->assertNotNull($device->fresh()->last_communication);
+    }
+
     public function test_missing_payload_timestamp_falls_back_to_received_at_utc_carbon(): void
     {
         [, $sensor] = $this->deviceAndSensor('node-fallback-received-at');
