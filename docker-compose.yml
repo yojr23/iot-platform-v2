@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   # MySQL 8 with ROW-based binlog for Debezium CDC. The binlog expires after 7 days, bounding
   # the connector's outage-recovery window. DEBEZIUM_DB_PASSWORD is consumed by the init script
@@ -13,6 +19,10 @@ services:
       - --binlog-row-image=FULL
       - --binlog-expire-logs-seconds=604800
       - --log-bin-trust-function-creators=1
+      # Small lab PC: no perf-schema overhead, bounded buffer pool and connections.
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=256M
+      - --max-connections=60
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-iot_platform}
       MYSQL_USER: ${DB_USERNAME:-iot_user}
@@ -31,6 +41,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -39,7 +50,8 @@ services:
     # AOF acknowledges append work at most one second before fsync. The named volume preserves
     # Redis data across container replacement; this is an approximately one-second Redis-side RPO,
     # not a substitute for replication or backups.
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    # noeviction: when full, writes fail loudly (outbox in MySQL retries) instead of silently dropping.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -49,6 +61,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -75,10 +88,10 @@ services:
       INGESTION_SERVICE_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
       INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
       INGESTION_RAW_EVENTS_MAXLEN: ${INGESTION_RAW_EVENTS_MAXLEN:-500000}
-      INGESTION_RAW_EVENTS_MIN_AGE_MS: ${INGESTION_RAW_EVENTS_MIN_AGE_MS:-0}
+      INGESTION_RAW_EVENTS_MIN_AGE_MS: ${INGESTION_RAW_EVENTS_MIN_AGE_MS:-259200000}
       DOMAIN_EVENTS_STREAM: ${DOMAIN_EVENTS_STREAM:-iot.domain-events}
       DOMAIN_EVENTS_MAXLEN: ${DOMAIN_EVENTS_MAXLEN:-500000}
-      DOMAIN_EVENTS_MIN_AGE_MS: ${DOMAIN_EVENTS_MIN_AGE_MS:-0}
+      DOMAIN_EVENTS_MIN_AGE_MS: ${DOMAIN_EVENTS_MIN_AGE_MS:-259200000}
       INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
       DLQ_MAXLEN: ${DLQ_MAXLEN:-1000000}
       CDC_RAW_OUTBOX_STREAM: ${CDC_RAW_OUTBOX_STREAM:-iot-cdc.iot_platform.raw_event_outboxes}
@@ -110,6 +123,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -158,6 +172,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 15s
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -186,6 +201,7 @@ services:
     depends_on:
       back:
         condition: service_healthy
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -212,10 +228,10 @@ services:
       INGESTION_SERVICE_TOKEN: ${INGESTION_SERVICE_TOKEN:-}
       INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
       INGESTION_RAW_EVENTS_MAXLEN: ${INGESTION_RAW_EVENTS_MAXLEN:-500000}
-      INGESTION_RAW_EVENTS_MIN_AGE_MS: ${INGESTION_RAW_EVENTS_MIN_AGE_MS:-0}
+      INGESTION_RAW_EVENTS_MIN_AGE_MS: ${INGESTION_RAW_EVENTS_MIN_AGE_MS:-259200000}
       DOMAIN_EVENTS_STREAM: ${DOMAIN_EVENTS_STREAM:-iot.domain-events}
       DOMAIN_EVENTS_MAXLEN: ${DOMAIN_EVENTS_MAXLEN:-500000}
-      DOMAIN_EVENTS_MIN_AGE_MS: ${DOMAIN_EVENTS_MIN_AGE_MS:-0}
+      DOMAIN_EVENTS_MIN_AGE_MS: ${DOMAIN_EVENTS_MIN_AGE_MS:-259200000}
       INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
       DLQ_MAXLEN: ${DLQ_MAXLEN:-1000000}
       CDC_RAW_OUTBOX_STREAM: ${CDC_RAW_OUTBOX_STREAM:-iot-cdc.iot_platform.raw_event_outboxes}
@@ -235,6 +251,7 @@ services:
         condition: service_healthy
     profiles:
       - queue
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -263,11 +280,13 @@ services:
       QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
       INGESTION_RAW_EVENTS_STREAM: ${INGESTION_RAW_EVENTS_STREAM:-iot.raw-events}
       INGESTION_RAW_EVENTS_MAXLEN: ${INGESTION_RAW_EVENTS_MAXLEN:-500000}
+      INGESTION_RAW_EVENTS_MIN_AGE_MS: ${INGESTION_RAW_EVENTS_MIN_AGE_MS:-259200000}
       INGESTION_RAW_CONSUMER_GROUP: ${INGESTION_RAW_CONSUMER_GROUP:-raw-process-v1}
       INGESTION_DEAD_LETTER_STREAM: ${INGESTION_DEAD_LETTER_STREAM:-iot.dead-letter-events}
       DLQ_MAXLEN: ${DLQ_MAXLEN:-1000000}
       DOMAIN_EVENTS_STREAM: ${DOMAIN_EVENTS_STREAM:-iot.domain-events}
       DOMAIN_EVENTS_MAXLEN: ${DOMAIN_EVENTS_MAXLEN:-500000}
+      DOMAIN_EVENTS_MIN_AGE_MS: ${DOMAIN_EVENTS_MIN_AGE_MS:-259200000}
       DOMAIN_EVENTS_CONSUMER_GROUP: ${DOMAIN_EVENTS_CONSUMER_GROUP:-browser-delivery-v1}
       CDC_RAW_OUTBOX_STREAM: ${CDC_RAW_OUTBOX_STREAM:-iot-cdc.iot_platform.raw_event_outboxes}
       CDC_DOMAIN_OUTBOX_STREAM: ${CDC_DOMAIN_OUTBOX_STREAM:-iot-cdc.iot_platform.domain_event_outboxes}
@@ -295,6 +314,32 @@ services:
         condition: service_healthy
     profiles:
       - workers
+    logging: *default-logging
+    networks:
+      - iot-platform
+
+  # Runs Laravel's scheduler (storage tier, log archive/purge, capacity check, CDC stream trim).
+  scheduler:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    working_dir: /var/www/back
+    environment: *worker_env
+    command: php artisan schedule:work
+    restart: unless-stopped
+    volumes:
+      - ./back:/var/www/back
+      - back_vendor:/var/www/back/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      back:
+        condition: service_healthy
+    profiles:
+      - workers
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -321,6 +366,7 @@ services:
         condition: service_healthy
     profiles:
       - workers
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -346,6 +392,7 @@ services:
         condition: service_started
     profiles:
       - workers
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -371,6 +418,7 @@ services:
         condition: service_healthy
     profiles:
       - workers
+    logging: *default-logging
     networks:
       - iot-platform
 
@@ -408,6 +456,7 @@ services:
         condition: service_healthy
     profiles:
       - workers
+    logging: *default-logging
     networks:
       - iot-platform
 

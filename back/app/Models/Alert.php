@@ -45,6 +45,56 @@ class Alert extends Model
         return $query->where('resolved', true);
     }
 
+    /**
+     * Applies the DB-stored mail settings (SystemSetting) to the runtime config and returns the alert
+     * recipient (null when none is configured). Shared with iot:capacity:check.
+     */
+    public static function applyMailSettings(): ?string
+    {
+        $recipient = SystemSetting::get('mail_to')
+            ?? config('mail.recipient_email')
+            ?? env('MAIL_TO_ALERT')
+            ?? env('MAIL_TO')
+            ?? env('RECIPIENT_EMAIL')
+            ?? env('recipient_email');
+
+        if (! $recipient) {
+            return null;
+        }
+
+        $defaultMailer = (string) SystemSetting::get(
+            'mail_mailer',
+            config('mail.default') ?? config('mail.mailer')
+        );
+
+        $defaultMailer = $defaultMailer !== '' ? $defaultMailer : 'log';
+
+        $from = [
+            'address' => SystemSetting::get('mail_from_address', config('mail.from.address')),
+            'name' => SystemSetting::get('mail_from_name', config('mail.from.name')),
+        ];
+
+        $existingMailers = config('mail.mailers', []);
+        $smtpBase = $existingMailers['smtp'] ?? ['transport' => 'smtp'];
+
+        $smtpConfig = array_merge($smtpBase, [
+            'host' => SystemSetting::get('mail_host', $smtpBase['host'] ?? config('mail.host')),
+            'port' => SystemSetting::get('mail_port', $smtpBase['port'] ?? config('mail.port')),
+            'username' => SystemSetting::get('mail_username', $smtpBase['username'] ?? config('mail.username')),
+            'password' => SystemSetting::get('mail_password', $smtpBase['password'] ?? ''),
+            'encryption' => SystemSetting::get('mail_encryption', $smtpBase['encryption'] ?? config('mail.encryption')),
+        ]);
+
+        // Aplicar la configuración de correo compatible con Laravel 9+
+        config([
+            'mail.default' => $defaultMailer,
+            'mail.from' => $from,
+            'mail.mailers.smtp' => $smtpConfig,
+        ]);
+
+        return $recipient;
+    }
+
     public static function sendDangerAlertEmail($alertDetails)
     {
         $alertId = $alertDetails['alert_id'] ?? null;
@@ -70,12 +120,7 @@ class Alert extends Model
                 'detected_at' => (string) ($alertDetails['detected_at'] ?? now()->format('Y-m-d H:i:s')),
             ];
 
-            $recipient = SystemSetting::get('mail_to')
-                ?? config('mail.recipient_email')
-                ?? env('MAIL_TO_ALERT')
-                ?? env('MAIL_TO')
-                ?? env('RECIPIENT_EMAIL')
-                ?? env('recipient_email');
+            $recipient = self::applyMailSettings();
 
             if (! $recipient) {
                 Log::warning('AlertService: no recipient configured for danger alert emails, skipping send', [
@@ -83,36 +128,6 @@ class Alert extends Model
                 ]);
                 return false;
             }
-
-            $defaultMailer = (string) SystemSetting::get(
-                'mail_mailer',
-                config('mail.default') ?? config('mail.mailer')
-            );
-
-            $defaultMailer = $defaultMailer !== '' ? $defaultMailer : 'log';
-
-            $from = [
-                'address' => SystemSetting::get('mail_from_address', config('mail.from.address')),
-                'name' => SystemSetting::get('mail_from_name', config('mail.from.name')),
-            ];
-
-            $existingMailers = config('mail.mailers', []);
-            $smtpBase = $existingMailers['smtp'] ?? ['transport' => 'smtp'];
-
-            $smtpConfig = array_merge($smtpBase, [
-                'host' => SystemSetting::get('mail_host', $smtpBase['host'] ?? config('mail.host')),
-                'port' => SystemSetting::get('mail_port', $smtpBase['port'] ?? config('mail.port')),
-                'username' => SystemSetting::get('mail_username', $smtpBase['username'] ?? config('mail.username')),
-                'password' => SystemSetting::get('mail_password', $smtpBase['password'] ?? ''),
-                'encryption' => SystemSetting::get('mail_encryption', $smtpBase['encryption'] ?? config('mail.encryption')),
-            ]);
-
-            // Aplicar la configuración de correo compatible con Laravel 9+
-            config([
-                'mail.default' => $defaultMailer,
-                'mail.from' => $from,
-                'mail.mailers.smtp' => $smtpConfig,
-            ]);
 
             Log::debug('AlertService: sending danger alert email', [
                 'alert_id' => $alertId,

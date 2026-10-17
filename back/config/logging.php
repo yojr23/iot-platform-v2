@@ -22,6 +22,9 @@ return [
 
     'default' => env('LOG_CHANNEL', 'stack'),
 
+    // Days to keep gzipped rotated logs (php artisan iot:logs:archive). Minimum monthly retention.
+    'archive_days' => (int) env('LOG_ARCHIVE_DAYS', 30),
+
     /*
     |--------------------------------------------------------------------------
     | Deprecations Log Channel
@@ -71,7 +74,7 @@ return [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
-            'days' => env('LOG_DAILY_DAYS', 14),
+            'days' => max(2, (int) env('LOG_DAILY_DAYS', 14)),
             'replace_placeholders' => true,
         ],
 
@@ -82,7 +85,7 @@ return [
             'handler' => RotatingFileHandler::class,
             'handler_with' => [
                 'filename' => storage_path('logs/application.json'),
-                'maxFiles' => env('LOG_DAILY_DAYS', 14),
+                'maxFiles' => max(2, (int) env('LOG_DAILY_DAYS', 14)),
             ],
             'formatter' => JsonFormatter::class,
             'replace_placeholders' => true,
